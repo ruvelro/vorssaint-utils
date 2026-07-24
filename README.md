@@ -57,7 +57,7 @@ The rest bends the same way: panel sections reorder and hide, the compact layout
 
 ### Sound
 
-- **Volume mixer.** Slide any single app up or down while the rest of the Mac stays put, and push a quiet one past 100 percent when a video is just too low. No audio driver, no setup.
+- **Volume mixer.** Slide any single app up or down while the rest of the Mac stays put, and push a quiet one past 100 percent when a video is just too low. Hide the apps you never adjust to keep the list short. No audio driver, no setup.
 - **Per app output.** Send your music to the speakers and a call to your headset at the same time.
 - **Output switcher.** Cycle between chosen outputs with one shortcut, and drop the volume automatically when headphones disconnect.
 - **Microphone tools.** Pin your favorite input so the Mac stops guessing, and mute the mic everywhere with a click or shortcut.
@@ -85,10 +85,11 @@ The rest bends the same way: panel sections reorder and hide, the compact layout
 
 ### Keyboard and mouse
 
-- **Text snippets.** Type a short trigger anywhere and it becomes your text, expanded instantly or after a space, with date, time and clipboard variables.
+- **Text snippets.** Type a short trigger anywhere and it becomes your text, expanded instantly or after a space, with clipboard variables plus date and time in any format you like. A searchable quick menu, organized into folders, types any snippet right at your cursor.
 - **Smooth scrolling.** Gives a mouse wheel the glide of a trackpad.
 - **Scroll direction.** Invert the wheel without touching the trackpad's natural scrolling.
 - **Side buttons.** The mouse Back and Forward buttons start meaning it, in Finder, browsers and compatible apps.
+- **Mouse button shortcuts.** Give any extra mouse button a key combination of your choice. Click add, press the button, record the keys.
 - **Middle click.** A three finger press becomes a real middle click.
 - **Key debounce.** Filters the double letters a worn keyboard invents.
 

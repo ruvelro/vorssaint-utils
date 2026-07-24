@@ -112,7 +112,8 @@ final class ScreenshotService: ObservableObject {
         let defaults = UserDefaults.standard
         let controller = ScreenshotSelectionController(
             freeze: defaults.bool(forKey: DefaultsKey.screenshotFreeze),
-            includePointer: defaults.bool(forKey: DefaultsKey.screenshotIncludePointer))
+            includePointer: defaults.bool(forKey: DefaultsKey.screenshotIncludePointer),
+            showLastRegion: defaults.bool(forKey: DefaultsKey.screenshotShowLastRegion))
         session = controller
         controller.begin { [weak self] outcome in
             guard let self else { return }
@@ -130,14 +131,30 @@ final class ScreenshotService: ObservableObject {
 
     // MARK: - Routing
 
+    /// Where a direct save landed, and whether it consumed the "%#" number
+    /// sequence — so a later Trash can delete the file and, if applicable,
+    /// give the number back.
+    private struct SaveOutcome {
+        let url: URL
+        let usedNumber: Bool
+    }
+
     /// A finished capture goes to the floating preview, or straight into the
-    /// editor when the direct edit preference is on.
+    /// editor when the after-capture action is Edit.
+    ///
+    /// The clipboard copy happens first and independently, so it also reaches
+    /// the captures that open straight in the editor, where no preview button
+    /// exists to reach for.
     private func route(_ capture: ScreenshotSelectionController.Capture) {
         preview?.close()
-        if UserDefaults.standard.bool(forKey: DefaultsKey.screenshotOpenEditorDirectly) {
+        if UserDefaults.standard.bool(forKey: DefaultsKey.screenshotCopyToClipboard) {
+            autoCopy(capture)
+        }
+        if ScreenshotDefaultAction.current == .edit {
             openEditor(with: capture)
             return
         }
+        var saved: SaveOutcome?
         let controller = ScreenshotQuickPreviewController(
             capture: capture,
             strings: strings,
@@ -150,8 +167,23 @@ final class ScreenshotService: ObservableObject {
                 case .copy:
                     return self.copyDirect(capture)
                 case .save:
-                    return self.saveDirect(capture)
+                    guard let outcome = self.saveDirect(capture) else { return false }
+                    saved = outcome
+                    return true
+                case .saveAndCopy:
+                    guard let outcome = self.saveAndCopyDirect(capture) else { return false }
+                    saved = outcome
+                    return true
                 case .discard:
+                    // If this capture was already written to disk — whether
+                    // by the default action or a manual Save — Trash should
+                    // undo that rather than leave an orphaned file behind.
+                    if let saved {
+                        try? FileManager.default.removeItem(at: saved.url)
+                        if saved.usedNumber {
+                            Self.rewindNumberSequence()
+                        }
+                    }
                     return true
                 }
             },
@@ -177,6 +209,17 @@ final class ScreenshotService: ObservableObject {
         }
     }
 
+    /// Automatic copy stays quiet on success: the preview or the editor is
+    /// already appearing and says the capture happened, so a HUD on top of it
+    /// would only repeat that. A failure still beeps, since nothing else
+    /// would reveal an empty clipboard before the paste.
+    private func autoCopy(_ capture: ScreenshotSelectionController.Capture) {
+        if let image = flatten(capture), ScreenshotEditorController.copyImage(image) {
+            return
+        }
+        NSSound.beep()
+    }
+
     @discardableResult
     private func copyDirect(_ capture: ScreenshotSelectionController.Capture) -> Bool {
         guard let image = flatten(capture) else { return false }
@@ -188,22 +231,46 @@ final class ScreenshotService: ObservableObject {
         return true
     }
 
-    @discardableResult
-    private func saveDirect(_ capture: ScreenshotSelectionController.Capture) -> Bool {
+    private func saveDirect(_ capture: ScreenshotSelectionController.Capture) -> SaveOutcome? {
         guard let image = flatten(capture),
               let data = ScreenshotRenderer.pngData(from: image)
-        else { return false }
-        let url = Self.saveDestination(strings: strings)
+        else { return nil }
+        let (url, usedNumber) = Self.saveDestination(strings: strings)
         do {
             try data.write(to: url, options: .atomic)
             QuickToolHUD.show(icon: "camera.viewfinder",
                               message: String(format: strings.savedHUDFormat,
                                               url.deletingLastPathComponent().lastPathComponent))
-            return true
+            return SaveOutcome(url: url, usedNumber: usedNumber)
         } catch {
+            if usedNumber {
+                Self.rewindNumberSequence()
+            }
             NSSound.beep()
-            return false
+            return nil
         }
+    }
+
+    private func saveAndCopyDirect(_ capture: ScreenshotSelectionController.Capture) -> SaveOutcome? {
+        guard let image = flatten(capture),
+              let data = ScreenshotRenderer.pngData(from: image)
+        else { return nil }
+        let (url, usedNumber) = Self.saveDestination(strings: strings)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            if usedNumber {
+                Self.rewindNumberSequence()
+            }
+            NSSound.beep()
+            return nil
+        }
+
+        _ = ScreenshotEditorController.copyImage(image)
+        QuickToolHUD.show(icon: "camera.viewfinder",
+                          message: String(format: strings.savedAndCopiedHUDFormat,
+                                          url.deletingLastPathComponent().lastPathComponent))
+        return SaveOutcome(url: url, usedNumber: usedNumber)
     }
 
     /// Direct outputs go through the same pipeline as the editor so the 1x
@@ -225,7 +292,7 @@ final class ScreenshotService: ObservableObject {
 
     /// The configured folder when it still exists, otherwise the Desktop,
     /// with a unique dated file name.
-    static func saveDestination(strings: ScreenshotFeatureStrings) -> URL {
+    static func saveDestination(strings: ScreenshotFeatureStrings) -> (url: URL, usedNumber: Bool) {
         let manager = FileManager.default
         var folder: URL?
         let stored = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveFolder) ?? ""
@@ -237,13 +304,55 @@ final class ScreenshotService: ObservableObject {
                 folder = URL(fileURLWithPath: expanded)
             }
         }
-        let destination = folder
+        var destination = folder
             ?? manager.urls(for: .desktopDirectory, in: .userDomainMask).first
             ?? manager.homeDirectoryForCurrentUser
-        let name = ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date())
+        let subfolderPattern = UserDefaults.standard.string(forKey: DefaultsKey.screenshotSaveSubfolder) ?? ""
+        let subfolder = ScreenshotSupport.expandSaveSubfolder(subfolderPattern, date: Date())
+        if !subfolder.isEmpty {
+            let dated = destination.appendingPathComponent(subfolder, isDirectory: true)
+            // Only descend into the dated subfolder if we can actually create
+            // it; otherwise fall back to the base folder rather than losing
+            // the screenshot.
+            if (try? manager.createDirectory(at: dated, withIntermediateDirectories: true)) != nil {
+                destination = dated
+            }
+        }
+        let (name, usedNumber) = Self.fileName(strings: strings)
         let unique = ScreenshotSupport.uniqueFileName(name) { candidate in
             manager.fileExists(atPath: destination.appendingPathComponent(candidate).path)
         }
-        return destination.appendingPathComponent(unique)
+        return (destination.appendingPathComponent(unique), usedNumber)
+    }
+
+    /// The default localized "Screenshot yyyy-MM-dd at HH.mm.ss.png" name
+    /// when no pattern is set, otherwise the pattern with date tokens and
+    /// an optional "%#" number sequence expanded. Advances and persists the
+    /// number sequence when the pattern actually uses it.
+    private static func fileName(strings: ScreenshotFeatureStrings) -> (name: String, usedNumber: Bool) {
+        let defaults = UserDefaults.standard
+        let pattern = (defaults.string(forKey: DefaultsKey.screenshotFileNamePattern) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pattern.isEmpty else {
+            return (ScreenshotSupport.fileName(prefix: strings.fileNamePrefix, date: Date()), false)
+        }
+
+        if ScreenshotSupport.fileNamePatternUsesNumber(pattern) {
+            let number = defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext)
+            let expanded = ScreenshotSupport.expandFileNamePattern(pattern, date: Date(), number: number)
+            defaults.set(number + 1, forKey: DefaultsKey.screenshotFileNumberNext)
+            return (expanded + ".png", true)
+        } else {
+            let expanded = ScreenshotSupport.expandFileNamePattern(pattern, date: Date(), number: 0)
+            return (expanded + ".png", false)
+        }
+    }
+
+    /// Undoes the number-sequence advance from a save that failed or was
+    /// deleted, so the number gets reused next time rather than skipped.
+    static func rewindNumberSequence() {
+        let defaults = UserDefaults.standard
+        let next = defaults.integer(forKey: DefaultsKey.screenshotFileNumberNext)
+        defaults.set(max(next - 1, 0), forKey: DefaultsKey.screenshotFileNumberNext)
     }
 }

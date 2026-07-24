@@ -4,23 +4,70 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [3.1.16]
+## [3.2.0]
 
 ### Summary
-Vorssaint 3.1.16 cleans up the sound of boosted apps and repairs maximizing
-and window layout in browsers where windows moved without taking their new
-size.
+Vorssaint 3.2.0 adds a searchable snippet menu, mouse button shortcuts,
+screenshot autopilot and new radial menu slices, and the Cleaner can tidy
+WhatsApp downloads. Plus windows from other desktops in the App Switcher
+and a batch of fixes.
+
+### Added
+- A snippet menu. A shortcut opens your snippets in a searchable list and
+  picking one types it at the cursor. Under Text snippets.
+- Mouse button shortcuts. Any extra mouse button can press a key
+  combination for you. Under Mouse.
+- Screenshots can copy themselves to the clipboard the moment they are
+  taken. Under Screenshot. Thanks to @kingstyles.
+- Screenshots can run an action by themselves after each capture: save,
+  copy, both, or edit. Thanks to @403Denied.
+- Screenshot saves can use dated subfolders and your own file name pattern,
+  like %y-%mo. Thanks to @403Denied.
+- New radial menu slices: Shelf, Cleaning Mode, Keep Awake and window
+  layouts. Thanks to @ruvelro.
+- A choice of how the radial menu opens: press to keep it open, or hold and
+  release to run. Thanks to @ruvelro.
+- WhatsApp download cleanup in the Cleaner, always to the Trash and off by
+  default. An optional organizer files new downloads into a folder you
+  choose, with undo. Thanks to @ruvelro.
+- The last capture outline in the screenshot selector can be hidden.
+  Thanks to @ruvelro.
+- Hide apps from the volume mixer with a right click; the same menu brings
+  them back.
+- Each removable drive in the Drives tab now has its own eject button.
+- Snippet triggers can ignore capitalization, and date variables accept a
+  format, like {{date:yyyy-MM-dd}}.
+
+### Changed
+- Recording a shortcut keeps the keys to itself instead of triggering the
+  app or the system.
+- "Open the editor right after capturing" became the Edit after-capture
+  action; existing setups keep working unchanged.
 
 ### Fixed
-- Boosting an app's volume above 100% no longer adds a crackling noise while
-  the sound is loud. The boost now eases the peaks down for a moment instead
-  of chopping them off.
-- Maximizing with the green button no longer leaves some windows parked at
-  the left edge of the screen with their old size. Browsers that take a
-  moment to resize now fill the screen properly.
-- Window layout shortcuts, the panel buttons and the drag gesture now resize
-  those same browsers correctly instead of moving the window and leaving its
-  size behind.
+- The App Switcher and Dock previews now show windows from other desktops
+  too; an option keeps them to the current one.
+- Undo works in the screenshot editor, and clicking an annotation selects
+  it instead of drawing on top. Thanks to @ruvelro.
+- The Homebrew settings page no longer breaks in narrow windows.
+  Thanks to @ruvelro.
+- Restoring the panel's quick controls also brings back a hidden Text
+  snippets toggle.
+- Boosting an app's volume above 100% no longer crackles at loud moments.
+- The green button and window layout tools now resize slow browsers
+  properly instead of leaving them small or misplaced.
+- Volume levels for some games and tools were not saved since 3.1.15; they
+  are saved again and old ones come back.
+- The mixer repairs its audio path by itself after the Mac wakes, instead
+  of leaving an adjusted app silent.
+- Paste as plain text no longer leaves the pasted style on what you type
+  next in some rich text apps.
+- Shelf items now follow their files across moves and renames. Only a file
+  that is really gone steps aside, with a note instead of a drag nothing
+  accepts.
+- The Drives tab no longer shows a drive's format and location twice.
+- External monitors no longer go dark while adjusting brightness, and a
+  reconnected screen always comes back visible.
 
 ## [3.1.15] - 2026-07-21
 
