@@ -6,9 +6,11 @@ import Carbon.HIToolbox
 import SwiftUI
 
 /// Drives the QR button, which appears after the capture is scanned so the
-/// preview never waits on detection to show.
+/// preview never waits on detection to show, and the buttons grayed out
+/// because the after-capture action already did their work.
 final class ScreenshotQuickPreviewModel: ObservableObject {
     @Published var qr: BarcodeDetector.Reading?
+    @Published var disabledActions: Set<ScreenshotQuickPreviewController.Action> = []
 }
 
 /// A transient in-memory capture preview. It stays outside Command Tab and
@@ -18,6 +20,7 @@ final class ScreenshotQuickPreviewController {
         case edit
         case copy
         case save
+        case saveAndCopy
         case discard
     }
 
@@ -29,6 +32,7 @@ final class ScreenshotQuickPreviewController {
     private var panel: ScreenshotQuickPreviewPanel?
     private var keyMonitor: Any?
     private var dismissWork: DispatchWorkItem?
+    private var autoDismissDuration: TimeInterval = 12
     private var closed = false
 
     init(capture: ScreenshotSelectionController.Capture,
@@ -43,6 +47,7 @@ final class ScreenshotQuickPreviewController {
 
     func show() {
         guard panel == nil, !closed else { return }
+        let defaultAction = ScreenshotDefaultAction.current
         let content = ScreenshotQuickPreviewView(
             image: Self.thumbnail(for: capture.image),
             strings: strings,
@@ -76,17 +81,56 @@ final class ScreenshotQuickPreviewController {
 
         let visibleFrame = (NSScreen.screens.first { $0.frame.intersects(capture.anchorRect) }
             ?? NSScreen.withMouse)?.visibleFrame ?? NSScreen.pointerVisibleFrame
-        panel.setFrame(ScreenshotSupport.quickPreviewFrame(
-            size: size,
-            anchor: capture.anchorRect,
-            pointer: NSEvent.mouseLocation,
-            visibleFrame: visibleFrame), display: false)
+        // With an after-capture action the preview is just a confirmation,
+        // so it sits quietly in the corner and leaves sooner, instead of
+        // popping up next to the selection and waiting.
+        let frame = defaultAction == .none
+            ? ScreenshotSupport.quickPreviewFrame(
+                size: size,
+                anchor: capture.anchorRect,
+                pointer: NSEvent.mouseLocation,
+                visibleFrame: visibleFrame)
+            : ScreenshotSupport.quickPreviewCornerFrame(size: size, visibleFrame: visibleFrame)
+        panel.setFrame(frame, display: false)
         self.panel = panel
         installKeyMonitor(for: panel)
         panel.orderFrontRegardless()
         panel.makeKey()
+        // A performed action turns the preview into a short confirmation; a
+        // failed one keeps the full stay so the person can still act by hand.
+        autoDismissDuration = runDefaultAction(defaultAction) ? 3 : 12
         scheduleAutoDismiss()
         scanForQR()
+    }
+
+    /// Buttons whose work the after-capture action already did, so the
+    /// preview doesn't invite doing it again. Applied only once the action
+    /// actually succeeded; a failed save leaves every button alive.
+    private static func disabledActions(for defaultAction: ScreenshotDefaultAction) -> Set<Action> {
+        switch defaultAction {
+        case .none, .edit: return []
+        case .save: return [.save]
+        case .saveAndCopy: return [.save, .copy]
+        case .copy: return [.copy]
+        }
+    }
+
+    /// Runs the Settings-configured action once, right after the preview
+    /// appears, and reports whether it succeeded. Unlike `perform(_:)` this
+    /// never closes the panel: it stays up as confirmation, and the person
+    /// can still edit or discard from it. Edit never reaches here, the
+    /// service routes it straight into the editor without a preview.
+    private func runDefaultAction(_ defaultAction: ScreenshotDefaultAction) -> Bool {
+        let mapped: Action
+        switch defaultAction {
+        case .none, .edit: return false
+        case .save: mapped = .save
+        case .saveAndCopy: mapped = .saveAndCopy
+        case .copy: mapped = .copy
+        }
+        guard action(mapped) else { return false }
+        model.disabledActions = Self.disabledActions(for: defaultAction)
+        return true
     }
 
     /// Scans the full resolution capture off the main thread and reveals the
@@ -149,6 +193,9 @@ final class ScreenshotQuickPreviewController {
 
     private func perform(_ requested: Action) {
         guard !closed else { return }
+        // Keyboard shortcuts honor the grayed-out buttons: what the
+        // after-capture action already did is not done twice.
+        guard !model.disabledActions.contains(requested) else { return }
         dismissWork?.cancel()
         dismissWork = nil
         guard action(requested) else {
@@ -163,7 +210,7 @@ final class ScreenshotQuickPreviewController {
         dismissWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.close() }
         dismissWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 12, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + autoDismissDuration, execute: work)
     }
 
     private func installKeyMonitor(for panel: NSPanel) {
@@ -252,12 +299,14 @@ private struct ScreenshotQuickPreviewView: View {
                 }
                 actionButton(symbol: "square.and.arrow.down",
                              title: strings.saveButton,
-                             shortcut: "⌘S") {
+                             shortcut: "⌘S",
+                             disabled: model.disabledActions.contains(.save)) {
                     perform(.save)
                 }
                 actionButton(symbol: "doc.on.doc",
                              title: strings.copyButton,
-                             shortcut: "⌘C") {
+                             shortcut: "⌘C",
+                             disabled: model.disabledActions.contains(.copy)) {
                     perform(.copy)
                 }
                 Spacer(minLength: 4)
@@ -296,6 +345,7 @@ private struct ScreenshotQuickPreviewView: View {
     private func actionButton(symbol: String,
                               title: String,
                               shortcut: String,
+                              disabled: Bool = false,
                               action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: symbol)
@@ -305,6 +355,8 @@ private struct ScreenshotQuickPreviewView: View {
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
+        .disabled(disabled)
+        .opacity(disabled ? 0.4 : 1)
         .screenshotSafeHelp("\(title)  (\(shortcut))")
         .accessibilityLabel(title)
     }
