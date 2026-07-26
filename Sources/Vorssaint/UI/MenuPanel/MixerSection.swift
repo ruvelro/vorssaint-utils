@@ -179,7 +179,8 @@ struct MixerSection: View {
             Toggle(l10n.s.preciseVolumeRollerEnable, isOn: $preciseVolumeRollerEnabled)
                 .toggleStyle(.checkbox)
                 .font(.system(size: 11.5, weight: .medium))
-                .onChange(of: preciseVolumeRollerEnabled) { _, _ in
+                .onChange(of: preciseVolumeRollerEnabled) { _, enabled in
+                    if enabled { permissions.requestAccessibility() }
                     PreciseVolumeRollerService.shared.syncWithPreferences()
                 }
 
