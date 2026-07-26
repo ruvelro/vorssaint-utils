@@ -13745,6 +13745,11 @@ struct MetricsTests {
                "precise volume accepts first old-direction step")
         expect(oldDirectionGate.accepts(.down, at: 300.40),
                "precise volume accepts an opposite step after the reversal window")
+        var fastStreamGate = PreciseVolumeRollerGate()
+        let fastAccepted = stride(from: 400.00, through: 400.10, by: 0.02)
+            .filter { fastStreamGate.accepts(.up, at: $0) }
+        expect(fastAccepted.count == 3,
+               "precise volume rate-limits sustained fast input instead of starving it")
         expect(PreciseVolumeMediaKey.volumeUp.rollerDirection == .up
                 && PreciseVolumeMediaKey.volumeDown.rollerDirection == .down
                 && PreciseVolumeMediaKey.mute.rollerDirection == nil,

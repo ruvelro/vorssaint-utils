@@ -12,14 +12,12 @@ struct PreciseVolumeRollerGate {
     var reversalWindow: TimeInterval = 0.30
     var reversalConfirmations = 2
 
-    private var lastEventAt: TimeInterval?
     private var lastAcceptedAt: TimeInterval?
     private var lastDirection: PreciseVolumeRollerDirection?
     private var reversalDirection: PreciseVolumeRollerDirection?
     private var reversalCount = 0
 
     mutating func reset() {
-        lastEventAt = nil
         lastAcceptedAt = nil
         lastDirection = nil
         reversalDirection = nil
@@ -28,11 +26,9 @@ struct PreciseVolumeRollerGate {
 
     mutating func accepts(_ direction: PreciseVolumeRollerDirection,
                           at time: TimeInterval) -> Bool {
-        if let lastEventAt, time - lastEventAt <= minimumSpacing {
-            self.lastEventAt = time
+        if let lastAcceptedAt, time - lastAcceptedAt <= minimumSpacing {
             return false
         }
-        lastEventAt = time
 
         if let lastDirection, direction != lastDirection,
            let lastAcceptedAt, time - lastAcceptedAt < reversalWindow {
