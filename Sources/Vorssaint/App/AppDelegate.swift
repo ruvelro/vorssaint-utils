@@ -115,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
                     .dockPreview, .finderCutPaste, .autoQuit, .dockClick,
                     .middleClick, .windowMaximizer, .keyboardDebounce, .windowLayout,
                     .textSnippets, .brightness, .radialMenu, .mouseButtonShortcuts,
-                    .superKey,
+                    .superKey, .mixer,
                 ])
             }
             .store(in: &cancellables)
@@ -219,6 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         MouseNavigationService.shared.suspend()
         DockPreviewService.shared.stop()
         SoundOutputSwitcher.shared.stop()
+        PreciseVolumeRollerService.shared.stop()
         AppVolumeMixer.shared.stopAll()
         // Puts the system input back if a microphone was chosen here: the
         // app's audio settings must not outlive the app.
