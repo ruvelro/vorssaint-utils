@@ -115,6 +115,8 @@ enum DefaultsKey {
     // answer reads. Kept local so wake handling does not repeatedly probe a
     // sensitive display path.
     static let brightnessDDCWriteOnlyPaths = "brightnessDDCWriteOnlyPaths"
+    static let displayAutoBrightnessEnabled = "displayAutoBrightnessEnabled"
+    static let displayAutoBrightnessSensitivity = "displayAutoBrightnessSensitivity"
     // Displays this app switched off, so a run that ends without putting them
     // back can be repaired on the next start instead of needing a replug.
     static let displaysSwitchedOff = "displaysSwitchedOff"
