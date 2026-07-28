@@ -632,6 +632,7 @@ enum Defaults {
         DefaultsKey.switcherShowWindowlessFinder: true,
         DefaultsKey.switcherCurrentSpaceOnly: false,
         DefaultsKey.dockPreviewEnabled: false,
+        DefaultsKey.dockPreviewBackgroundOpacity: 1.0,
         DefaultsKey.dockClickMinimize: false,
         DefaultsKey.dockClickCycleWindows: false,
         DefaultsKey.middleClickEnabled: false,
