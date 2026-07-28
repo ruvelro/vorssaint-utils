@@ -51,6 +51,7 @@ final class DockPreviewService: ObservableObject {
     private var dockPIDCache: pid_t?
     private var cachedPreferences: DockPreviewPreferences?
     private var currentMediaSource: DockMediaPlayerSource?
+    private var currentMediaFallbackHit: DockHit?
     private var mediaRefreshTimer: Timer?
 
     private init() {}
@@ -652,6 +653,10 @@ final class DockPreviewService: ObservableObject {
             return
         }
 
+        beginWindowSession(hit, prefetched: prefetched)
+    }
+
+    private func beginWindowSession(_ hit: DockHit, prefetched: [SwitcherItem]? = nil) {
         let list = prefetched ?? Self.previewableWindows(for: hit.app.processIdentifier)
         // An app with no real windows shows nothing; if a panel is already up
         // (the user moved here from another app), close it cleanly.
@@ -667,6 +672,7 @@ final class DockPreviewService: ObservableObject {
         }
 
         currentSessionPID = hit.app.processIdentifier
+        currentMediaFallbackHit = nil
         isPinned = false
         hasEnteredPanel = false
         currentAppName = hit.app.localizedName ?? hit.app.bundleIdentifier ?? ""
@@ -693,6 +699,7 @@ final class DockPreviewService: ObservableObject {
 
         currentSessionPID = hit.app.processIdentifier
         currentMediaSource = source
+        currentMediaFallbackHit = hit
         isPinned = false
         hasEnteredPanel = false
         currentAppName = source.appName
@@ -739,6 +746,7 @@ final class DockPreviewService: ObservableObject {
         previews = [:]
         mediaPlayer = nil
         currentMediaSource = nil
+        currentMediaFallbackHit = nil
         selectedWindowID = nil
         currentAppName = nil
         currentSessionPID = nil
@@ -926,6 +934,10 @@ final class DockPreviewService: ObservableObject {
             guard let self, self.currentMediaSource == source else { return }
             if let snapshot {
                 self.mediaPlayer = snapshot
+            } else if let fallbackHit = self.currentMediaFallbackHit {
+                self.beginWindowSession(fallbackHit)
+            } else {
+                self.endSession()
             }
         }
     }
