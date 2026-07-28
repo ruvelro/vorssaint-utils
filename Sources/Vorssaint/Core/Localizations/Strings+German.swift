@@ -224,6 +224,8 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "Verringere ihn, um mehr von dem zu sehen, was hinter dem Panel liegt.",
         dockPreviewOpenDelay: "Öffnungsverzögerung",
         dockPreviewOpenDelayCaption: "Wie lange der Zeiger auf einem Symbol ruhen muss, bevor sich das Panel öffnet.",
+        dockPreviewMediaControls: "Mediensteuerung fuer Musik-Apps anzeigen",
+        dockPreviewMediaControlsCaption: "Beim Zeigen auf Spotify oder Music werden Cover, Titelinfos, Fortschritt und Wiedergabesteuerung statt Fensterminiaturen angezeigt.",
         dockClickMinimize: "Klick aufs Dock-Symbol minimiert",
         dockClickMinimizeCaption: "Die Fenster der aktiven App werden beim Klick auf ihr Dock-Symbol im Dock abgelegt. Ein weiterer Klick holt sie zurück.",
         dockClickCycleWindows: "Klick aufs Dock-Symbol wechselt Fenster",

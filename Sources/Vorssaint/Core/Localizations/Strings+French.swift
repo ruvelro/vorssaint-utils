@@ -224,6 +224,8 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "Baissez-le pour voir davantage ce qui se trouve derrière le panneau.",
         dockPreviewOpenDelay: "Délai d'ouverture",
         dockPreviewOpenDelayCaption: "Combien de temps le pointeur doit rester sur une icône avant que le panneau s'ouvre.",
+        dockPreviewMediaControls: "Afficher les commandes multimedia des apps de musique",
+        dockPreviewMediaControlsCaption: "Au survol de Spotify ou Musique, affiche la pochette, les details du morceau, la progression et les commandes au lieu des miniatures de fenetres.",
         dockClickMinimize: "Réduire d'un clic sur le Dock",
         dockClickMinimizeCaption: "Les fenêtres de l'app active se réduisent d'un clic sur son icône du Dock. Cliquez à nouveau pour les faire revenir.",
         dockClickCycleWindows: "Clic sur le Dock pour alterner les fenêtres",

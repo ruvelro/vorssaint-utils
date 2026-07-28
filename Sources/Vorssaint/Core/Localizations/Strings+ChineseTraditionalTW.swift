@@ -225,6 +225,8 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "調低後可以看到更多面板後面的內容。",
         dockPreviewOpenDelay: "開啟延遲",
         dockPreviewOpenDelayCaption: "指標停在圖示上多久之後才打開面板。",
+        dockPreviewMediaControls: "顯示音樂 App 的媒體控制",
+        dockPreviewMediaControlsCaption: "停留在 Spotify 或音樂上時，顯示封面、曲目資訊、進度和播放控制，而不是視窗縮圖。",
         dockClickMinimize: "點按 Dock 圖示最小化",
         dockClickMinimizeCaption: "點按最前方 App 的 Dock 圖示可將其視窗最小化。再點按一次即可還原。",
         dockClickCycleWindows: "點按 Dock 圖示切換視窗",
