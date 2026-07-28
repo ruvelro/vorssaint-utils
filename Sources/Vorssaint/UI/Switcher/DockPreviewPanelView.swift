@@ -67,6 +67,8 @@ private struct DockPreviewPanelContent: View {
     let onSelectNext: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
+    @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity) private var backgroundOpacity = 1.0
+    private var clampedBackgroundOpacity: Double { min(max(backgroundOpacity, 0), 1) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,11 +117,11 @@ private struct DockPreviewPanelContent: View {
         }
         .frame(height: DockPreviewSupport.panelSize(itemCount: 1,
                                                     screenVisibleFrame: CGRect(x: 0, y: 0, width: 500, height: 500)).height)
-        .background(HUDBackdrop(cornerRadius: 18))
+        .background(HUDBackdrop(cornerRadius: 18, opacity: CGFloat(clampedBackgroundOpacity)))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                .strokeBorder(Color.white.opacity(0.12 * clampedBackgroundOpacity), lineWidth: 1)
         )
     }
 
