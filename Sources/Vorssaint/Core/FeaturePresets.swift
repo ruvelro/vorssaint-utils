@@ -100,7 +100,7 @@ extension AppFeature {
         case .pastePlain, .soundOutputSwitcher, .micMute,
              .musicBlock, .keepAwake, .brightness, .quickLauncher, .quickToggles, .colorPicker,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
-             .cameraPreview, .scratchpad:
+             .cameraPreview, .scratchpad, .commandBar:
             return .idle
         case .appUpdates:
             // The list is on demand; only a background schedule keeps a timer.
