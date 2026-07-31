@@ -834,17 +834,19 @@ struct SwitcherSettings: View {
                         Text(dockPreviewCaption)
                             .font(.caption)
                             .foregroundStyle(dockPreviewWarning ? .orange : .secondary)
-                        Slider(value: $dockPreviewBackgroundOpacity, in: 0...1, step: 0.05) {
-                            Text(l10n.s.dockPreviewBackgroundOpacity)
-                        } minimumValueLabel: {
-                            Text("0%")
-                        } maximumValueLabel: {
-                            Text("100%")
+                        if dockPreviewEnabled {
+                            HStack {
+                                Text(l10n.s.dockPreviewBackgroundOpacity)
+                                Slider(value: dockPreviewBackgroundOpacityBinding,
+                                       in: DockPreviewSupport.backgroundOpacityRange,
+                                       step: 0.05)
+                                Text("\(dockPreviewBackgroundOpacityPercent)%")
+                                    .font(.system(.body, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 52, alignment: .trailing)
+                            }
+                            SettingsCaptionText(l10n.s.dockPreviewBackgroundOpacityCaption)
                         }
-                        .disabled(!dockPreviewEnabled)
-                        Text(l10n.s.dockPreviewBackgroundOpacityCaption)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                     if AppFeature.dockClick.isAvailable {
                         Toggle(l10n.s.dockClickMinimize, isOn: $dockClickMinimize)
@@ -913,6 +915,17 @@ struct SwitcherSettings: View {
 
     private var dockPreviewWarning: Bool {
         dockPreviewEnabled && dockPreview.blockedReason != nil
+    }
+
+    private var dockPreviewBackgroundOpacityBinding: Binding<Double> {
+        Binding(
+            get: { DockPreviewSupport.sanitizedBackgroundOpacity(dockPreviewBackgroundOpacity) },
+            set: { dockPreviewBackgroundOpacity = DockPreviewSupport.sanitizedBackgroundOpacity($0) }
+        )
+    }
+
+    private var dockPreviewBackgroundOpacityPercent: Int {
+        Int((DockPreviewSupport.sanitizedBackgroundOpacity(dockPreviewBackgroundOpacity) * 100).rounded())
     }
 }
 
