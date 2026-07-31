@@ -13,7 +13,6 @@ enum DefaultsKey {
     static let onboardingStep = "onboardingStep"          // resume point if onboarding is interrupted
     static let featuresOnboardingVersion = "featuresOnboardingVersion" // last feature-tour marker handled
     static let lastUpdateIntroVersion = "lastUpdateIntroVersion"
-    static let dockPreviewIntroVersion = "dockPreviewIntroVersion"
     static let supportUpdateIntroVersion = "supportUpdateIntroVersion"
     static let updateHighlightsSeenVersion = "updateHighlightsSeenVersion"
     static let updateShowcaseIntroVersion = "updateShowcaseIntroVersion"
@@ -57,7 +56,8 @@ enum DefaultsKey {
     static let switcherIconRowMode = "switcherIconRowMode"
     static let switcherSimpleMode = "switcherSimpleMode"  // app-only row without window captures
     static let switcherMergeTabs = "switcherMergeTabs"     // show one switcher entry per app (collapse all of an app's windows)
-    static let switcherShowWindowlessFinder = "switcherShowWindowlessFinder"
+    static let switcherShowWindowlessFinder = "switcherShowWindowlessFinder" // replaced by switcherWindowlessApps, kept so the migration can read it
+    static let switcherWindowlessApps = "switcherWindowlessApps" // SwitcherWindowlessApps raw value
     static let switcherCurrentSpaceOnly = "switcherCurrentSpaceOnly" // list only windows on the desktop the user is in (issue #337)
     static let dockPreviewEnabled = "dockPreviewEnabled"
     static let dockPreviewBackgroundOpacity = "dockPreviewBackgroundOpacity" // 0...1 opacity for the preview panel material
@@ -157,6 +157,9 @@ enum DefaultsKey {
     static let appUpdatesNotify = "appUpdatesNotify"
     static let appUpdatesLastCheck = "appUpdatesLastCheck"            // Double, epoch seconds
     static let appUpdatesLastCount = "appUpdatesLastCount"
+    // Findings already announced once, so a pending update nobody installs
+    // does not speak up again after every relaunch.
+    static let appUpdatesNotifiedIDs = "appUpdatesNotifiedIDs"
     static let panelUtilityMedia = "panelUtilityMedia"
     static let panelUtilityClipboard = "panelUtilityClipboard"
     static let panelUtilityWindowLayout = "panelUtilityWindowLayout"
@@ -337,6 +340,16 @@ enum DefaultsKey {
     static let cameraPreviewShortcut = "cameraPreviewShortcut"
     static let scratchpadShortcutEnabled = "scratchpadShortcutEnabled"
     static let scratchpadShortcut = "scratchpadShortcut"
+    static let commandBarShortcutEnabled = "commandBarShortcutEnabled"
+    static let commandBarShortcut = "commandBarShortcut"
+    static let commandBarUsage = "commandBarUsage"           // per-command run counts, never queries
+    static let commandBarDisabledSources = "commandBarDisabledSources" // kinds of result switched off
+    static let commandBarAliases = "commandBarAliases"       // {row id: the name the person gave it}
+    static let commandBarPins = "commandBarPins"             // row keys kept at the top, in order
+    static let commandBarHidden = "commandBarHidden"         // row keys the person never wants offered
+    static let commandBarLinks = "commandBarLinks"           // Data: [CommandBarLink] JSON
+    static let commandBarRowShortcuts = "commandBarRowShortcuts" // {row key: shortcut}
+    static let panelUtilityCommandBar = "panelUtilityCommandBar"
     static let scratchpadRetention = "scratchpadRetention"   // never | day | week | month
     static let scratchpadCloseOnClickOutside = "scratchpadCloseOnClickOutside"
     static let micMuteActive = "micMuteActive"               // mic muted by the app (survives relaunch)
@@ -405,6 +418,7 @@ enum DefaultsKey {
     static let windowLayoutShortcutLeftTwoThirds = "windowLayoutShortcutLeftTwoThirds"
     static let windowLayoutShortcutRightTwoThirds = "windowLayoutShortcutRightTwoThirds"
     static let windowLayoutShortcutNextDisplay = "windowLayoutShortcutNextDisplay"
+    static let windowLayoutShortcutFullScreen = "windowLayoutShortcutFullScreen"
     static let windowLayoutShortcutTopLeftSixth = "windowLayoutShortcutTopLeftSixth"
     static let windowLayoutShortcutTopCenterSixth = "windowLayoutShortcutTopCenterSixth"
     static let windowLayoutShortcutTopRightSixth = "windowLayoutShortcutTopRightSixth"
@@ -441,10 +455,6 @@ enum OnboardingInfo {
     // 3: app languages and support settings.
     // 4: navigable menu panel sections.
     static let currentFeatureSet = 4
-}
-
-enum DockPreviewIntroInfo {
-    static let releaseVersion = "3.0.4"
 }
 
 /// The one-time tour of a release's headline features, shown right after the
@@ -630,6 +640,7 @@ enum Defaults {
         DefaultsKey.switcherSimpleMode: false,
         DefaultsKey.switcherMergeTabs: false,
         DefaultsKey.switcherShowWindowlessFinder: true,
+        DefaultsKey.switcherWindowlessApps: SwitcherWindowlessApps.fallback.rawValue,
         DefaultsKey.switcherCurrentSpaceOnly: false,
         DefaultsKey.dockPreviewEnabled: false,
         DefaultsKey.dockPreviewBackgroundOpacity: 1.0,
@@ -729,6 +740,7 @@ enum Defaults {
         DefaultsKey.appUpdatesNotify: true,
         DefaultsKey.appUpdatesLastCheck: 0.0,
         DefaultsKey.appUpdatesLastCount: 0,
+        DefaultsKey.appUpdatesNotifiedIDs: [],
         DefaultsKey.panelUtilityMedia: true,
         DefaultsKey.panelUtilityClipboard: true,
         DefaultsKey.panelUtilityWindowLayout: true,
@@ -877,6 +889,13 @@ enum Defaults {
         DefaultsKey.cameraPreviewShortcut: GlobalShortcut.cameraPreviewDefault.storageValue,
         DefaultsKey.scratchpadShortcutEnabled: false,
         DefaultsKey.scratchpadShortcut: GlobalShortcut.scratchpadDefault.storageValue,
+        DefaultsKey.commandBarShortcutEnabled: false,
+        DefaultsKey.commandBarDisabledSources: "",
+        DefaultsKey.commandBarAliases: "",
+        DefaultsKey.commandBarPins: "",
+        DefaultsKey.commandBarHidden: "",
+        DefaultsKey.commandBarShortcut: GlobalShortcut.commandBarDefault.storageValue,
+        DefaultsKey.panelUtilityCommandBar: true,
         DefaultsKey.scratchpadRetention: ScratchpadRetention.never.rawValue,
         DefaultsKey.scratchpadCloseOnClickOutside: true,
         DefaultsKey.micMuteActive: false,
@@ -945,6 +964,7 @@ enum Defaults {
         DefaultsKey.windowLayoutShortcutBottomLeftSixth: WindowLayoutAction.clearedShortcutStorageValue,
         DefaultsKey.windowLayoutShortcutBottomCenterSixth: WindowLayoutAction.clearedShortcutStorageValue,
         DefaultsKey.windowLayoutShortcutBottomRightSixth: WindowLayoutAction.clearedShortcutStorageValue,
+        DefaultsKey.windowLayoutShortcutFullScreen: WindowLayoutAction.clearedShortcutStorageValue,
     ]
 
     static func register() {
@@ -958,6 +978,20 @@ enum Defaults {
         migrateUtilityOrderForAppUpdates(in: defaults)
         migrateScreenshotOpenEditorDirectly(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
+        migrateSwitcherWindowlessFinder(in: defaults)
+    }
+
+    /// The "show the desktop app without windows" toggle became one choice of
+    /// the windowless apps picker. Only an explicit off has to travel: the
+    /// picker ships on the same choice the toggle shipped on, so a setup that
+    /// never touched it keeps the switcher it already had. Clearing the old
+    /// toggle is what makes this run once and never fight a later choice.
+    static func migrateSwitcherWindowlessFinder(in defaults: UserDefaults) {
+        let showsWindowlessFinder = defaults.bool(forKey: DefaultsKey.switcherShowWindowlessFinder)
+        guard !showsWindowlessFinder else { return }
+        defaults.set(true, forKey: DefaultsKey.switcherShowWindowlessFinder)
+        let mode = SwitcherWindowlessApps.migrated(showsWindowlessFinder: showsWindowlessFinder)
+        defaults.set(mode.rawValue, forKey: DefaultsKey.switcherWindowlessApps)
     }
 
     /// The "open the editor right after capturing" toggle became the Edit
