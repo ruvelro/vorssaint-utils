@@ -8632,6 +8632,8 @@ struct MetricsTests {
                "without an app bundle to read, the package receipt is used")
         expect(packageRows.allSatisfy { $0.source == .homebrewCask },
                "Homebrew casks are marked as the Homebrew app source")
+        expect(packageRows.contains { $0.id == "packageManager:chat" },
+               "Homebrew casks keep their legacy notification identifier")
         // Packages that install through an installer declare no app, so the
         // catalog name is tried as a bundle name before giving up.
         let namedRows = AppUpdatesSupport.homebrewCaskUpdates(

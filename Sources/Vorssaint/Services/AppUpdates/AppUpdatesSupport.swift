@@ -180,7 +180,7 @@ enum AppUpdatesSupport {
             let installedVersion = bundle?.version ?? versionCore(receipt)
             guard !installedVersion.isEmpty else { return nil }
             guard isNewer(update.currentVersion, than: installedVersion) else { return nil }
-            return Item(id: "\(Source.homebrewCask.rawValue):\(update.name)",
+            return Item(id: "packageManager:\(update.name)",
                         source: .homebrewCask,
                         name: bundle?.name ?? record?.displayName ?? update.name,
                         installedVersion: installedVersion,

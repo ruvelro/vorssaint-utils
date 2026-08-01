@@ -96,7 +96,7 @@ final class PreciseVolumeRollerService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        if event.flags.contains(.maskAlternate), event.flags.contains(.maskShift) {
+        if event.flags.contains(.maskAlternate) || event.flags.contains(.maskShift) {
             return Unmanaged.passUnretained(event)
         }
 

@@ -357,7 +357,9 @@ final class HomebrewManager: ObservableObject {
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: HomebrewProgressParser.visibleError(from: output))
                 } else if let tap = HomebrewCommandBuilder.untrustedTapName(fromOutput: output) {
-                    self.presentUntrustedTap(tap) { [weak self] in self?.perform(action, package: package) }
+                    self.presentUntrustedTap(tap) { [weak self] in
+                        self?.perform(action, package: package, command: commandOverride)
+                    }
                     self.markOperationComplete(result: .failed,
                                                phase: self.operationStatus?.phase ?? .finalizing,
                                                activity: nil)
