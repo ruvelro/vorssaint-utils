@@ -124,6 +124,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Audio/MixerRoutingSupport.swift \
         Sources/Vorssaint/Services/Audio/BoostLimiter.swift \
         Sources/Vorssaint/Services/Audio/PreciseVolumeRollerSupport.swift \
+        Sources/Vorssaint/Services/Audio/MixerRender.swift \
         Sources/Vorssaint/Services/DockPreview/DockPreviewSupport.swift \
         Sources/Vorssaint/Services/Homebrew/HomebrewSupport.swift \
         Sources/Vorssaint/Services/AppUpdates/AppUpdatesSupport.swift \
@@ -165,6 +166,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Switcher/SwitcherModels.swift \
         Sources/Vorssaint/Services/Switcher/SwitcherSupport.swift \
         Sources/Vorssaint/Services/Switcher/SpaceHopSupport.swift \
+        Sources/Vorssaint/Services/Switcher/WindowUseOrder.swift \
         Sources/Vorssaint/Services/Metrics/MetricFormat.swift \
         Sources/Vorssaint/Services/KeepAwakeAutomationSupport.swift \
         Sources/Vorssaint/Services/SudoersSupport.swift \
@@ -175,7 +177,7 @@ if (( TEST )); then
         Sources/Vorssaint/Services/Metrics/MonitorSamplingPolicy.swift \
         Sources/Vorssaint/Services/Metrics/MaxCapacityProbe.swift \
         Sources/Vorssaint/Services/Metrics/TemperatureSensorSelector.swift \
-        Sources/Vorssaint/Services/Metrics/TemperatureAlertGate.swift \
+        Sources/Vorssaint/Services/Metrics/SustainedAlertGate.swift \
         Sources/Vorssaint/Services/WindowLayout/WindowLayoutSupport.swift \
         Sources/Vorssaint/Services/WindowLayout/WindowGestureSupport.swift \
         Sources/Vorssaint/Services/CleaningMode/CleaningUnlockCounter.swift \

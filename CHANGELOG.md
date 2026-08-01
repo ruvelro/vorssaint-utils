@@ -4,7 +4,29 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [3.2.0]
+## [3.2.1]
+
+### Summary
+Vorssaint 3.2.1 lets you see through the Dock preview panel, and fixes mouse
+button shortcuts on the arrows and the F keys and a saved search in the Command
+Bar that disappeared as soon as you typed what to look for.
+
+### Added
+- A slider for how solid the Dock preview panel looks. Under Switcher, with
+  Dock Preview on. Thanks to @ruvelro.
+
+### Changed
+- Supporting Vorssaint now goes through GitHub Sponsors, from the Support page
+  in Settings and from the screen shown after an update. The coffee link is
+  still there for whoever prefers it.
+
+### Fixed
+- A mouse button set to a shortcut with an arrow or an F key now presses it
+  everywhere, including the window shortcuts. Thanks to @hash00.
+- A saved search in the Command Bar stays in the list while you type what to
+  look for after its name. Thanks to @tenbux.
+
+## [3.2.0] - 2026-07-31
 
 ### Summary
 Vorssaint 3.2.0 adds the Command Bar, one field that finds and runs anything on
@@ -27,14 +49,14 @@ on Caps Lock and mouse button shortcuts.
   Under Window layout.
 - Screenshots can copy themselves to the clipboard the moment they are
   taken. Under Screenshot. Thanks to @kingstyles.
-- Screenshots can run an action by themselves after each capture: save,
-  copy, both, or edit. Thanks to @403Denied.
-- Screenshot saves can use dated subfolders and your own file name pattern,
-  like %y-%mo. Thanks to @403Denied.
-- New radial menu slices: Shelf, Cleaning Mode, Keep Awake and window
-  layouts. Thanks to @ruvelro.
-- A choice of how the radial menu opens: press to keep it open, or hold and
-  release to run. Thanks to @ruvelro.
+- Screenshots can run the action you choose right after each capture.
+  Thanks to @403Denied.
+- Screenshot saves can go into dated subfolders and follow a file name
+  pattern you set. Thanks to @403Denied.
+- The radial menu gained slices for the Shelf, Cleaning Mode, Keep Awake
+  and window layouts. Thanks to @ruvelro.
+- You choose how the radial menu opens, by a press or by holding it.
+  Thanks to @ruvelro.
 - The Cleaner can clear the media a messaging app leaves in your downloads,
   always to the Trash and off by default. An optional organizer files new
   ones into a folder you pick. Thanks to @ruvelro.
@@ -42,11 +64,13 @@ on Caps Lock and mouse button shortcuts.
   Thanks to @ruvelro.
 - W closes the highlighted window in the app switcher, leaving the app
   running.
+- The app switcher can list apps that are running with no window open, the
+  way the system one does. Under Switcher, still set to the Finder alone.
 - Hide apps from the volume mixer with a right click. The same menu brings
   them back.
 - Each removable drive in the Drives tab now has its own eject button.
-- Snippet triggers can ignore capitalization, and date variables accept a
-  format, like {{date:yyyy-MM-dd}}.
+- Snippet triggers can ignore capitalization, and date variables can follow
+  the format you want.
 - Each mouse feature can name apps to leave alone, for apps that use the
   wheel and the buttons their own way. Under Mouse.
 - The app can stay light or dark on its own, apart from the Mac. Under
@@ -64,6 +88,11 @@ on Caps Lock and mouse button shortcuts.
 - The app switcher now closes when you click outside it.
 
 ### Fixed
+- Eject all disks now finds every external drive, not only the ones with
+  media that comes out, like a memory card. On most Macs it used to say no
+  external disk was ready.
+- The app switcher now lists windows in the order you really used them. It
+  follows the windows you pick with the mouse, and windows of the same app.
 - The hot CPU alert no longer fires on a momentary spike. The temperature
   now has to stay above the limit for a few seconds.
 - Quit on close no longer leaves apps running after their last window is
@@ -101,6 +130,8 @@ on Caps Lock and mouse button shortcuts.
   are saved again and old ones come back.
 - The mixer repairs its audio path by itself after the Mac wakes, instead
   of leaving an adjusted app silent.
+- An app you turned down no longer plays slowed down, or falls silent, on
+  earbuds during a call and on some other outputs. Thanks to @danilo-alm.
 - Paste as plain text no longer leaves the pasted style on what you type
   next in some rich text apps.
 - Shelf items now follow their files across moves and renames. Only a file

@@ -13,7 +13,6 @@ enum DefaultsKey {
     static let onboardingStep = "onboardingStep"          // resume point if onboarding is interrupted
     static let featuresOnboardingVersion = "featuresOnboardingVersion" // last feature-tour marker handled
     static let lastUpdateIntroVersion = "lastUpdateIntroVersion"
-    static let dockPreviewIntroVersion = "dockPreviewIntroVersion"
     static let supportUpdateIntroVersion = "supportUpdateIntroVersion"
     static let updateHighlightsSeenVersion = "updateHighlightsSeenVersion"
     static let updateShowcaseIntroVersion = "updateShowcaseIntroVersion"
@@ -57,9 +56,11 @@ enum DefaultsKey {
     static let switcherIconRowMode = "switcherIconRowMode"
     static let switcherSimpleMode = "switcherSimpleMode"  // app-only row without window captures
     static let switcherMergeTabs = "switcherMergeTabs"     // show one switcher entry per app (collapse all of an app's windows)
-    static let switcherShowWindowlessFinder = "switcherShowWindowlessFinder"
+    static let switcherShowWindowlessFinder = "switcherShowWindowlessFinder" // replaced by switcherWindowlessApps, kept so the migration can read it
+    static let switcherWindowlessApps = "switcherWindowlessApps" // SwitcherWindowlessApps raw value
     static let switcherCurrentSpaceOnly = "switcherCurrentSpaceOnly" // list only windows on the desktop the user is in (issue #337)
     static let dockPreviewEnabled = "dockPreviewEnabled"
+    static let dockPreviewBackgroundOpacity = "dockPreviewBackgroundOpacity" // how solid the preview panel's material is drawn (DockPreviewSupport.backgroundOpacityRange)
     static let dockClickMinimize = "dockClickMinimize"    // click the active app's Dock icon to minimize its windows
     static let dockClickCycleWindows = "dockClickCycleWindows" // click the active app's Dock icon to cycle through its windows
     static let middleClickEnabled = "middleClickEnabled"  // three-finger PHYSICAL click on the trackpad acts as a middle click
@@ -157,6 +158,9 @@ enum DefaultsKey {
     static let appUpdatesNotify = "appUpdatesNotify"
     static let appUpdatesLastCheck = "appUpdatesLastCheck"            // Double, epoch seconds
     static let appUpdatesLastCount = "appUpdatesLastCount"
+    // Findings already announced once, so a pending update nobody installs
+    // does not speak up again after every relaunch.
+    static let appUpdatesNotifiedIDs = "appUpdatesNotifiedIDs"
     static let panelUtilityMedia = "panelUtilityMedia"
     static let panelUtilityClipboard = "panelUtilityClipboard"
     static let panelUtilityWindowLayout = "panelUtilityWindowLayout"
@@ -454,10 +458,6 @@ enum OnboardingInfo {
     static let currentFeatureSet = 4
 }
 
-enum DockPreviewIntroInfo {
-    static let releaseVersion = "3.0.4"
-}
-
 /// The one-time tour of a release's headline features, shown right after the
 /// update. Each row deep links to the exact Settings page or opens the tool
 /// itself, so a new feature is one click from being tried instead of buried.
@@ -641,8 +641,10 @@ enum Defaults {
         DefaultsKey.switcherSimpleMode: false,
         DefaultsKey.switcherMergeTabs: false,
         DefaultsKey.switcherShowWindowlessFinder: true,
+        DefaultsKey.switcherWindowlessApps: SwitcherWindowlessApps.fallback.rawValue,
         DefaultsKey.switcherCurrentSpaceOnly: false,
         DefaultsKey.dockPreviewEnabled: false,
+        DefaultsKey.dockPreviewBackgroundOpacity: 1.0,
         DefaultsKey.dockClickMinimize: false,
         DefaultsKey.dockClickCycleWindows: false,
         DefaultsKey.middleClickEnabled: false,
@@ -740,6 +742,7 @@ enum Defaults {
         DefaultsKey.appUpdatesNotify: true,
         DefaultsKey.appUpdatesLastCheck: 0.0,
         DefaultsKey.appUpdatesLastCount: 0,
+        DefaultsKey.appUpdatesNotifiedIDs: [],
         DefaultsKey.panelUtilityMedia: true,
         DefaultsKey.panelUtilityClipboard: true,
         DefaultsKey.panelUtilityWindowLayout: true,
@@ -977,6 +980,20 @@ enum Defaults {
         migrateUtilityOrderForAppUpdates(in: defaults)
         migrateScreenshotOpenEditorDirectly(in: defaults)
         migrateSilentHeadphonesDisconnectVolume(in: defaults)
+        migrateSwitcherWindowlessFinder(in: defaults)
+    }
+
+    /// The "show the desktop app without windows" toggle became one choice of
+    /// the windowless apps picker. Only an explicit off has to travel: the
+    /// picker ships on the same choice the toggle shipped on, so a setup that
+    /// never touched it keeps the switcher it already had. Clearing the old
+    /// toggle is what makes this run once and never fight a later choice.
+    static func migrateSwitcherWindowlessFinder(in defaults: UserDefaults) {
+        let showsWindowlessFinder = defaults.bool(forKey: DefaultsKey.switcherShowWindowlessFinder)
+        guard !showsWindowlessFinder else { return }
+        defaults.set(true, forKey: DefaultsKey.switcherShowWindowlessFinder)
+        let mode = SwitcherWindowlessApps.migrated(showsWindowlessFinder: showsWindowlessFinder)
+        defaults.set(mode.rawValue, forKey: DefaultsKey.switcherWindowlessApps)
     }
 
     /// The "open the editor right after capturing" toggle became the Edit
