@@ -169,10 +169,15 @@ enum HomebrewCommandBuilder {
     /// Casks the plain listing hides because they carry their own updater.
     /// Those are exactly the apps the update check is for, so it asks for
     /// them explicitly and then checks each app bundle before believing the
-    /// answer (see `AppUpdatesSupport.packageUpdates`).
+    /// answer (see `AppUpdatesSupport.homebrewCaskUpdates`).
     static func outdatedCasksIncludingSelfUpdating(brewPath: String) -> HomebrewCommand {
         HomebrewCommand(executable: brewPath,
                         arguments: ["outdated", "--cask", "--greedy", "--json=v2"])
+    }
+
+    static func outdatedFormulae(brewPath: String) -> HomebrewCommand {
+        HomebrewCommand(executable: brewPath,
+                        arguments: ["outdated", "--formula", "--json=v2"])
     }
 
     static func upgradeCasks(brewPath: String, tokens: [String]) -> HomebrewCommand? {
@@ -180,6 +185,24 @@ enum HomebrewCommandBuilder {
         guard !valid.isEmpty else { return nil }
         return HomebrewCommand(executable: brewPath,
                                arguments: ["upgrade", "--cask", "--greedy"] + valid)
+    }
+
+    static func upgradeFormulaeAndCasks(brewPath: String,
+                                        formulaTokens: [String],
+                                        caskTokens: [String]) -> HomebrewCommand? {
+        let formulae = formulaTokens.filter(isValidToken)
+        let casks = caskTokens.filter(isValidToken)
+        guard !formulae.isEmpty || !casks.isEmpty else { return nil }
+        let brew = shellQuote(brewPath)
+        var commands: [String] = []
+        if !formulae.isEmpty {
+            commands.append(([brew, "upgrade"] + formulae.map(shellQuote)).joined(separator: " "))
+        }
+        if !casks.isEmpty {
+            commands.append(([brew, "upgrade", "--cask", "--greedy"] + casks.map(shellQuote)).joined(separator: " "))
+        }
+        return HomebrewCommand(executable: "/bin/zsh",
+                               arguments: ["-lc", commands.joined(separator: " && ")])
     }
 
     static func update(brewPath: String) -> HomebrewCommand {

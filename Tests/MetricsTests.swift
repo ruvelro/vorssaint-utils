@@ -6661,7 +6661,7 @@ struct MetricsTests {
                    "no em-dash in visible menu bar appearance strings (\(language.rawValue))")
             let appUpdateValues = Mirror(reflecting: FeatureStrings.appUpdates(language)).children
                 .compactMap { $0.value as? String }
-            expect(appUpdateValues.count == 29 && appUpdateValues.allSatisfy { !$0.isEmpty },
+            expect(appUpdateValues.count == 35 && appUpdateValues.allSatisfy { !$0.isEmpty },
                    "every app update string is set for \(language.rawValue)")
             expect(appUpdateValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible app update strings (\(language.rawValue))")
@@ -8616,7 +8616,7 @@ struct MetricsTests {
         // to 1.130: believing the receipt would offer an update that happened.
         let bundles = ["Editor.app": (name: "Editor", version: "1.130.0", path: "/Applications/Editor.app"),
                        "Chat.app": (name: "Chat", version: "0.0.401", path: "/Applications/Chat.app")]
-        let packageRows = AppUpdatesSupport.packageUpdates(
+        let packageRows = AppUpdatesSupport.homebrewCaskUpdates(
             outdated: [caskUpdate("editor", installed: "1.129.0", current: "1.130.0"),
                        caskUpdate("chat", installed: "0.0.374", current: "0.0.402"),
                        caskUpdate("installer", installed: "26.078", current: "26.119"),
@@ -8630,16 +8630,18 @@ struct MetricsTests {
                "the version the app reports wins over the package receipt")
         expect(packageRows.contains { $0.token == "installer" && $0.installedVersion == "26.078" },
                "without an app bundle to read, the package receipt is used")
+        expect(packageRows.allSatisfy { $0.source == .homebrewCask },
+               "Homebrew casks are marked as the Homebrew app source")
         // Packages that install through an installer declare no app, so the
         // catalog name is tried as a bundle name before giving up.
-        let namedRows = AppUpdatesSupport.packageUpdates(
+        let namedRows = AppUpdatesSupport.homebrewCaskUpdates(
             outdated: [caskUpdate("installer", installed: "26.078", current: "26.119")],
             installed: caskRecords,
             bundleVersion: { ["Installer.app": (name: "Installer", version: "26.084",
                                                 path: "/Applications/Installer.app")][$0] })
         expect(namedRows.first?.installedVersion == "26.084",
                "a package with no declared app is matched by its catalog name")
-        let alreadyCurrent = AppUpdatesSupport.packageUpdates(
+        let alreadyCurrent = AppUpdatesSupport.homebrewCaskUpdates(
             outdated: [caskUpdate("installer", installed: "26.078", current: "26.119")],
             installed: caskRecords,
             bundleVersion: { ["Installer.app": (name: "Installer", version: "26.200",
@@ -8651,6 +8653,31 @@ struct MetricsTests {
                "pinned packages and packages without a version stay out")
         expect(packageRows.allSatisfy { $0.canInstallInPlace },
                "package rows can be installed on the spot")
+        let ownPackageRows = AppUpdatesSupport.homebrewCaskUpdates(
+            outdated: [caskUpdate("vorssaint", installed: "3.1.4", current: "3.2.0")],
+            installed: [HomebrewCaskRecord(token: "vorssaint", displayName: "Vorssaint",
+                                           installedVersion: "3.1.4", appFileNames: ["Vorssaint.app"])],
+            ignoredTokens: ["vorssaint"],
+            bundleVersion: { _ in nil })
+        expect(ownPackageRows.isEmpty,
+               "the app update list does not offer to replace Vorssaint through its own Homebrew cask")
+        let formulaRows = AppUpdatesSupport.homebrewFormulaUpdates(
+            outdated: [HomebrewPackageUpdate(kind: .formula, name: "swiftlint",
+                                             installedVersions: ["0.58.0"],
+                                             currentVersion: "0.59.0", isPinned: false),
+                       HomebrewPackageUpdate(kind: .formula, name: "pinned-cli",
+                                             installedVersions: ["1.0"],
+                                             currentVersion: "2.0", isPinned: true),
+                       HomebrewPackageUpdate(kind: .formula, name: "rolling-cli",
+                                             installedVersions: ["latest"],
+                                             currentVersion: "latest", isPinned: false),
+                       HomebrewPackageUpdate(kind: .formula, name: "current-cli",
+                                             installedVersions: ["2.0"],
+                                             currentVersion: "2.0", isPinned: false)],
+            ignoredTokens: ["ignored-cli"])
+        expect(formulaRows.count == 1 && formulaRows[0].source == .homebrewFormula
+                && formulaRows[0].token == "swiftlint" && formulaRows[0].canInstallInPlace,
+               "Homebrew formulae become CLI rows only when they have a real newer version")
 
         let storeApps = [
             AppUpdatesSupport.InstalledApp(name: "Blocker", bundleID: "net.example.blocker",
@@ -8679,16 +8706,18 @@ struct MetricsTests {
                 && !storeRows[0].canInstallInPlace,
                "a store app is listed only when the store really has a newer version")
 
-        let mergedRows = AppUpdatesSupport.merged(storeRows, packageRows)
-        expect(mergedRows.count == packageRows.count + storeRows.count
+        let mergedRows = AppUpdatesSupport.merged(storeRows, packageRows, formulaRows)
+        expect(mergedRows.count == packageRows.count + storeRows.count + formulaRows.count
                 && mergedRows.first?.canInstallInPlace == true
                 && mergedRows.last?.canInstallInPlace == false,
                "the merged list puts what can be updated here first")
         let everything = Set(mergedRows.map(\.id))
-        expect(AppUpdatesSupport.tokens(in: mergedRows, selection: everything).count == packageRows.count
+        expect(AppUpdatesSupport.tokens(source: .homebrewCask, in: mergedRows, selection: everything).count == packageRows.count
+                && AppUpdatesSupport.tokens(source: .homebrewFormula, in: mergedRows, selection: everything) == ["swiftlint"]
                 && AppUpdatesSupport.hasStoreSelection(in: mergedRows, selection: everything),
                "the selection splits into package tokens and store hand-offs")
-        expect(AppUpdatesSupport.tokens(in: mergedRows, selection: []).isEmpty
+        expect(AppUpdatesSupport.tokens(source: .homebrewCask, in: mergedRows, selection: []).isEmpty
+                && AppUpdatesSupport.tokens(source: .homebrewFormula, in: mergedRows, selection: []).isEmpty
                 && !AppUpdatesSupport.hasStoreSelection(in: mergedRows, selection: []),
                "an empty selection asks for nothing")
 
@@ -8718,6 +8747,15 @@ struct MetricsTests {
                "the store answer is read back")
         expect(AppUpdatesSupport.parseStoreLookup(Data("not json".utf8)).isEmpty,
                "a broken store answer yields nothing instead of throwing")
+        let discoveredPaths = AppUpdatesSupport.applicationScanPaths(
+            folderPaths: ["/Applications/Editor.app",
+                          "/System/Applications/Mail.app",
+                          "/Applications/Editor.app"],
+            spotlightPaths: ["/Users/me/Tools/Side App.app",
+                             "/Library/Apple/System Helper.app",
+                             "/Users/me/Tools/not-an-app"])
+        expect(discoveredPaths == ["/Applications/Editor.app", "/Users/me/Tools/Side App.app"],
+               "app discovery merges Applications folders with Spotlight and filters system apps")
 
         let noon = Date(timeIntervalSince1970: 1_800_000_000)
         expect(AppUpdatesSupport.nextCheckDate(lastCheck: noon, frequency: .off, now: noon) == nil,
@@ -8758,6 +8796,14 @@ struct MetricsTests {
                                                    tokens: ["chat", "--force", "editor"])?.arguments
                 == ["upgrade", "--cask", "--greedy", "chat", "editor"],
                "only real package names reach the upgrade command")
+        expect(HomebrewCommandBuilder.outdatedFormulae(brewPath: "/opt/x/brew").arguments
+                == ["outdated", "--formula", "--json=v2"],
+               "the CLI update check asks Homebrew for formulae separately")
+        expect(HomebrewCommandBuilder.upgradeFormulaeAndCasks(brewPath: "/opt/x/brew",
+                                                             formulaTokens: ["swiftlint"],
+                                                             caskTokens: ["chat"])?.arguments
+                == ["-lc", "/opt/x/brew upgrade swiftlint && /opt/x/brew upgrade --cask --greedy chat"],
+               "mixed app updates run formulae and casks in one Homebrew operation")
         expect(HomebrewCommandBuilder.outdatedCasksIncludingSelfUpdating(brewPath: "/opt/x/brew").arguments
                 == ["outdated", "--cask", "--greedy", "--json=v2"],
                "the update check asks for the apps that carry their own updater too")
@@ -8783,7 +8829,9 @@ struct MetricsTests {
                "an empty saved order does not lose the entry")
         expect(Defaults.registeredDefaults[DefaultsKey.appUpdatesCheckFrequency] as? String == "off",
                "the background check starts off")
-        expect(Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeAppStore] as? Bool == true
+        expect(Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeHomebrewApps] as? Bool == true
+                && Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeAppStore] as? Bool == true
+                && Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeHomebrewCLI] as? Bool == false
                 && Defaults.registeredDefaults[DefaultsKey.appUpdatesNotify] as? Bool == true
                 && Defaults.registeredDefaults[DefaultsKey.panelUtilityAppUpdates] as? Bool == true,
                "the app update defaults are registered")

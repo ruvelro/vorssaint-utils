@@ -154,7 +154,9 @@ enum DefaultsKey {
     static let panelUtilityHomebrew = "panelUtilityHomebrew"
     static let panelUtilityAppUpdates = "panelUtilityAppUpdates"
     static let appUpdatesCheckFrequency = "appUpdatesCheckFrequency"  // off | daily | weekly
+    static let appUpdatesIncludeHomebrewApps = "appUpdatesIncludeHomebrewApps"
     static let appUpdatesIncludeAppStore = "appUpdatesIncludeAppStore"
+    static let appUpdatesIncludeHomebrewCLI = "appUpdatesIncludeHomebrewCLI"
     static let appUpdatesNotify = "appUpdatesNotify"
     static let appUpdatesLastCheck = "appUpdatesLastCheck"            // Double, epoch seconds
     static let appUpdatesLastCount = "appUpdatesLastCount"
@@ -738,7 +740,9 @@ enum Defaults {
         // The list itself costs nothing until it is opened; only the
         // background check keeps a timer, so it starts off.
         DefaultsKey.appUpdatesCheckFrequency: AppUpdatesSupport.CheckFrequency.off.rawValue,
+        DefaultsKey.appUpdatesIncludeHomebrewApps: true,
         DefaultsKey.appUpdatesIncludeAppStore: true,
+        DefaultsKey.appUpdatesIncludeHomebrewCLI: false,
         DefaultsKey.appUpdatesNotify: true,
         DefaultsKey.appUpdatesLastCheck: 0.0,
         DefaultsKey.appUpdatesLastCount: 0,

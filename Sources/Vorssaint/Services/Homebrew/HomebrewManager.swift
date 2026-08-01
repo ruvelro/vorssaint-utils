@@ -207,6 +207,21 @@ final class HomebrewManager: ObservableObject {
         perform(.upgradeAll, package: nil)
     }
 
+    /// Upgrades exactly the Homebrew packages asked for, through the same
+    /// single operation lane as every other Homebrew action, so the app never
+    /// runs two package commands at once. Used by the app update list, where
+    /// the person picks which apps and CLI tools to update.
+    func upgradeAppUpdatePackages(caskTokens: [String], formulaTokens: [String]) {
+        guard operation == nil,
+              let brewPath = brewPath ?? detectBrewPath(),
+              let command = HomebrewCommandBuilder.upgradeFormulaeAndCasks(brewPath: brewPath,
+                                                                           formulaTokens: formulaTokens,
+                                                                           caskTokens: caskTokens) else {
+            return
+        }
+        perform(.upgradeAll, package: nil, command: command)
+    }
+
     /// Upgrades exactly the casks asked for, through the same single
     /// operation lane as every other Homebrew action, so the app never runs
     /// two package commands at once. Used by the app update list, where the
