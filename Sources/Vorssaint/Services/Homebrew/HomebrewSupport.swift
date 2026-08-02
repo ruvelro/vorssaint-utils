@@ -88,6 +88,7 @@ struct HomebrewOperation {
         case upgrade
         case upgradeAll
         case updateHomebrew
+        case cleanup
 
         var runningSystemImage: String {
             switch self {
@@ -99,6 +100,8 @@ struct HomebrewOperation {
                 return "arrow.up.circle.fill"
             case .updateHomebrew:
                 return "arrow.triangle.2.circlepath"
+            case .cleanup:
+                return "trash.circle.fill"
             }
         }
     }
@@ -207,6 +210,10 @@ enum HomebrewCommandBuilder {
 
     static func update(brewPath: String) -> HomebrewCommand {
         HomebrewCommand(executable: brewPath, arguments: ["update"])
+    }
+
+    static func cleanup(brewPath: String) -> HomebrewCommand {
+        HomebrewCommand(executable: brewPath, arguments: ["cleanup"])
     }
 
     static func search(brewPath: String, kind: HomebrewPackageKind, query: String) -> HomebrewCommand {
@@ -467,6 +474,10 @@ enum HomebrewProgressParser {
     static func phase(in output: String,
                       action: HomebrewOperation.Action) -> HomebrewOperationPhase? {
         let lower = stripANSI(output).lowercased()
+        if action == .cleanup,
+           !lower.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .finalizing
+        }
         if lower.contains("downloading")
             || lower.contains("fetching")
             || lower.contains("downloaded") {
@@ -499,6 +510,8 @@ enum HomebrewProgressParser {
                 return .upgrading
             case .updateHomebrew:
                 return .refreshing
+            case .cleanup:
+                return .finalizing
             case .install:
                 return .installing
             }

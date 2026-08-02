@@ -5940,6 +5940,9 @@ struct MetricsTests {
         expect(HomebrewCommandBuilder.update(brewPath: brewPath).arguments
                == ["update"],
                "Homebrew update command refreshes Homebrew metadata")
+        expect(HomebrewCommandBuilder.cleanup(brewPath: brewPath).arguments
+               == ["cleanup"],
+               "Homebrew cleanup command removes stale Homebrew downloads and old package versions")
         expect(HomebrewCommandBuilder.install(brewPath: brewPath, package: cask).arguments
                == ["install", "--cask", "sample-tool"],
                "cask install command uses --cask")
@@ -5966,6 +5969,8 @@ struct MetricsTests {
                "Homebrew package update status uses an update icon")
         expect(HomebrewOperation.Action.updateHomebrew.runningSystemImage == "arrow.triangle.2.circlepath",
                "Homebrew metadata refresh status uses a refresh icon")
+        expect(HomebrewOperation.Action.cleanup.runningSystemImage == "trash.circle.fill",
+               "Homebrew cleanup status uses a cleanup icon")
         expect(HomebrewCommandBuilder.needsTerminalFallback(output: "sudo: a terminal is required to read the password"),
                "sudo terminal error triggers Homebrew terminal fallback")
         expect(HomebrewCommandBuilder.installerCommand == #"/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)""#,
@@ -6013,6 +6018,9 @@ struct MetricsTests {
         expect(HomebrewProgressParser.phase(in: "Already up-to-date.",
                                             action: .updateHomebrew) == .refreshing,
                "Homebrew progress parser detects metadata refresh")
+        expect(HomebrewProgressParser.phase(in: "Removing: /Users/test/Library/Caches/Homebrew/foo",
+                                            action: .cleanup) == .finalizing,
+               "Homebrew progress parser treats cleanup output as finalizing")
         expect(HomebrewProgressParser.activity(in: "\u{001B}[32m==> Moving App 'Sample.app'\u{001B}[0m")
                == "Moving App 'Sample.app'",
                "Homebrew progress parser cleans activity lines")
@@ -6183,6 +6191,7 @@ struct MetricsTests {
             expectFormat(strings.homebrewConfirmUpgradeBodyFormat, ["@"], "\(prefix) Homebrew upgrade format")
             expect(!strings.homebrewUpgradeAll.isEmpty, "\(prefix) Homebrew update all title is present")
             expect(!strings.homebrewUpdateHomebrew.isEmpty, "\(prefix) Homebrew update Homebrew title is present")
+            expect(!strings.homebrewCleanup.isEmpty, "\(prefix) Homebrew cleanup title is present")
             expect(!strings.switcherIconRowMode.isEmpty, "\(prefix) App Switcher icon-row title is present")
             expect(!strings.switcherIconRowModeCaption.isEmpty, "\(prefix) App Switcher icon-row caption is present")
             expect(!strings.switcherSimpleMode.isEmpty, "\(prefix) App Switcher simple-mode title is present")
@@ -6284,17 +6293,21 @@ struct MetricsTests {
             expect(!strings.homebrewConfirmUpgradeAllBody.isEmpty, "\(prefix) Homebrew update all confirmation body is present")
             expect(!strings.homebrewConfirmUpdateHomebrewTitle.isEmpty, "\(prefix) Homebrew update Homebrew confirmation title is present")
             expect(!strings.homebrewConfirmUpdateHomebrewBody.isEmpty, "\(prefix) Homebrew update Homebrew confirmation body is present")
+            expect(!strings.homebrewConfirmCleanupTitle.isEmpty, "\(prefix) Homebrew cleanup confirmation title is present")
+            expect(!strings.homebrewConfirmCleanupBody.isEmpty, "\(prefix) Homebrew cleanup confirmation body is present")
             expectFormat(strings.homebrewPopularityFormat, ["@", "@"], "\(prefix) Homebrew popularity format")
             expectFormat(strings.homebrewOperationInstallFormat, ["@"], "\(prefix) Homebrew operation install format")
             expectFormat(strings.homebrewOperationUninstallFormat, ["@"], "\(prefix) Homebrew operation uninstall format")
             expectFormat(strings.homebrewOperationUpgradeFormat, ["@"], "\(prefix) Homebrew operation upgrade format")
             expect(!strings.homebrewOperationUpgradeAll.isEmpty, "\(prefix) Homebrew operation update all is present")
             expect(!strings.homebrewOperationUpdateHomebrew.isEmpty, "\(prefix) Homebrew operation update Homebrew is present")
+            expect(!strings.homebrewOperationCleanup.isEmpty, "\(prefix) Homebrew operation cleanup is present")
             expectFormat(strings.homebrewOperationInstalledFormat, ["@"], "\(prefix) Homebrew operation installed format")
             expectFormat(strings.homebrewOperationUninstalledFormat, ["@"], "\(prefix) Homebrew operation uninstalled format")
             expectFormat(strings.homebrewOperationUpgradedFormat, ["@"], "\(prefix) Homebrew operation upgraded format")
             expect(!strings.homebrewOperationUpgradedAll.isEmpty, "\(prefix) Homebrew operation updated all is present")
             expect(!strings.homebrewOperationUpdatedHomebrew.isEmpty, "\(prefix) Homebrew operation updated Homebrew is present")
+            expect(!strings.homebrewOperationCleaned.isEmpty, "\(prefix) Homebrew operation cleaned is present")
             expectFormat(strings.homebrewOperationFailedFormat, ["@"], "\(prefix) Homebrew operation failed format")
             expectFormat(strings.homebrewOperationElapsedFormat, ["@"], "\(prefix) Homebrew operation elapsed format")
 

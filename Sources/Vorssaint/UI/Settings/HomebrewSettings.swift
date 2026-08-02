@@ -42,7 +42,7 @@ struct HomebrewSettings: View {
                             isPresented: confirmationPresented,
                             titleVisibility: .visible) {
             if let pendingAction {
-                Button(actionTitle(for: pendingAction), role: pendingAction.action == .uninstall ? .destructive : nil) {
+                Button(actionTitle(for: pendingAction), role: role(for: pendingAction)) {
                     run(pendingAction)
                 }
             }
@@ -54,6 +54,7 @@ struct HomebrewSettings: View {
                 Text(confirmationBody(for: pendingAction))
             }
         }
+        .clipped()
     }
 
     private var pageHeader: some View {
@@ -76,15 +77,29 @@ struct HomebrewSettings: View {
                     .padding(.vertical, 10)
             }
             Divider()
-            HStack(spacing: 0) {
-                packageList
-                    .frame(width: 232)
-                    .frame(maxHeight: .infinity)
-                Divider()
-                detailPane
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            GeometryReader { proxy in
+                if proxy.size.width < 560 {
+                    VStack(spacing: 0) {
+                        packageList
+                            .frame(maxWidth: .infinity)
+                            .frame(height: max(180, min(280, proxy.size.height * 0.42)))
+                        Divider()
+                        detailPane
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        packageList
+                            .frame(width: min(232, max(188, proxy.size.width * 0.34)))
+                            .frame(maxHeight: .infinity)
+                        Divider()
+                        detailPane
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .clipped()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -98,6 +113,8 @@ struct HomebrewSettings: View {
                     searchButton
                     refreshButton
                     updateHomebrewButton
+                    upgradeAllButton
+                    cleanupButton
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 8) {
@@ -108,6 +125,11 @@ struct HomebrewSettings: View {
                         searchButton
                         refreshButton
                         updateHomebrewButton
+                        Spacer(minLength: 0)
+                    }
+                    HStack(spacing: 8) {
+                        upgradeAllButton
+                        cleanupButton
                         Spacer(minLength: 0)
                     }
                 }
@@ -173,6 +195,28 @@ struct HomebrewSettings: View {
         .disabled(homebrew.isBusy)
     }
 
+    private var upgradeAllButton: some View {
+        Button {
+            pendingAction = HomebrewPendingAction(action: .upgradeAll)
+        } label: {
+            Label(l10n.s.homebrewUpgradeAll, systemImage: "arrow.up.circle")
+        }
+        .fixedSize()
+        .disabled(homebrew.isBusy || homebrew.outdatedCount == 0)
+        .help(l10n.s.homebrewUpgradeAll)
+    }
+
+    private var cleanupButton: some View {
+        Button {
+            pendingAction = HomebrewPendingAction(action: .cleanup)
+        } label: {
+            Label(l10n.s.homebrewCleanup, systemImage: "trash")
+        }
+        .fixedSize()
+        .disabled(homebrew.isBusy)
+        .help(l10n.s.homebrewCleanup)
+    }
+
     @ViewBuilder
     private var outdatedSummary: some View {
         if homebrew.isLoadingOutdated {
@@ -188,13 +232,6 @@ struct HomebrewSettings: View {
                 Label("\(l10n.s.homebrewUpdates) \(homebrew.outdatedCount)", systemImage: "arrow.up.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                Button {
-                    pendingAction = HomebrewPendingAction(action: .upgradeAll)
-                } label: {
-                    Label(l10n.s.homebrewUpgradeAll, systemImage: "arrow.up.circle")
-                }
-                .controlSize(.small)
-                .disabled(homebrew.isBusy)
             }
         }
     }
@@ -683,6 +720,7 @@ struct HomebrewSettings: View {
         case .upgrade: return l10n.s.homebrewConfirmUpgradeTitle
         case .upgradeAll: return l10n.s.homebrewConfirmUpgradeAllTitle
         case .updateHomebrew: return l10n.s.homebrewConfirmUpdateHomebrewTitle
+        case .cleanup: return l10n.s.homebrewConfirmCleanupTitle
         }
     }
 
@@ -692,6 +730,9 @@ struct HomebrewSettings: View {
         }
         if action.action == .upgradeAll {
             return l10n.s.homebrewConfirmUpgradeAllBody
+        }
+        if action.action == .cleanup {
+            return l10n.s.homebrewConfirmCleanupBody
         }
         guard let package = action.package else { return "" }
         let format: String
@@ -706,8 +747,14 @@ struct HomebrewSettings: View {
             return l10n.s.homebrewConfirmUpgradeAllBody
         case .updateHomebrew:
             return l10n.s.homebrewConfirmUpdateHomebrewBody
+        case .cleanup:
+            return l10n.s.homebrewConfirmCleanupBody
         }
         return String(format: format, package.displayName)
+    }
+
+    private func role(for action: HomebrewPendingAction) -> ButtonRole? {
+        action.action == .uninstall ? .destructive : nil
     }
 
     private func actionTitle(for action: HomebrewPendingAction) -> String {
@@ -717,6 +764,7 @@ struct HomebrewSettings: View {
         case .upgrade: return l10n.s.homebrewUpgrade
         case .upgradeAll: return l10n.s.homebrewUpgradeAll
         case .updateHomebrew: return l10n.s.homebrewUpdateHomebrew
+        case .cleanup: return l10n.s.homebrewCleanup
         }
     }
 
@@ -733,6 +781,8 @@ struct HomebrewSettings: View {
             homebrew.upgradeAll()
         case .updateHomebrew:
             homebrew.updateHomebrew()
+        case .cleanup:
+            homebrew.cleanup()
         }
     }
 
@@ -771,6 +821,7 @@ struct HomebrewSettings: View {
         case .upgrade: return l10n.s.homebrewOperationUpgrading
         case .upgradeAll: return l10n.s.homebrewOperationUpgrading
         case .updateHomebrew: return l10n.s.homebrewOperationRefreshing
+        case .cleanup: return l10n.s.homebrewOperationFinalizing
         }
     }
 

@@ -239,6 +239,10 @@ final class HomebrewManager: ObservableObject {
         perform(.updateHomebrew, package: nil)
     }
 
+    func cleanup() {
+        perform(.cleanup, package: nil)
+    }
+
     func cancelOperation() {
         guard operation != nil else { return }
         cancelRequested = true
@@ -340,8 +344,9 @@ final class HomebrewManager: ObservableObject {
                 self.activeProcess = nil
                 self.operation = nil
                 if status == 0 {
+                    let successPhase: HomebrewOperationPhase = action == .cleanup ? .finalizing : .refreshing
                     self.markOperationComplete(result: .succeeded,
-                                               phase: .refreshing,
+                                               phase: successPhase,
                                                activity: nil)
                     self.refreshInstalled()
                     if let package {
@@ -391,6 +396,8 @@ final class HomebrewManager: ObservableObject {
             return HomebrewCommandBuilder.upgradeAll(brewPath: brewPath)
         case .updateHomebrew:
             return HomebrewCommandBuilder.update(brewPath: brewPath)
+        case .cleanup:
+            return HomebrewCommandBuilder.cleanup(brewPath: brewPath)
         }
     }
 
@@ -412,6 +419,8 @@ final class HomebrewManager: ObservableObject {
         switch action {
         case .install, .upgrade, .upgradeAll, .updateHomebrew:
             return .preparing
+        case .cleanup:
+            return .finalizing
         case .uninstall:
             return .uninstalling
         }
