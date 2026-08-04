@@ -58,6 +58,7 @@ enum AppUpdatesSupport {
     struct StoreEntry: Hashable {
         let bundleID: String
         let version: String
+        let minimumOSVersion: String?
         let page: String?
     }
 
@@ -266,16 +267,20 @@ enum AppUpdatesSupport {
                   !version.isEmpty else { continue }
             entries[bundleID] = StoreEntry(bundleID: bundleID,
                                            version: version,
+                                           minimumOSVersion: result["minimumOsVersion"] as? String,
                                            page: result["trackViewUrl"] as? String)
         }
         return entries
     }
 
     static func appStoreUpdates(apps: [InstalledApp],
-                                storeVersions: [String: StoreEntry]) -> [Item] {
+                                storeVersions: [String: StoreEntry],
+                                operatingSystemVersion: String) -> [Item] {
         apps.compactMap { app in
-            guard let entry = storeVersions[app.bundleID],
-                  isNewer(entry.version, than: app.version) else { return nil }
+            guard let entry = storeVersions[app.bundleID] else { return nil }
+            if let minimum = entry.minimumOSVersion,
+               compare(operatingSystemVersion, minimum) == .orderedAscending { return nil }
+            guard isNewer(entry.version, than: app.version) else { return nil }
             return Item(id: "\(Source.appStore.rawValue):\(app.bundleID)",
                         source: .appStore,
                         name: app.name,

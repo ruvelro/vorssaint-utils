@@ -291,7 +291,11 @@ final class AppUpdatesService: ObservableObject {
         }
 
         group.notify(queue: workQueue) {
-            completion(AppUpdatesSupport.appStoreUpdates(apps: candidates, storeVersions: merged))
+            let os = ProcessInfo.processInfo.operatingSystemVersion
+            let version = "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+            completion(AppUpdatesSupport.appStoreUpdates(apps: candidates,
+                                                         storeVersions: merged,
+                                                         operatingSystemVersion: version))
         }
     }
 
