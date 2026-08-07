@@ -76,6 +76,9 @@ final class AppVolumeMixer: ObservableObject {
     @Published private(set) var apps: [MixerApp] = []
     @Published private(set) var outputDevices: [MixerOutputDevice] = []
     @Published private(set) var currentOutputDeviceUID: String?
+    @Published private(set) var currentSystemSoundOutputDeviceUID: String?
+    @Published private(set) var systemOutputVolume: Double?
+    @Published private(set) var systemOutputMuted: Bool?
     @Published private(set) var outputSwitchError: String?
     /// Set when tap creation fails with a permission error, so the panel can
     /// point at the System Audio Recording consent.
@@ -115,6 +118,11 @@ final class AppVolumeMixer: ObservableObject {
     /// removal, a week of app churn leaves thousands of dead listeners
     /// registered with the HAL.
     private var runningListeners = Set<AudioObjectID>()
+    /// Volume and mute belong to the current output device, not the HAL's
+    /// system object, so these listeners move whenever that device changes.
+    private var outputControlListenerDevice: AudioObjectID?
+    private var outputControlListenerAddresses: [AudioObjectPropertyAddress] = []
+    private var outputControlRefreshGeneration = 0
     private var stopped = false
     /// Waking is the one moment the render path of a live tap can die with no
     /// audio notification left to reveal it, so the wake itself asks for a
@@ -169,6 +177,7 @@ final class AppVolumeMixer: ObservableObject {
         listenerInstalled = true
         installListener(selector: kAudioHardwarePropertyDevices)
         installListener(selector: kAudioHardwarePropertyDefaultOutputDevice)
+        installListener(selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
         if Self.isSupported {
             installListener(selector: kAudioHardwarePropertyProcessObjectList)
         }
@@ -176,7 +185,17 @@ final class AppVolumeMixer: ObservableObject {
             wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.didWakeNotification,
                 object: nil, queue: .main) { [weak self] _ in
-                self?.refreshApps()
+                guard let self else { return }
+                // A wake can wedge an engine while leaving the HAL snapshot
+                // byte-identical, and apply() skips reconciliation when
+                // nothing changed. Dropping the stored render observations
+                // and reconciling directly arms the note-then-recheck
+                // sequence deterministically, so a frozen engine is caught
+                // even on a quiet wake.
+                self.engineRenderProgress.removeAll()
+                self.refreshApps()
+                self.reconcileEngines(with: self.apps)
+                self.scheduleEngineReconcile(after: 2)
             }
         }
         refreshApps()
@@ -214,6 +233,9 @@ final class AppVolumeMixer: ObservableObject {
         if !hiddenApps.isEmpty { hiddenApps = [] }
         if !outputDevices.isEmpty { outputDevices = [] }
         if currentOutputDeviceUID != nil { currentOutputDeviceUID = nil }
+        if currentSystemSoundOutputDeviceUID != nil { currentSystemSoundOutputDeviceUID = nil }
+        if systemOutputVolume != nil { systemOutputVolume = nil }
+        if systemOutputMuted != nil { systemOutputMuted = nil }
         if outputSwitchError != nil { outputSwitchError = nil }
         if needsPermission { needsPermission = false }
     }
@@ -238,6 +260,14 @@ final class AppVolumeMixer: ObservableObject {
         return noErr
     }
 
+    private static let outputControlListenerCallback: AudioObjectPropertyListenerProc = {
+        device, _, _, client in
+        guard let client else { return noErr }
+        let mixer = Unmanaged<AppVolumeMixer>.fromOpaque(client).takeUnretainedValue()
+        DispatchQueue.main.async { mixer.scheduleOutputControlRefresh(for: device) }
+        return noErr
+    }
+
     /// Identifies these registrations as ours. Unretained is safe here and
     /// only here: the mixer is a single instance that lives as long as the app.
     private var listenerClient: UnsafeMutableRawPointer {
@@ -258,6 +288,7 @@ final class AppVolumeMixer: ObservableObject {
     private func removeGlobalListeners() {
         guard listenerInstalled else { return }
         listenerInstalled = false
+        removeOutputControlListeners()
         for selector in globalListeners {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeGlobal,
@@ -268,6 +299,70 @@ final class AppVolumeMixer: ObservableObject {
                                               listenerClient)
         }
         globalListeners.removeAll()
+    }
+
+    private func subscribeToOutputControls(of device: AudioObjectID?) {
+        guard outputControlListenerDevice != device else { return }
+        removeOutputControlListeners()
+        guard let device else { return }
+
+        let selectors = Self.outputVolumeSelectors + [kAudioDevicePropertyMute]
+        for selector in selectors {
+            var address = AudioObjectPropertyAddress(mSelector: selector,
+                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mElement: kAudioObjectPropertyElementMain)
+            guard AudioObjectHasProperty(device, &address) else { continue }
+            if AudioObjectAddPropertyListener(device, &address,
+                                              Self.outputControlListenerCallback,
+                                              listenerClient) == noErr {
+                outputControlListenerAddresses.append(address)
+            }
+        }
+        if !outputControlListenerAddresses.isEmpty {
+            outputControlListenerDevice = device
+        }
+    }
+
+    private func removeOutputControlListeners() {
+        if let device = outputControlListenerDevice {
+            for var address in outputControlListenerAddresses {
+                AudioObjectRemovePropertyListener(device, &address,
+                                                  Self.outputControlListenerCallback,
+                                                  listenerClient)
+            }
+        }
+        outputControlListenerDevice = nil
+        outputControlListenerAddresses.removeAll()
+        outputControlRefreshGeneration &+= 1
+    }
+
+    private func scheduleOutputControlRefresh(for device: AudioObjectID) {
+        guard listenerInstalled, outputControlListenerDevice == device else { return }
+        outputControlRefreshGeneration &+= 1
+        let generation = outputControlRefreshGeneration
+        // A drag and the volume keys can emit several properties for each
+        // step. Read once after the burst so an older callback cannot pull the
+        // slider back while a newer value is already on screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+            guard let self,
+                  self.listenerInstalled,
+                  self.outputControlListenerDevice == device,
+                  self.outputControlRefreshGeneration == generation else { return }
+            self.halQueue.async { [weak self] in
+                let volume = Self.hasSettableOutputVolume(for: device)
+                    ? Self.outputVolume(for: device).map(Double.init)
+                    : nil
+                let muted = Self.outputMuted(for: device)
+                DispatchQueue.main.async {
+                    guard let self,
+                          self.listenerInstalled,
+                          self.outputControlListenerDevice == device,
+                          self.outputControlRefreshGeneration == generation else { return }
+                    if self.systemOutputVolume != volume { self.systemOutputVolume = volume }
+                    if self.systemOutputMuted != muted { self.systemOutputMuted = muted }
+                }
+            }
+        }
     }
 
     private func subscribeToRunningChanges(of object: AudioObjectID) {
@@ -327,6 +422,16 @@ final class AppVolumeMixer: ObservableObject {
 
     // MARK: - Volume API (panel)
 
+    func setCurrentOutputVolume(_ volume: Double) {
+        let clamped = min(max(volume, 0), 1)
+        guard Self.setSystemOutputVolume(clamped) else {
+            scheduleListenerRefresh()
+            return
+        }
+        if systemOutputVolume != clamped { systemOutputVolume = clamped }
+        if clamped > 0, systemOutputMuted == true { systemOutputMuted = false }
+    }
+
     /// 100% means bit-perfect passthrough (no tap). A value the UI would round to
     /// 100% counts as unity, so dragging near 100% or tapping reset both restore
     /// true passthrough; anything else (quieter or boosted) runs the gain engine.
@@ -380,13 +485,8 @@ final class AppVolumeMixer: ObservableObject {
             return false
         }
 
-        if device.canBeDefaultSystemOutput {
-            _ = Self.setDefaultDevice(device.audioObjectID,
-                                      selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
-        }
-
         outputSwitchError = nil
-        // The system output just changed by this app's own hand, so a refresh
+        // The default app output just changed by this app's own hand, so a refresh
         // still reading the previous devices is thrown away; the one at the end
         // of this method replaces it.
         refresh.discardInFlight()
@@ -425,6 +525,33 @@ final class AppVolumeMixer: ObservableObject {
         }
         reconcileEngines(with: apps)
         clearPermissionIfNoActiveAdjustments()
+        refreshApps()
+        return true
+    }
+
+    @discardableResult
+    func setSystemSoundOutputDeviceUID(_ uid: String) -> Bool {
+        guard let sanitized = Defaults.sanitizedAppOutputDeviceUID(uid),
+              let device = outputDevices.first(where: {
+                  $0.uid == sanitized && $0.canBeDefaultSystemOutput
+              }) else {
+            outputSwitchError = L10n.shared.s.mixerOutputUnavailable
+            refreshApps()
+            return false
+        }
+
+        let status = Self.setDefaultDevice(
+            device.audioObjectID,
+            selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
+        guard status == noErr else {
+            outputSwitchError = "OSStatus \(status)"
+            refreshApps()
+            return false
+        }
+
+        outputSwitchError = nil
+        refresh.discardInFlight()
+        currentSystemSoundOutputDeviceUID = device.uid
         refreshApps()
         return true
     }
@@ -611,7 +738,11 @@ final class AppVolumeMixer: ObservableObject {
     /// thread to turn into published state.
     private struct RefreshSnapshot {
         let defaultUID: String?
+        let systemSoundUID: String?
         let outputDevices: [MixerOutputDevice]
+        let defaultDeviceID: AudioObjectID?
+        let systemOutputVolume: Double?
+        let systemOutputMuted: Bool?
         /// Nil where process taps do not exist (before macOS 14.4): the app
         /// list stays empty and no process object is looked at.
         let apps: [MixerApp]?
@@ -677,7 +808,9 @@ final class AppVolumeMixer: ObservableObject {
         lastAutomaticLoweredOutputUID = snapshot.lowered.lastAutomaticLoweredOutputUID
         loweredOutput = snapshot.lowered.loweredOutput
 
-        if snapshot.defaultUID != currentOutputDeviceUID, outputSwitchError != nil {
+        if (snapshot.defaultUID != currentOutputDeviceUID
+            || snapshot.systemSoundUID != currentSystemSoundOutputDeviceUID),
+           outputSwitchError != nil {
             outputSwitchError = nil
         }
         let audioEnvironmentChanged = currentOutputDeviceUID != nil
@@ -694,8 +827,18 @@ final class AppVolumeMixer: ObservableObject {
         if currentOutputDeviceUID != snapshot.defaultUID {
             currentOutputDeviceUID = snapshot.defaultUID
         }
+        if currentSystemSoundOutputDeviceUID != snapshot.systemSoundUID {
+            currentSystemSoundOutputDeviceUID = snapshot.systemSoundUID
+        }
         if snapshot.outputDevices != outputDevices {
             outputDevices = snapshot.outputDevices
+        }
+        subscribeToOutputControls(of: snapshot.defaultDeviceID)
+        if systemOutputVolume != snapshot.systemOutputVolume {
+            systemOutputVolume = snapshot.systemOutputVolume
+        }
+        if systemOutputMuted != snapshot.systemOutputMuted {
+            systemOutputMuted = snapshot.systemOutputMuted
         }
 
         guard let next = snapshot.apps else {
@@ -723,8 +866,11 @@ final class AppVolumeMixer: ObservableObject {
     /// Runs on `halQueue`. Every CoreAudio read of a refresh happens here and
     /// nothing outside the returned snapshot is touched.
     private static func readSnapshot(_ request: RefreshRequest) -> RefreshSnapshot {
-        let defaultUID = defaultOutputDeviceUID()
+        let defaultUID = defaultOutputDeviceUID(selector: kAudioHardwarePropertyDefaultOutputDevice)
+        let systemSoundUID = defaultOutputDeviceUID(
+            selector: kAudioHardwarePropertyDefaultSystemOutputDevice)
         let nextOutputDevices = outputDevices(defaultUID: defaultUID)
+        let defaultDevice = nextOutputDevices.first { $0.uid == defaultUID }
         let availableUIDs = Set(nextOutputDevices.map(\.uid))
         let lowered = loweringOutputVolumeIfHeadphonesDisconnected(
             state: request.lowered,
@@ -734,10 +880,20 @@ final class AppVolumeMixer: ObservableObject {
             nextOutputDevices: nextOutputDevices,
             lowerOnDisconnect: request.lowerOnHeadphonesDisconnect,
             lowerToPercent: request.lowerToPercent)
+        let systemOutputVolume = defaultDevice.flatMap { device in
+            hasSettableOutputVolume(for: device.audioObjectID)
+                ? outputVolume(for: device.audioObjectID).map(Double.init)
+                : nil
+        }
+        let systemOutputMuted = defaultDevice.flatMap { outputMuted(for: $0.audioObjectID) }
 
         guard isSupported else {
             return RefreshSnapshot(defaultUID: defaultUID,
+                                   systemSoundUID: systemSoundUID,
                                    outputDevices: nextOutputDevices,
+                                   defaultDeviceID: defaultDevice?.audioObjectID,
+                                   systemOutputVolume: systemOutputVolume,
+                                   systemOutputMuted: systemOutputMuted,
                                    apps: nil,
                                    processObjects: [],
                                    lowered: lowered)
@@ -852,7 +1008,11 @@ final class AppVolumeMixer: ObservableObject {
         next = coalescingAppsWithDuplicateIDs(next)
 
         return RefreshSnapshot(defaultUID: defaultUID,
+                               systemSoundUID: systemSoundUID,
                                outputDevices: nextOutputDevices,
+                               defaultDeviceID: defaultDevice?.audioObjectID,
+                               systemOutputVolume: systemOutputVolume,
+                               systemOutputMuted: systemOutputMuted,
                                apps: next,
                                processObjects: processObjects,
                                lowered: lowered)
@@ -1290,12 +1450,13 @@ final class AppVolumeMixer: ObservableObject {
         return bundleID.isEmpty ? nil : bundleID
     }
 
+    private static let outputVolumeSelectors: [AudioObjectPropertySelector] = [
+        kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
+        kAudioDevicePropertyVolumeScalar,
+    ]
+
     private static func outputVolume(for deviceID: AudioObjectID) -> Float32? {
-        let selectors: [AudioObjectPropertySelector] = [
-            kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-            kAudioDevicePropertyVolumeScalar,
-        ]
-        for selector in selectors {
+        for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeOutput,
                                                      mElement: kAudioObjectPropertyElementMain)
@@ -1306,6 +1467,21 @@ final class AppVolumeMixer: ObservableObject {
             }
         }
         return nil
+    }
+
+    private static func hasSettableOutputVolume(for deviceID: AudioObjectID) -> Bool {
+        for selector in outputVolumeSelectors {
+            var address = AudioObjectPropertyAddress(mSelector: selector,
+                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mElement: kAudioObjectPropertyElementMain)
+            guard AudioObjectHasProperty(deviceID, &address) else { continue }
+            var isSettable = DarwinBoolean(false)
+            if AudioObjectIsPropertySettable(deviceID, &address, &isSettable) == noErr,
+               isSettable.boolValue {
+                return true
+            }
+        }
+        return false
     }
 
     private static func outputDevices(defaultUID: String?) -> [MixerOutputDevice] {
@@ -1417,10 +1593,12 @@ final class AppVolumeMixer: ObservableObject {
         return read(deviceID, selector, &value, scope: kAudioObjectPropertyScopeOutput) && value != 0
     }
 
-    private static func defaultOutputDeviceUID() -> String? {
+    private static func defaultOutputDeviceUID(
+        selector: AudioObjectPropertySelector = kAudioHardwarePropertyDefaultOutputDevice
+    ) -> String? {
         var defaultDevice = AudioObjectID(0)
         guard read(AudioObjectID(kAudioObjectSystemObject),
-                   kAudioHardwarePropertyDefaultOutputDevice, &defaultDevice),
+                   selector, &defaultDevice),
               defaultDevice != 0 else { return nil }
         var uidRef: CFString = "" as CFString
         guard read(defaultDevice, kAudioDevicePropertyDeviceUID, &uidRef) else { return nil }
@@ -1443,11 +1621,7 @@ final class AppVolumeMixer: ObservableObject {
 
     private static func setOutputVolume(_ volume: Float32, for deviceID: AudioObjectID) -> Bool {
         let clamped = min(max(volume, 0), 1)
-        let selectors: [AudioObjectPropertySelector] = [
-            kAudioHardwareServiceDeviceProperty_VirtualMainVolume,
-            kAudioDevicePropertyVolumeScalar,
-        ]
-        for selector in selectors {
+        for selector in outputVolumeSelectors {
             var address = AudioObjectPropertyAddress(mSelector: selector,
                                                      mScope: kAudioObjectPropertyScopeOutput,
                                                      mElement: kAudioObjectPropertyElementMain)
@@ -1469,6 +1643,83 @@ final class AppVolumeMixer: ObservableObject {
             }
         }
         return false
+    }
+
+    /// System volume as people mean it: the default output device's main
+    /// scalar. Static on purpose so callers (the command bar) never spin the
+    /// mixer up; false when the device exposes no software volume control.
+    @discardableResult
+    static func setSystemOutputVolume(_ volume: Double) -> Bool {
+        guard let device = defaultOutputDeviceID() else { return false }
+        let clamped = Float32(min(max(volume, 0), 1))
+        let applied = setOutputVolume(clamped, for: device)
+        // Mute is a separate switch from the level, so asking for a volume
+        // while the Mac is muted would set a number nobody can hear. Asking
+        // for sound means asking for sound, which is what the volume keys do.
+        if clamped > 0 { setOutputMuted(false, for: device) }
+        return applied
+    }
+
+    /// Whether the sound is currently cut, or nil when this output has no
+    /// mute switch of its own.
+    static func systemOutputIsMuted() -> Bool? {
+        guard let device = defaultOutputDeviceID() else { return nil }
+        return outputMuted(for: device)
+    }
+
+    @discardableResult
+    static func setSystemOutputMuted(_ muted: Bool) -> Bool {
+        guard let device = defaultOutputDeviceID() else { return false }
+        return setOutputMuted(muted, for: device)
+    }
+
+    private static func defaultOutputDeviceID() -> AudioObjectID? {
+        var device = AudioObjectID(0)
+        guard read(AudioObjectID(kAudioObjectSystemObject),
+                   kAudioHardwarePropertyDefaultOutputDevice, &device),
+              device != 0 else { return nil }
+        return device
+    }
+
+    /// The mute switch can sit on the device as a whole or on each channel,
+    /// depending on the driver, so both are tried before giving up.
+    private static func muteElements(for deviceID: AudioObjectID) -> [AudioObjectPropertyElement] {
+        [kAudioObjectPropertyElementMain, 1, 2]
+    }
+
+    private static func outputMuted(for deviceID: AudioObjectID) -> Bool? {
+        for element in muteElements(for: deviceID) {
+            var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,
+                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mElement: element)
+            guard AudioObjectHasProperty(deviceID, &address) else { continue }
+            var value: UInt32 = 0
+            var size = UInt32(MemoryLayout<UInt32>.size)
+            guard AudioObjectGetPropertyData(deviceID, &address, 0, nil, &size, &value) == noErr
+            else { continue }
+            return value != 0
+        }
+        return nil
+    }
+
+    @discardableResult
+    private static func setOutputMuted(_ muted: Bool, for deviceID: AudioObjectID) -> Bool {
+        var changed = false
+        for element in muteElements(for: deviceID) {
+            var address = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyMute,
+                                                     mScope: kAudioObjectPropertyScopeOutput,
+                                                     mElement: element)
+            guard AudioObjectHasProperty(deviceID, &address) else { continue }
+            var settable = DarwinBoolean(false)
+            guard AudioObjectIsPropertySettable(deviceID, &address, &settable) == noErr,
+                  settable.boolValue else { continue }
+            var value: UInt32 = muted ? 1 : 0
+            if AudioObjectSetPropertyData(deviceID, &address, 0, nil,
+                                          UInt32(MemoryLayout<UInt32>.size), &value) == noErr {
+                changed = true
+            }
+        }
+        return changed
     }
 
     @discardableResult
@@ -1527,18 +1778,27 @@ private final class TapGainEngine: GainEngine {
     /// never allocates. Touched only by the IO proc once rendering starts.
     private final class LimiterBox {
         var limiters: ContiguousArray<BoostLimiter>
-        init(sampleRate: Double, bufferCount: Int) {
-            limiters = ContiguousArray(repeating: BoostLimiter(sampleRate: sampleRate),
-                                       count: bufferCount)
+        init(bufferCount: Int) {
+            limiters = ContiguousArray(repeating: BoostLimiter(), count: bufferCount)
         }
     }
 
+    /// How fast the limiter recovers, kept beside the limiters rather than
+    /// inside them: the device can change its rate while this engine keeps
+    /// rendering, and the audio thread must never find another thread halfway
+    /// through writing its state. Same one-float exchange as the gain.
+    private final class ReleaseBox { var value: Float = BoostLimiter.release(sampleRate: 48000) }
+
     private let gainBox = GainBox()
     private let cycleBox = CycleBox()
+    private let releaseBox = ReleaseBox()
     var renderCycles: UInt64 { cycleBox.value }
     private var tapID = AudioObjectID(0)
     private var aggregateID = AudioObjectID(0)
     private var ioProc: AudioDeviceIOProcID?
+    /// The retained `ReleaseBox` handed to the rate listener, released when
+    /// the listener goes away.
+    private var rateListenerClient: UnsafeMutableRawPointer?
 
     init?(objects: [AudioObjectID], gain: Float, outputDeviceUID: String) {
         tappedObjects = objects
@@ -1575,33 +1835,39 @@ private final class TapGainEngine: GainEngine {
         // overshoot flattens every peak into audible crackle (issue #326).
         // The limiter turns the whole signal down for just the moment a peak
         // would not fit, so a boosted app gets louder without distorting.
-        let limiterBox = LimiterBox(sampleRate: Self.nominalSampleRate(of: aggregateID),
-                                    bufferCount: 8)
+        let limiterBox = LimiterBox(bufferCount: 8)
+        releaseBox.value = BoostLimiter.release(sampleRate: Self.nominalSampleRate(of: aggregateID))
+        let release = releaseBox
         let cycles = cycleBox
+        let tapChannels = Self.tapChannels(of: tapID)
         guard AudioDeviceCreateIOProcIDWithBlock(&ioProc, aggregateID, nil, { _, input, _, output, _ in
             cycles.value &+= 1
             let inputBuffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
             let outputBuffers = UnsafeMutableAudioBufferListPointer(output)
-            var gain = box.value
-            let boosting = gain > 1
+            guard let tapIndex = MixerRender.tapBufferIndex(in: inputBuffers,
+                                                            tapChannels: tapChannels) else { return }
+            let gain = box.value
+            let frames = MixerRender.render(source: inputBuffers[tapIndex],
+                                            into: outputBuffers,
+                                            gain: gain)
+            guard gain > 1, frames > 0 else { return }
+            let releaseCoefficient = release.value
             var low: Float = -1, high: Float = 1
-            for (index, inputBuffer) in inputBuffers.enumerated() where index < outputBuffers.count {
-                guard let source = inputBuffer.mData?.assumingMemoryBound(to: Float.self),
-                      let destination = outputBuffers[index].mData?.assumingMemoryBound(to: Float.self)
+            for (index, outputBuffer) in outputBuffers.enumerated() {
+                let channels = Int(outputBuffer.mNumberChannels)
+                guard channels > 0,
+                      let destination = outputBuffer.mData?.assumingMemoryBound(to: Float.self)
                 else { continue }
-                let samples = min(Int(inputBuffer.mDataByteSize),
-                                  Int(outputBuffers[index].mDataByteSize)) / MemoryLayout<Float>.size
-                vDSP_vsmul(source, 1, &gain, destination, 1, vDSP_Length(samples))
-                guard boosting else { continue }
-                let channels = Int(outputBuffers[index].mNumberChannels)
-                if index < limiterBox.limiters.count, channels > 0, samples % channels == 0 {
+                if index < limiterBox.limiters.count {
                     limiterBox.limiters[index].process(destination,
-                                                       frames: samples / channels,
-                                                       channels: channels)
+                                                       frames: frames,
+                                                       channels: channels,
+                                                       release: releaseCoefficient)
                 } else {
-                    // A stream shaped like nothing a tap produces still must
-                    // not hand the device samples out of range.
-                    vDSP_vclip(destination, 1, &low, &high, destination, 1, vDSP_Length(samples))
+                    // A device with more streams than the limiter was built
+                    // for still must not receive samples out of range.
+                    vDSP_vclip(destination, 1, &low, &high, destination, 1,
+                               vDSP_Length(frames * channels))
                 }
             }
         }) == noErr else {
@@ -1610,10 +1876,79 @@ private final class TapGainEngine: GainEngine {
             return nil
         }
 
+        // Installed only once there is something to keep current, so the
+        // failure paths above have nothing to undo.
+        startWatchingSampleRate()
+
         guard AudioDeviceStart(aggregateID, ioProc) == noErr else {
             stop()
             return nil
         }
+    }
+
+    /// Keeps the limiter's recovery honest when the output device changes its
+    /// rate under a running engine.
+    ///
+    /// A headset that takes the microphone for a call renegotiates to a
+    /// call rate, and the aggregate follows it without the IO proc ever
+    /// stopping (measured: the render kept going straight through a
+    /// 48k to 44.1k change and back). Nothing else would notice, so a boosted
+    /// app would keep recovering at the old rate's speed for as long as the
+    /// engine lives.
+    private func startWatchingSampleRate() {
+        var address = Self.nominalSampleRateAddress()
+        let client = Unmanaged.passRetained(releaseBox).toOpaque()
+        guard AudioObjectAddPropertyListener(aggregateID, &address,
+                                             Self.sampleRateListener, client) == noErr else {
+            Unmanaged<ReleaseBox>.fromOpaque(client).release()
+            return
+        }
+        rateListenerClient = client
+    }
+
+    private func stopWatchingSampleRate() {
+        guard let client = rateListenerClient else { return }
+        rateListenerClient = nil
+        var address = Self.nominalSampleRateAddress()
+        AudioObjectRemovePropertyListener(aggregateID, &address, Self.sampleRateListener, client)
+        Unmanaged<ReleaseBox>.fromOpaque(client).release()
+    }
+
+    /// Where the new rate is read, away from whatever thread the answer
+    /// arrived on. Serial, so two changes in a row cannot land out of order.
+    private static let rateQueue = DispatchQueue(label: "com.vorssaint.utils.mixer.rate",
+                                                 qos: .userInitiated)
+
+    /// The smallest possible answer, for the same reason as the mixer's own
+    /// callback above: the system decides which thread this arrives on and it
+    /// is not always the same one. Reading the audio system here would park
+    /// whatever thread that is behind the very device being reconfigured,
+    /// which is the change that sent this notification in the first place.
+    private static let sampleRateListener: AudioObjectPropertyListenerProc = { deviceID, _, _, client in
+        guard let client else { return noErr }
+        // Held for the hop, so the engine can stop and hand back its
+        // registration without the read landing in memory that is gone.
+        let box = Unmanaged<ReleaseBox>.fromOpaque(client).takeUnretainedValue()
+        rateQueue.async {
+            box.value = BoostLimiter.release(sampleRate: nominalSampleRate(of: deviceID))
+        }
+        return noErr
+    }
+
+    private static func nominalSampleRateAddress() -> AudioObjectPropertyAddress {
+        AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate,
+                                   mScope: kAudioObjectPropertyScopeGlobal,
+                                   mElement: kAudioObjectPropertyElementMain)
+    }
+
+    /// How many channels the tap hands over, used to find it among the
+    /// aggregate's input buffers. A stereo mixdown is what the tap is asked
+    /// for, so that is also the fallback.
+    private static func tapChannels(of tapID: AudioObjectID) -> Int {
+        var format = AudioStreamBasicDescription()
+        guard AppVolumeMixer.read(tapID, kAudioTapPropertyFormat, &format),
+              format.mChannelsPerFrame > 0 else { return 2 }
+        return Int(format.mChannelsPerFrame)
     }
 
     /// The rate the aggregate renders at, for the limiter's release timing.
@@ -1627,6 +1962,7 @@ private final class TapGainEngine: GainEngine {
     }
 
     func stop() {
+        stopWatchingSampleRate()
         if let ioProc {
             AudioDeviceStop(aggregateID, ioProc)
             AudioDeviceDestroyIOProcID(aggregateID, ioProc)

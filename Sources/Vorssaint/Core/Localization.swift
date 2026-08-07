@@ -323,11 +323,17 @@ struct Strings {
     let switcherWindowShortcutCaption: String
     let switcherMergeTabs: String
     let switcherMergeTabsCaption: String
-    let switcherShowFinder: String
-    let switcherShowFinderCaption: String
+    let switcherWindowlessApps: String
+    let switcherWindowlessAppsCaption: String
+    let switcherWindowlessAppsOff: String
+    let switcherWindowlessAppsFinder: String
+    let switcherWindowlessAppsAll: String
+    let switcherNoOpenWindow: String
     let dockPreviewName: String
     let dockPreviewEnable: String
     let dockPreviewEnableCaption: String
+    let dockPreviewBackgroundOpacity: String
+    let dockPreviewBackgroundOpacityCaption: String
     let dockClickMinimize: String
     let dockClickMinimizeCaption: String
     let dockClickCycleWindows: String
@@ -345,10 +351,6 @@ struct Strings {
     let dockPreviewClosePanel: String
     let dockPreviewPreviousWindow: String
     let dockPreviewNextWindow: String
-    let dockPreviewIntroPeek: String
-    let dockPreviewIntroSettingsHint: String
-    let dockPreviewIntroLater: String
-    let dockPreviewIntroEnable: String
 
     // MARK: Feature — cut & paste in Finder
     let cutPasteName: String
@@ -755,13 +757,6 @@ struct Strings {
     let panelNavigationCaption: String
     let panelFooterSections: String
     let panelFooterList: String
-    let fanControlBetaShow: String
-    let fanControlBetaSection: String
-    let fanControlBetaTitle: String
-    let fanControlBetaStatus: String
-    let fanControlBetaCaption: String
-    let fanControlModeAutomatic: String
-    let fanControlModeManual: String
     let betaBadge: String
     let betaFeatureWarning: String
 
@@ -845,7 +840,6 @@ struct Strings {
     let memoryStyleDot: String
     let memoryStylePercent: String
     let memoryStyleBoth: String
-
     // MARK: System uptime, battery health, speed test
     let systemUptime: String
     let batteryCharge: String
@@ -922,7 +916,7 @@ struct Strings {
     let supportIntroTitle: String
     let supportIntroMessage: String
     let supportIntroStarButton: String
-    let supportIntroCoffeeButton: String
+    let supportIntroSponsorButton: String
     let supportIntroLaterButton: String
     let supportIntroDoneButton: String
     let communityIntroTitle: String
@@ -1030,6 +1024,20 @@ struct Strings {
     let switcherCurrentSpaceOnly: String
     let switcherCurrentSpaceOnlyCaption: String
     let shelfFileMissing: String
+    let previewSizeSmall: String
+    let mixerSoundEffectsOutputTitle: String
+    let mixerSoundEffectsOutputTooltip: String
+    let monitorOpenActivityMonitor: String
+    let dockClickHide: String
+    let dockClickHideCaption: String
+    let monitorMemoryMetricLabel: String
+    let memoryMetricUsed: String
+    let memoryMetricApp: String
+    let keepAwakeRightClickToggle: String
+    let keepAwakeRightClickToggleCaption: String
+    let urlCleanerCustomTitle: String
+    let urlCleanerCustomPlaceholder: String
+    let urlCleanerCustomCaption: String
 }
 
 // MARK: - Português (Brasil)
@@ -1227,7 +1235,7 @@ extension Strings {
         switcherSection: "Alternador de apps",
         switcherEnable: "Usar o alternador do Vorssaint",
         switcherEnableCaption: "Troque de app ou janela, inclusive janelas minimizadas e várias janelas do mesmo app.",
-        switcherUsageHint: "Segure o atalho para navegar; solte para ativar a janela. Shift ou ← volta; Q fecha o app selecionado; Esc cancela.",
+        switcherUsageHint: "Segure o atalho para navegar; solte para ativar a janela. Shift ou ← volta; W fecha a janela; Q encerra o app; Esc cancela.",
         switcherNoWindows: "Nenhuma janela aberta",
         switcherIconRowMode: "Mostrar ⌘Tab com ícones grandes",
         switcherIconRowModeCaption: "Mostra um ícone por app com os previews das janelas do app acima.",
@@ -1235,14 +1243,20 @@ extension Strings {
         switcherSimpleModeCaption: "Mostra ícones de apps e títulos das janelas, sem previews nem captura da tela pelo alternador.",
         switcherShortcutHintApps: "Apps",
         switcherShortcutHintWindows: "Janelas",
-        switcherWindowShortcutCaption: "Com o seletor aberto, pula entre as janelas do app selecionado.",
+        switcherWindowShortcutCaption: "Abre um seletor das janelas do app em primeiro plano. Com o seletor de apps aberto, pula entre as janelas do app selecionado.",
         switcherMergeTabs: "Mostrar uma entrada por app",
         switcherMergeTabsCaption: "Junta todas as janelas de um app em uma só entrada no alternador, em vez de uma por janela.",
-        switcherShowFinder: "Mostrar Finder sem janelas",
-        switcherShowFinderCaption: "Mostra o Finder no alternador mesmo quando nenhuma janela do Finder estiver aberta.",
+        switcherWindowlessApps: "Apps sem janela aberta",
+        switcherWindowlessAppsCaption: "Escolhe quais apps que estão abertos sem nenhuma janela aparecem no alternador.",
+        switcherWindowlessAppsOff: "Não mostrar",
+        switcherWindowlessAppsFinder: "Só o Finder",
+        switcherWindowlessAppsAll: "Todos os apps",
+        switcherNoOpenWindow: "Sem janela aberta",
         dockPreviewName: "Dock Preview",
         dockPreviewEnable: "Pré-visualizar janelas no Dock",
-        dockPreviewEnableCaption: "Passe o mouse em um app aberto no Dock para ver e espiar suas janelas.",
+        dockPreviewEnableCaption: "Passe o mouse em um app aberto no Dock para ver suas janelas e clique na que quiser abrir.",
+        dockPreviewBackgroundOpacity: "Fundo do painel",
+        dockPreviewBackgroundOpacityCaption: "Diminua para ver mais do que está atrás do painel.",
         dockClickMinimize: "Clicar no Dock minimiza",
         dockClickMinimizeCaption: "As janelas do app ativo são minimizadas ao clicar no ícone dele no Dock. Clique de novo para trazê-las de volta.",
         dockClickCycleWindows: "Clicar no Dock alterna janelas",
@@ -1260,10 +1274,6 @@ extension Strings {
         dockPreviewClosePanel: "Fechar prévia",
         dockPreviewPreviousWindow: "Janela anterior",
         dockPreviewNextWindow: "Próxima janela",
-        dockPreviewIntroPeek: "Passe o mouse em uma miniatura para espiar. Clique para abrir a janela.",
-        dockPreviewIntroSettingsHint: "Você pode mudar isso depois em Ajustes › Switcher.",
-        dockPreviewIntroLater: "Agora não",
-        dockPreviewIntroEnable: "Ativar Dock Preview",
 
         cutPasteName: "Recortar e colar",
         cutPasteEnable: "Recortar e colar arquivos no Finder",
@@ -1632,8 +1642,8 @@ extension Strings {
         obLanguageUpdateTitle: "Agora no seu idioma",
         obLanguageUpdateBody: "O Vorssaint agora fala vários idiomas. Escolha o que você prefere usar; dá para mudar quando quiser nos Ajustes.",
         obPurposeTitle: "O que te trouxe aqui?",
-        obPurposeBody: "Escolha uma opção e o app se monta sozinho. O resto continua a um clique nos Ajustes.",
-        obPurposeSkip: "Deixar tudo à mão",
+        obPurposeBody: "Escolha uma configuração pronta ou marque exatamente o que quer usar.",
+        obPurposeSkip: "Você pode adicionar ou remover recursos depois nos Ajustes.",
 
         tabMonitor: "Monitor",
         monitorMenuBarSection: "Na barra de menus",
@@ -1656,13 +1666,6 @@ extension Strings {
         panelNavigationCaption: "Mostra uma seção por vez. Escolha Lista para ver tudo em uma rolagem contínua.",
         panelFooterSections: "Seções",
         panelFooterList: "Lista",
-        fanControlBetaShow: "Mostrar Fan Control (Beta) no painel",
-        fanControlBetaSection: "Fan Control",
-        fanControlBetaTitle: "Fan Control",
-        fanControlBetaStatus: "Automático",
-        fanControlBetaCaption: "Beta. O controle manual fica desativado até validação por modelo de Mac.",
-        fanControlModeAutomatic: "Automático",
-        fanControlModeManual: "Manual",
         betaBadge: "BETA",
         betaFeatureWarning: "Beta. Você pode encontrar alguns bugs.",
 
@@ -1742,7 +1745,6 @@ extension Strings {
         memoryStyleDot: "Ponto",
         memoryStylePercent: "%",
         memoryStyleBoth: "Ambos",
-
         systemUptime: "Ativo há",
         batteryCharge: "Carga",
         powerHealth: "Saúde da bateria",
@@ -1798,7 +1800,7 @@ extension Strings {
         keyDebounceRemoveKey: "Remover tecla",
         cleaningPanelCaption: "Bloqueia o teclado para limpar com segurança.",
         cleaningOverlayTitle: "Teclado bloqueado para limpeza",
-        cleaningOverlaySubtitle: "Pressione a mesma tecla 5 vezes para desbloquear",
+        cleaningOverlaySubtitle: "Pressione Esc 5 vezes para desbloquear",
         cleaningOverlayUnlock: "Desbloquear",
         cleaningOverlayMouseHint: "O mouse e o trackpad continuam funcionando",
         cleaningNeedsAxTitle: "Precisa de Acessibilidade",
@@ -1809,13 +1811,13 @@ extension Strings {
         shortcutsPageTitle: "Atalhos de teclado",
         settingsSearchPlaceholder: "Buscar ajustes",
         donateHeading: "Apoie o Vorssaint",
-        donateMessage: "Todos os meus projetos públicos são, e sempre serão, totalmente gratuitos: sem assinatura, sem anúncios. O apoio da comunidade é a única forma de manter tudo vivo. Se o Vorssaint te ajuda, um café faz diferença de verdade.",
-        donateButton: "Buy me a coffee",
+        donateMessage: "Todos os meus projetos públicos são, e sempre serão, totalmente gratuitos: sem assinatura, sem anúncios. O apoio da comunidade é a única forma de manter tudo vivo. Se o Vorssaint te ajuda, virar apoiador no GitHub faz diferença de verdade.",
+        donateButton: "Apoiar no GitHub",
         donateThanks: "Obrigado por estar aqui. 🖤",
         supportIntroTitle: "O Vorssaint é 100% gratuito e sempre será",
-        supportIntroMessage: "Eu sigo cuidando do app no meu tempo livre. Se ele te ajuda, você pode me ajudar de um jeito simples, divulgando, deixando uma estrela no GitHub ou pagando um café. Isso me ajuda muito a continuar trazendo melhorias.",
+        supportIntroMessage: "Eu sigo cuidando do app no meu tempo livre. Se ele te ajuda, você pode me ajudar de um jeito simples, divulgando, deixando uma estrela no GitHub ou virando apoiador por lá. Isso me ajuda muito a continuar trazendo melhorias.",
         supportIntroStarButton: "Dar uma estrela",
-        supportIntroCoffeeButton: "Buy me a coffee",
+        supportIntroSponsorButton: "Apoiar no GitHub",
         supportIntroLaterButton: "Agora não",
         supportIntroDoneButton: "Concluir",
         communityIntroTitle: "Vem ver antes de todo mundo",
@@ -1848,7 +1850,7 @@ extension Strings {
         shortcutConflictFormat: "Este atalho já está em uso por %@.",
         shortcutUnavailable: "O macOS recusou este atalho. Escolha outro.",
         shelfShortcutToggle: "Atalho da área temporária",
-        switcherUsageHintFormat: "Segure %@ para navegar; solte para ativar a janela. Shift ou ← volta; Q fecha o app selecionado; Esc cancela.",
+        switcherUsageHintFormat: "Segure %@ para navegar; solte para ativar a janela. Shift ou ← volta; W fecha a janela; Q encerra o app; Esc cancela.",
         musicBlockSection: "Teclas de mídia",
         musicBlockTitle: "Impedir que o Música abra sozinho",
         musicBlockCaption: "O app Música deixa de abrir ao tocar nas teclas de mídia. Desative para voltar a usar o Música.",
@@ -1916,7 +1918,21 @@ extension Strings {
         highlightsSeeAll: "Ver todas as mudanças",
         switcherCurrentSpaceOnly: "Mostrar só a Mesa atual",
         switcherCurrentSpaceOnlyCaption: "Mostra no alternador apenas as janelas da Mesa em que você está. Escolher uma janela nunca leva você para outra Mesa.",
-        shelfFileMissing: "The file no longer exists"
+        shelfFileMissing: "O arquivo não existe mais",
+        previewSizeSmall: "Pequeno",
+        mixerSoundEffectsOutputTitle: "Sons do sistema",
+        mixerSoundEffectsOutputTooltip: "Escolher onde alertas e efeitos sonoros tocam",
+        monitorOpenActivityMonitor: "Abrir o Monitor de Atividade",
+        dockClickHide: "Clicar no Dock oculta o app",
+        dockClickHideCaption: "O app ativo é ocultado ao clicar no ícone dele no Dock. Clique de novo para trazê-lo de volta.",
+        monitorMemoryMetricLabel: "Medir memória como",
+        memoryMetricUsed: "Memória usada",
+        memoryMetricApp: "Memória de apps",
+        keepAwakeRightClickToggle: "Clique com o botão direito no ícone da barra de menus para alternar “Manter acordado”",
+        keepAwakeRightClickToggleCaption: "Substitui o menu de contexto do clique com o botão direito.",
+        urlCleanerCustomTitle: "Mais nomes para remover",
+        urlCleanerCustomPlaceholder: "ref, origem",
+        urlCleanerCustomCaption: "Separe os nomes dos parâmetros com vírgulas. Eles serão removidos de todos os links."
     )
 }
 
@@ -2115,7 +2131,7 @@ extension Strings {
         switcherSection: "App switcher",
         switcherEnable: "Use the Vorssaint switcher",
         switcherEnableCaption: "Switch between apps and windows, including minimized windows and multiple windows from the same app.",
-        switcherUsageHint: "Hold the shortcut to navigate; release to activate the window. Shift or ← goes back; Q quits the selected app; Esc cancels.",
+        switcherUsageHint: "Hold the shortcut to navigate; release to activate the window. Shift or ← goes back; W closes the window; Q quits the app; Esc cancels.",
         switcherNoWindows: "No open windows",
         switcherIconRowMode: "Show ⌘Tab with large icons",
         switcherIconRowModeCaption: "Shows one icon per app with that app's window previews above it.",
@@ -2123,14 +2139,20 @@ extension Strings {
         switcherSimpleModeCaption: "Shows app icons and window titles, without previews or screen capture by the switcher.",
         switcherShortcutHintApps: "Apps",
         switcherShortcutHintWindows: "Windows",
-        switcherWindowShortcutCaption: "While the switcher is open, jumps between the selected app's windows.",
+        switcherWindowShortcutCaption: "Opens a switcher for the frontmost app's windows. While the Apps switcher is open, jumps between the selected app's windows.",
         switcherMergeTabs: "Show one entry per app",
         switcherMergeTabsCaption: "Collapses all of an app's windows into one entry in the switcher, instead of one entry per window.",
-        switcherShowFinder: "Show Finder without windows",
-        switcherShowFinderCaption: "Shows Finder in the switcher even when no Finder window is open.",
+        switcherWindowlessApps: "Apps with no open window",
+        switcherWindowlessAppsCaption: "Chooses which running apps with no window at all show up in the switcher.",
+        switcherWindowlessAppsOff: "Do not show",
+        switcherWindowlessAppsFinder: "Finder only",
+        switcherWindowlessAppsAll: "All apps",
+        switcherNoOpenWindow: "No open window",
         dockPreviewName: "Dock Preview",
         dockPreviewEnable: "Preview windows from the Dock",
-        dockPreviewEnableCaption: "Hover over an open app in the Dock to preview and peek at its windows.",
+        dockPreviewEnableCaption: "Hover over an open app in the Dock to see its windows, then click the one you want.",
+        dockPreviewBackgroundOpacity: "Panel background",
+        dockPreviewBackgroundOpacityCaption: "Turn it down to see more of what sits behind the panel.",
         dockClickMinimize: "Click the Dock icon to minimize",
         dockClickMinimizeCaption: "The active app's windows minimize when you click its Dock icon. Click again to bring them back.",
         dockClickCycleWindows: "Click the Dock icon to cycle windows",
@@ -2148,10 +2170,6 @@ extension Strings {
         dockPreviewClosePanel: "Close preview",
         dockPreviewPreviousWindow: "Previous window",
         dockPreviewNextWindow: "Next window",
-        dockPreviewIntroPeek: "Hover over a thumbnail to peek. Click to open the window.",
-        dockPreviewIntroSettingsHint: "You can change this later in Settings › Switcher.",
-        dockPreviewIntroLater: "Not now",
-        dockPreviewIntroEnable: "Enable Dock Preview",
 
         cutPasteName: "Cut & paste",
         cutPasteEnable: "Cut & paste files in Finder",
@@ -2520,8 +2538,8 @@ extension Strings {
         obLanguageUpdateTitle: "Now in your language",
         obLanguageUpdateBody: "Vorssaint now speaks several languages. Choose the one you’d like to use; you can change it anytime in Settings.",
         obPurposeTitle: "What brought you here?",
-        obPurposeBody: "Pick one and the app sets itself up. Everything else stays one click away in Settings.",
-        obPurposeSkip: "Keep everything at hand",
+        obPurposeBody: "Choose a ready setup or select exactly what you want to use.",
+        obPurposeSkip: "You can add or remove features later in Settings.",
 
         tabMonitor: "Monitor",
         monitorMenuBarSection: "In the menu bar",
@@ -2544,13 +2562,6 @@ extension Strings {
         panelNavigationCaption: "Shows one section at a time. Choose List to see everything in one continuous scroll.",
         panelFooterSections: "Sections",
         panelFooterList: "List",
-        fanControlBetaShow: "Show Fan Control (Beta) in the panel",
-        fanControlBetaSection: "Fan Control",
-        fanControlBetaTitle: "Fan Control",
-        fanControlBetaStatus: "Automatic",
-        fanControlBetaCaption: "Beta. Manual control stays disabled until each Mac model is validated.",
-        fanControlModeAutomatic: "Automatic",
-        fanControlModeManual: "Manual",
         betaBadge: "BETA",
         betaFeatureWarning: "Beta. You may run into some bugs.",
 
@@ -2630,7 +2641,6 @@ extension Strings {
         memoryStyleDot: "Dot",
         memoryStylePercent: "%",
         memoryStyleBoth: "Both",
-
         systemUptime: "Up for",
         batteryCharge: "Charge",
         powerHealth: "Battery health",
@@ -2686,7 +2696,7 @@ extension Strings {
         keyDebounceRemoveKey: "Remove key",
         cleaningPanelCaption: "Locks the keyboard so you can clean safely.",
         cleaningOverlayTitle: "Keyboard locked for cleaning",
-        cleaningOverlaySubtitle: "Press the same key 5 times to unlock",
+        cleaningOverlaySubtitle: "Press Escape 5 times to unlock",
         cleaningOverlayUnlock: "Unlock",
         cleaningOverlayMouseHint: "Your mouse and trackpad still work",
         cleaningNeedsAxTitle: "Accessibility needed",
@@ -2697,13 +2707,13 @@ extension Strings {
         shortcutsPageTitle: "Keyboard shortcuts",
         settingsSearchPlaceholder: "Search settings",
         donateHeading: "Support Vorssaint",
-        donateMessage: "Every one of my public projects is, and always will be, completely free: no subscription, no ads. Community support is the only thing that keeps it alive. If Vorssaint helps you, a coffee genuinely makes a difference.",
-        donateButton: "Buy me a coffee",
+        donateMessage: "Every one of my public projects is, and always will be, completely free: no subscription, no ads. Community support is the only thing that keeps it alive. If Vorssaint helps you, becoming a sponsor on GitHub genuinely makes a difference.",
+        donateButton: "Sponsor on GitHub",
         donateThanks: "Thank you for being here. 🖤",
         supportIntroTitle: "Vorssaint is 100% free and always will be",
-        supportIntroMessage: "I keep taking care of the app in my free time. If it helps you, you can help me in a simple way by sharing it, leaving a star on GitHub or buying me a coffee. It helps me a lot to keep improving it.",
+        supportIntroMessage: "I keep taking care of the app in my free time. If it helps you, you can help me in a simple way by sharing it, leaving a star on GitHub or sponsoring me there. It helps me a lot to keep improving it.",
         supportIntroStarButton: "Leave a star",
-        supportIntroCoffeeButton: "Buy me a coffee",
+        supportIntroSponsorButton: "Sponsor on GitHub",
         supportIntroLaterButton: "Not now",
         supportIntroDoneButton: "Done",
         communityIntroTitle: "See it before everyone else",
@@ -2736,7 +2746,7 @@ extension Strings {
         shortcutConflictFormat: "This shortcut is already used by %@.",
         shortcutUnavailable: "macOS rejected this shortcut. Choose another one.",
         shelfShortcutToggle: "Shelf shortcut",
-        switcherUsageHintFormat: "Hold %@ to navigate; release to activate the window. Shift or ← goes back; Q quits the selected app; Esc cancels.",
+        switcherUsageHintFormat: "Hold %@ to navigate; release to activate the window. Shift or ← goes back; W closes the window; Q quits the app; Esc cancels.",
         musicBlockSection: "Media keys",
         musicBlockTitle: "Stop Music from opening on its own",
         musicBlockCaption: "The Music app no longer opens when you press the media keys. Turn this off to use Music again.",
@@ -2804,6 +2814,20 @@ extension Strings {
         highlightsSeeAll: "See all changes",
         switcherCurrentSpaceOnly: "Show only the current desktop",
         switcherCurrentSpaceOnlyCaption: "Lists only windows from the desktop you are on. Picking a window never moves you to another desktop.",
-        shelfFileMissing: "O arquivo não existe mais"
+        shelfFileMissing: "The file no longer exists",
+        previewSizeSmall: "Small",
+        mixerSoundEffectsOutputTitle: "System sounds",
+        mixerSoundEffectsOutputTooltip: "Choose where alerts and sound effects play",
+        monitorOpenActivityMonitor: "Open Activity Monitor",
+        dockClickHide: "Click the Dock icon to hide the app",
+        dockClickHideCaption: "The active app hides when you click its Dock icon. Click again to bring it back.",
+        monitorMemoryMetricLabel: "Measure memory as",
+        memoryMetricUsed: "Memory Used",
+        memoryMetricApp: "App Memory",
+        keepAwakeRightClickToggle: "Right-click the menu bar icon to toggle Keep Awake",
+        keepAwakeRightClickToggleCaption: "Replaces the right-click context menu.",
+        urlCleanerCustomTitle: "More names to remove",
+        urlCleanerCustomPlaceholder: "ref, source",
+        urlCleanerCustomCaption: "Separate parameter names with commas. They are removed from every link."
     )
 }

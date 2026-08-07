@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import os.log
 import Combine
 import SwiftUI
 import UserNotifications
@@ -20,8 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     private var isTerminating = false
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
+    private var feedbackWindow: NSWindow?
     private var onboardingWindow: NSWindow?
-    private var dockPreviewIntroWindow: NSWindow?
     private var supportIntroWindow: NSWindow?
     private var updateHighlightsWindow: NSWindow?
     private var supportIntroCanClose = false
@@ -34,7 +35,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        UNUserNotificationCenter.current().delegate = self
+        // Before any window exists, so nothing is ever built with the wrong
+        // appearance and then repainted.
+        AppAppearanceController.shared.apply()
+        // UNUserNotificationCenter aborts in a process without a bundle;
+        // guard keeps ad-hoc runs of the bare binary alive for probing.
+        if Bundle.main.bundleIdentifier != nil {
+            UNUserNotificationCenter.current().delegate = self
+        }
         beginStartupWatch()
         Self.boundAccessibilityWaits()
 
@@ -42,6 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // build, or retire a leftover old-named bundle. Returns true when we are
         // quitting to relaunch under the new name, so skip the rest of startup.
         if BundleMigration.run() { return }
+
+        // Shape a clean install before any feature can create a listener,
+        // timer or shortcut. The onboarding can replace this set after the
+        // person chooses what they actually want.
+        FeaturePreset.prepareFirstRunAvailability()
 
         // Redo a launch at login registration the system lost. The stored
         // choice is the last thing the user expressed in the app; startup
@@ -65,7 +78,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             self?.captureStatusClick()
             self?.toggleMainPopover()
         }
-        statusController.onRightClick = { [weak self] in self?.showContextMenu() }
+        statusController.onRightClick = { [weak self] in
+            if AppFeature.keepAwake.isAvailable
+                && UserDefaults.standard.bool(forKey: DefaultsKey.keepAwakeRightClickToggle) {
+                KeepAwakeManager.shared.toggle()
+            } else {
+                self?.showContextMenu()
+            }
+        }
         statusController.onMetricClick = { [weak self] metric, button in
             self?.captureStatusClick()
             self?.showMetricPanel(for: metric, anchoredTo: button)
@@ -86,10 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         KeepAwakeManager.shared.recoverIfNeeded {
             KeepAwakeManager.shared.activateOnLaunchIfNeeded()
         }
+        FanControlService.recoverIfNeeded()
         // One binding per feature: only available features are touched, so a
         // feature switched off in the hub never even instantiates here.
         FeatureRuntime.shared.syncAtLaunch()
-        if AppFeature.monitorPower.isAvailable {
+        if AppFeature.monitorPower.isAvailable, PowerSampler.hasInternalBattery {
             MaxCapacityProbe.shared.refreshIfStale()
         }
         UpdateService.shared.startAutomaticChecks()
@@ -104,9 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             .sink { _ in
                 FeatureRuntime.shared.sync([
                     .scrollInverter, .smoothScroll, .mouseNavigation, .switcher,
-                    .dockPreview, .finderCutPaste, .autoQuit, .dockClick,
+                    .dockPreview, .finderCutPaste, .finderRename, .autoQuit, .dockClick,
                     .middleClick, .windowMaximizer, .keyboardDebounce, .windowLayout,
                     .textSnippets, .brightness, .radialMenu, .mouseButtonShortcuts,
+                    .superKey,
                 ])
             }
             .store(in: &cancellables)
@@ -115,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             .removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { _ in
-                FeatureRuntime.shared.sync([.dockPreview])
+                FeatureRuntime.shared.sync([.dockPreview, .screenRecorder])
             }
             .store(in: &cancellables)
 
@@ -203,12 +225,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         WindowLayoutService.shared.suspend()
         KeyboardDebounceService.shared.suspend()
         TextSnippetService.shared.suspend()
+        // Takes the Caps Lock mapping back out before the process goes away.
+        SuperKeyService.shared.suspend()
         MiddleClickService.shared.suspend()
         SmoothScrollService.shared.suspend()
         MouseNavigationService.shared.suspend()
         DockPreviewService.shared.stop()
         SoundOutputSwitcher.shared.stop()
         AppVolumeMixer.shared.stopAll()
+        FanControlService.restoreBeforeTerminationIfNeeded()
         // Puts the system input back if a microphone was chosen here: the
         // app's audio settings must not outlive the app.
         AudioInputDeviceManager.shared.stop()
@@ -263,10 +288,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
     /// Whether the menu bar icon is actually visible on a screen, rather than
     /// present in the status bar but clipped or dropped by a crowded/notched menu
     /// bar (in which case the button still has a window, just not an on-screen one).
+    private static let menuBarLog = Logger(subsystem: Bundle.main.bundleIdentifier ?? "vorssaint",
+                                           category: "menubar")
+
     private func iconIsOnScreen() -> Bool {
         guard let frame = statusController?.statusItem.button?.window?.frame,
               frame.width > 0, frame.height > 0 else { return false }
         return NSScreen.screens.contains { $0.frame.intersects(frame) }
+    }
+
+    /// What the recovery saw, in the app's own log. Whether macOS gave the
+    /// rebuilt item a place is invisible from the outside, so a report of an
+    /// icon that never comes back has nothing to go on without this
+    /// (issue #369). Read with:
+    /// log show --last 1h --predicate 'category == "menubar"'
+    private func logStatusItemPlacement(_ stage: String) {
+        let window = statusController?.statusItem.button?.window
+        let frame = window?.frame ?? .zero
+        let placement = "\(Int(frame.origin.x)),\(Int(frame.origin.y)) \(Int(frame.width))x\(Int(frame.height))"
+        let screens = NSScreen.screens.map { "\(Int($0.frame.width))x\(Int($0.frame.height))" }
+            .joined(separator: ",")
+        let visible = statusController?.statusItem.isVisible ?? false
+        let manager = Self.runningMenuBarManagerName() ?? "none"
+        Self.menuBarLog.log("reshow \(stage, privacy: .public) window=\(window != nil) frame=\(placement, privacy: .public) visible=\(visible) screens=\(screens, privacy: .public) organizer=\(manager, privacy: .public)")
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool { true }
@@ -299,6 +343,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         let host = NSHostingController(rootView: MenuPanelView())
         host.sizingOptions = .preferredContentSize
         popover.contentViewController = host
+        AppAppearanceController.shared.follow(panel: popover)
         NotificationCenter.default.addObserver(self, selector: #selector(appResignedActive),
                                                name: NSApplication.didResignActiveNotification, object: nil)
     }
@@ -779,6 +824,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // (Menu bar icon recovery happens on a deliberate reopen, not here: this
         // fires on every activation, so rebuilding here would cause churn/flicker.)
         UpdateService.shared.checkIfStale()
+        restoreAfterAppStoreHandoff()
+    }
+
+    /// The app update list can only hand a store purchase over to the App
+    /// Store. With no Dock icon there is no way back to the window that sent
+    /// the person there, so returning brings it forward again, on the page
+    /// they left, with the list already reading the truth.
+    private func restoreAfterAppStoreHandoff() {
+        guard AppFeature.appUpdates.isAvailable else { return }
+        let service = AppUpdatesService.shared
+        service.applicationBecameActive()
+        // Only a window still on screen is brought back. A Settings window the
+        // person closed themselves stays closed.
+        guard service.consumeStoreHandoffReturn(),
+              settingsWindow?.isVisible == true else { return }
+        openSettingsWindow()
     }
 
     func closePopover(animated: Bool = true, after delay: TimeInterval = 0,
@@ -1140,6 +1201,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
     }
 
+    func openFeedbackWindow(kind: FeedbackKind = .bug) {
+        closePopover()
+        let host = NSHostingController(rootView: FeedbackView(initialKind: kind) { [weak self] in
+            self?.feedbackWindow?.close()
+        })
+        if let window = feedbackWindow {
+            window.contentViewController = host
+        } else {
+            let window = NSWindow(contentViewController: host)
+            window.styleMask = [.titled, .closable]
+            window.titleVisibility = .hidden
+            window.isReleasedWhenClosed = false
+            window.isRestorable = false
+            window.delegate = self
+            window.center()
+            feedbackWindow = window
+        }
+        feedbackWindow?.title = FeatureStrings.feedback(L10n.shared.language).windowTitle
+        NSApp.activate(ignoringOtherApps: true)
+        feedbackWindow?.makeKeyAndOrderFront(nil)
+    }
+
     private func positionSettingsWindow(_ window: NSWindow, force: Bool) {
         window.contentView?.layoutSubtreeIfNeeded()
         let popoverWindow = popover.contentViewController?.view.window
@@ -1209,8 +1292,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         // asked to see (and then trip the "still hidden" alert).
         UserDefaults.standard.set(false, forKey: DefaultsKey.menuBarHideIconWithMetrics)
         statusController?.recreateStatusItem(resetPlacement: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
-            guard let self, !self.iconIsOnScreen() else { return }
+        verifyIconReappeared(attemptsLeft: Self.reshowVerifyAttempts)
+    }
+
+    /// macOS places a rebuilt status item on its own schedule, and a busy bar
+    /// can take longer than one look to settle. Judging it once meant a slow
+    /// placement read as a failure and the person was told the bar was full
+    /// when it was not, so the answer is asked for several times before
+    /// anything is said.
+    private static let reshowVerifyAttempts = 4
+    private static let reshowVerifyInterval: TimeInterval = 0.8
+
+    private func verifyIconReappeared(attemptsLeft: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.reshowVerifyInterval) { [weak self] in
+            guard let self else { return }
+            if self.iconIsOnScreen() {
+                self.logStatusItemPlacement("appeared")
+                return
+            }
+            guard attemptsLeft <= 1 else {
+                self.verifyIconReappeared(attemptsLeft: attemptsLeft - 1)
+                return
+            }
+            self.logStatusItemPlacement("still hidden")
             let s = L10n.shared.s
             var body = s.menuBarIconStillHiddenBody
             if let manager = Self.runningMenuBarManagerName() {
@@ -1265,13 +1369,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         let host = NSHostingController(rootView: OnboardingView(mode: mode) { [weak self] in
             self?.markOnboardingComplete()
-            Notifier.requestPermission()
             self?.onboardingWindow?.close()
         })
         host.sizingOptions = .preferredContentSize
         let window = NSWindow(contentViewController: host)
+        let isFirstRun = !UserDefaults.standard.bool(forKey: DefaultsKey.hasOnboarded)
         window.title = mode.title(L10n.shared.s)
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
+        window.styleMask = isFirstRun
+            ? [.titled, .fullSizeContentView]
+            : [.titled, .closable, .fullSizeContentView]
+        window.standardWindowButton(.closeButton)?.isHidden = isFirstRun
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false
@@ -1294,7 +1401,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         if showUpdateHighlightsIfNeeded() { return }
         if showSupportUpdateIntroIfNeeded() { return }
         if showUpdateShowcaseIntroIfNeeded() { return }
-        showDockPreviewIntroIfNeeded()
     }
 
     private func showUpdateHighlightsIfNeeded() -> Bool {
@@ -1302,13 +1408,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
             appVersion: AppInfo.version,
             lastSeenVersion: UserDefaults.standard.string(forKey: DefaultsKey.updateHighlightsSeenVersion)
         ) else { return false }
-        // If every featured item was uninstalled in the hub there is nothing
-        // to tour; mark it seen and stay quiet instead of showing an empty
-        // window.
-        guard UpdateHighlightsView.hasContent else {
-            markUpdateHighlightsSeen()
-            return false
-        }
         showUpdateHighlights()
         return true
     }
@@ -1322,8 +1421,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         let host = NSHostingController(rootView: UpdateHighlightsView(
             onFinish: { [weak self] in
-                self?.markUpdateHighlightsSeen()
-                self?.updateHighlightsWindow?.close()
+                guard let self else { return }
+                self.markUpdateHighlightsSeen()
+                self.updateHighlightsWindow?.close()
+                DispatchQueue.main.async { [weak self] in
+                    _ = self?.showSupportUpdateIntroIfNeeded()
+                }
             }
         ))
         host.sizingOptions = .preferredContentSize
@@ -1426,7 +1529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         ))
         host.sizingOptions = .preferredContentSize
         let window = NSWindow(contentViewController: host)
-        window.title = L10n.shared.s.homebrewOfficialIntroTitle
+        window.title = L10n.shared.s.communityIntroTitle
         window.styleMask = [.titled, .fullSizeContentView]
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.titlebarAppearsTransparent = true
@@ -1442,60 +1545,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         window.makeKeyAndOrderFront(nil)
         DispatchQueue.main.async { [weak self, weak window] in
             guard let self, let window, window === self.supportIntroWindow else { return }
-            self.centerIntroWindow(window)
-        }
-    }
-
-    /// True on the release that introduced Dock Preview, or any later one.
-    private var isAtLeastDockPreviewRelease: Bool {
-        let current = AppInfo.version
-        let intro = DockPreviewIntroInfo.releaseVersion
-        return current == intro || UpdateService.isNewer(current, than: intro)
-    }
-
-    private func showDockPreviewIntroIfNeeded() {
-        // Show on the Dock Preview release or any later version, so users who
-        // skip versions still get it once, and never re-show it once seen.
-        guard isAtLeastDockPreviewRelease else { return }
-        guard UserDefaults.standard.string(forKey: DefaultsKey.dockPreviewIntroVersion) == nil else { return }
-        showDockPreviewIntro()
-    }
-
-    private func showDockPreviewIntro() {
-        closePopover()
-        if let window = dockPreviewIntroWindow {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        let host = NSHostingController(rootView: DockPreviewIntroView(
-            onDismiss: { [weak self] in
-                self?.markDockPreviewIntroSeen()
-                self?.dockPreviewIntroWindow?.close()
-            },
-            onEnable: { [weak self] in
-                UserDefaults.standard.set(true, forKey: DefaultsKey.dockPreviewEnabled)
-                DockPreviewService.shared.syncWithPreferences()
-                self?.markDockPreviewIntroSeen()
-                self?.dockPreviewIntroWindow?.close()
-            }
-        ))
-        host.sizingOptions = .preferredContentSize
-        let window = NSWindow(contentViewController: host)
-        window.title = L10n.shared.s.dockPreviewName
-        window.styleMask = [.titled, .closable, .fullSizeContentView]
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false
-        window.isRestorable = false
-        window.isMovableByWindowBackground = true
-        window.delegate = self
-        centerIntroWindow(window)
-        dockPreviewIntroWindow = window
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
-        DispatchQueue.main.async { [weak self, weak window] in
-            guard let self, let window, window === self.dockPreviewIntroWindow else { return }
             self.centerIntroWindow(window)
         }
     }
@@ -1590,16 +1639,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         }
         if window === onboardingWindow {
             onboardingWindow = nil
-            // Closing the window mid-flow counts as "skip" — but quitting (e.g.
-            // the relaunch macOS forces after granting Screen Recording) must NOT,
-            // so the flow can resume where it stopped.
+            // First run has no close action; it reaches here after completion.
+            // A system relaunch while granting access must not mark the flow
+            // complete, so it resumes at the same step.
             guard !isTerminating else { return }
             markOnboardingComplete()
-        }
-        if window === dockPreviewIntroWindow {
-            dockPreviewIntroWindow = nil
-            guard !isTerminating else { return }
-            markDockPreviewIntroSeen()
         }
         if window === supportIntroWindow {
             supportIntroWindow = nil
@@ -1628,23 +1672,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, NSW
         UserDefaults.standard.set(true, forKey: DefaultsKey.hasOnboarded)
         UserDefaults.standard.set(OnboardingInfo.currentFeatureSet, forKey: DefaultsKey.featuresOnboardingVersion)
         UserDefaults.standard.set(AppInfo.version, forKey: DefaultsKey.lastUpdateIntroVersion)
-        markDockPreviewIntroSeenIfCurrentUpdate()
         markSupportUpdateIntroSeenIfCurrentUpdate()
         markUpdateShowcaseIntroSeenIfCurrentUpdate()
         // A clean install that just saw everything in onboarding should not
         // then get the update tour; only people who updated get it.
         markUpdateHighlightsSeen()
-    }
-
-    private func markDockPreviewIntroSeenIfCurrentUpdate() {
-        // A clean install that just finished onboarding on the Dock Preview
-        // release (or later) should not then be shown the intro popup.
-        guard isAtLeastDockPreviewRelease else { return }
-        markDockPreviewIntroSeen()
-    }
-
-    private func markDockPreviewIntroSeen() {
-        UserDefaults.standard.set(AppInfo.version, forKey: DefaultsKey.dockPreviewIntroVersion)
     }
 
     private func markSupportUpdateIntroSeenIfCurrentUpdate() {

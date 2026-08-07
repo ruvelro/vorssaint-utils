@@ -58,7 +58,45 @@ enum AutoQuitSupport {
         return !hasUserFacingWindow
     }
 
+    /// An exception for an installed app also covers UI processes bundled
+    /// inside it. Some apps put their main windows in a nested application
+    /// with a different identifier, even though the user picked the outer app.
+    static func isExcepted(bundleIdentifier: String?,
+                           bundleURL: URL?,
+                           exceptions: [String]) -> Bool {
+        if let bundleIdentifier, exceptions.contains(bundleIdentifier) { return true }
+        guard var url = bundleURL?.standardizedFileURL.deletingLastPathComponent() else { return false }
+
+        while url.path != "/" {
+            if url.pathExtension.caseInsensitiveCompare("app") == .orderedSame,
+               let containingIdentifier = Bundle(url: url)?.bundleIdentifier,
+               exceptions.contains(containingIdentifier) {
+                return true
+            }
+            let parent = url.deletingLastPathComponent()
+            guard parent != url else { break }
+            url = parent
+        }
+        return false
+    }
+
     static func isCommandW(keyCode: Int64, command: Bool, control: Bool) -> Bool {
         keyCode == commandWKeyCode && command && !control
+    }
+
+    /// Whether a window the screen is not showing still counts as a window the
+    /// user has. A window parked on another Space is one swipe away, so it
+    /// keeps the app running; a window the app only hid sits on the Space that
+    /// is showing right now, and an app that hides its window instead of
+    /// destroying it should still quit on close. Accessibility cannot tell the
+    /// two apart (both leave the app with no windows at all), the window server
+    /// can. Without a Space answer the old rule stands: anything with a title
+    /// keeps the app alive.
+    static func offscreenWindowKeepsAppAlive(windowSpaces: [UInt64],
+                                             visibleSpaces: Set<UInt64>?,
+                                             hasTitle: Bool) -> Bool {
+        guard let visibleSpaces, !visibleSpaces.isEmpty, !windowSpaces.isEmpty else { return hasTitle }
+        return SpaceHopSupport.isParkedOnHiddenSpace(windowSpaces: windowSpaces,
+                                                     visibleSpaces: visibleSpaces)
     }
 }
