@@ -571,7 +571,7 @@ final class ShelfService: ObservableObject {
                 self.dockedWatchdog = nil
                 return
             }
-            if NSEvent.pressedMouseButtons & 1 == 0 {
+            if !CGEventSource.buttonState(.combinedSessionState, button: .left) {
                 self.closeDragGesture()
                 self.endDockedDrag()
             }
@@ -853,7 +853,10 @@ final class ShelfService: ObservableObject {
             guard case let .file(url) = item.payload else { return item }
             if FileManager.default.fileExists(atPath: url.path) { return item }
             guard let healed = rebookedItem(item) else { return nil }
-            replaceItem(healed)
+            // The tile swap rebuilds the tiles view; deferring it keeps the
+            // rebuild away from the drag session or context menu that is
+            // being constructed around the old tile right now.
+            DispatchQueue.main.async { [weak self] in self?.replaceItem(healed) }
             return healed
         }
     }

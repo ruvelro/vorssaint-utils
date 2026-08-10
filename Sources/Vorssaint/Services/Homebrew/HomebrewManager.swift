@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import Combine
+import Darwin
 import Foundation
 
 final class HomebrewManager: ObservableObject {
@@ -207,6 +208,19 @@ final class HomebrewManager: ObservableObject {
         perform(.upgradeAll, package: nil)
     }
 
+    /// Upgrades exactly the casks asked for, through the same single
+    /// operation lane as every other Homebrew action, so the app never runs
+    /// two package commands at once. Used by the app update list, where the
+    /// person picks which apps to update.
+    func upgradeCasks(_ tokens: [String]) {
+        guard operation == nil,
+              let brewPath = brewPath ?? detectBrewPath(),
+              let command = HomebrewCommandBuilder.upgradeCasks(brewPath: brewPath, tokens: tokens) else {
+            return
+        }
+        perform(.upgradeAll, package: nil, command: command)
+    }
+
     func updateHomebrew() {
         perform(.updateHomebrew, package: nil)
     }
@@ -214,7 +228,9 @@ final class HomebrewManager: ObservableObject {
     func cancelOperation() {
         guard operation != nil else { return }
         cancelRequested = true
-        activeProcess?.terminate()
+        if let activeProcess {
+            Self.stop(activeProcess)
+        }
         appendLog("\nCancelled.\n")
     }
 
@@ -279,28 +295,13 @@ final class HomebrewManager: ObservableObject {
         return true
     }
 
-    private func perform(_ action: HomebrewOperation.Action, package: HomebrewPackage?) {
+    private func perform(_ action: HomebrewOperation.Action,
+                         package: HomebrewPackage?,
+                         command commandOverride: HomebrewCommand? = nil) {
         guard operation == nil else { return }
         guard let brewPath = brewPath ?? detectBrewPath() else { return }
-        let command: HomebrewCommand
-        switch action {
-        case .install:
-            guard let package,
-                  HomebrewCommandBuilder.isValidToken(package.name) else { return }
-            command = HomebrewCommandBuilder.install(brewPath: brewPath, package: package)
-        case .uninstall:
-            guard let package,
-                  HomebrewCommandBuilder.isValidToken(package.name) else { return }
-            command = HomebrewCommandBuilder.uninstall(brewPath: brewPath, package: package)
-        case .upgrade:
-            guard let package,
-                  HomebrewCommandBuilder.isValidToken(package.name) else { return }
-            command = HomebrewCommandBuilder.upgrade(brewPath: brewPath, package: package)
-        case .upgradeAll:
-            command = HomebrewCommandBuilder.upgradeAll(brewPath: brewPath)
-        case .updateHomebrew:
-            command = HomebrewCommandBuilder.update(brewPath: brewPath)
-        }
+        guard let command = commandOverride
+                ?? standardCommand(for: action, package: package, brewPath: brewPath) else { return }
         operation = HomebrewOperation(action: action, package: package)
         operationStatus = HomebrewOperationStatus(action: action,
                                                   package: package,
@@ -357,6 +358,25 @@ final class HomebrewManager: ObservableObject {
                 }
                 self.cancelRequested = false
             }
+        }
+    }
+
+    private func standardCommand(for action: HomebrewOperation.Action,
+                                 package: HomebrewPackage?,
+                                 brewPath: String) -> HomebrewCommand? {
+        switch action {
+        case .install, .uninstall, .upgrade:
+            guard let package,
+                  HomebrewCommandBuilder.isValidToken(package.name) else { return nil }
+            switch action {
+            case .install: return HomebrewCommandBuilder.install(brewPath: brewPath, package: package)
+            case .uninstall: return HomebrewCommandBuilder.uninstall(brewPath: brewPath, package: package)
+            default: return HomebrewCommandBuilder.upgrade(brewPath: brewPath, package: package)
+            }
+        case .upgradeAll:
+            return HomebrewCommandBuilder.upgradeAll(brewPath: brewPath)
+        case .updateHomebrew:
+            return HomebrewCommandBuilder.update(brewPath: brewPath)
         }
     }
 
@@ -584,6 +604,32 @@ final class HomebrewManager: ObservableObject {
         }
     }
 
+    /// Timeout for read-only Homebrew commands (info, search, outdated).
+    /// These are normally fast, but a hung NFS share or locked database can
+    /// make them stall indefinitely.
+    private static let brewReadTimeout: TimeInterval = 30
+    private static let processTerminationGrace: TimeInterval = 2
+
+    /// SIGTERM is cooperative. Escalate only when a command ignores it so a
+    /// cancelled or timed-out operation cannot keep the serial queue forever.
+    private static func stop(_ process: Process, finished: DispatchSemaphore? = nil) {
+        guard process.isRunning else { return }
+        process.terminate()
+        if let finished {
+            if finished.wait(timeout: .now() + processTerminationGrace) == .timedOut,
+               process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+                _ = finished.wait(timeout: .now() + processTerminationGrace)
+            }
+            return
+        }
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + processTerminationGrace) {
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
+    }
+
     private func run(_ command: HomebrewCommand,
                      completion: @escaping (_ status: Int32, _ output: String) -> Void) {
         workQueue.async {
@@ -593,15 +639,38 @@ final class HomebrewManager: ObservableObject {
             let pipe = Pipe()
             process.standardOutput = pipe
             process.standardError = pipe
+            var data = Data()
+            let lock = NSLock()
+            let drained = DispatchSemaphore(value: 0)
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                guard !chunk.isEmpty else {
+                    drained.signal()
+                    return
+                }
+                lock.lock()
+                data.append(chunk)
+                lock.unlock()
+            }
+            let finished = DispatchSemaphore(value: 0)
+            process.terminationHandler = { _ in finished.signal() }
             do {
                 try process.run()
             } catch {
+                pipe.fileHandleForReading.readabilityHandler = nil
                 completion(-1, error.localizedDescription)
                 return
             }
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            process.waitUntilExit()
-            completion(process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
+            if finished.wait(timeout: .now() + Self.brewReadTimeout) == .timedOut {
+                Self.stop(process, finished: finished)
+            }
+            _ = drained.wait(timeout: .now() + 1)
+            pipe.fileHandleForReading.readabilityHandler = nil
+            try? pipe.fileHandleForReading.close()
+            lock.lock()
+            let output = String(data: data, encoding: .utf8) ?? ""
+            lock.unlock()
+            completion(process.isRunning ? -1 : process.terminationStatus, output)
         }
     }
 
@@ -617,9 +686,13 @@ final class HomebrewManager: ObservableObject {
             process.standardError = pipe
             var output = Data()
             let lock = NSLock()
+            let drained = DispatchSemaphore(value: 0)
             pipe.fileHandleForReading.readabilityHandler = { handle in
                 let data = handle.availableData
-                guard !data.isEmpty else { return }
+                guard !data.isEmpty else {
+                    drained.signal()
+                    return
+                }
                 lock.lock()
                 output.append(data)
                 lock.unlock()
@@ -634,15 +707,15 @@ final class HomebrewManager: ObservableObject {
                 completion(-1, error.localizedDescription)
                 return
             }
-            DispatchQueue.main.async { self?.activeProcess = process }
-            process.waitUntilExit()
-            pipe.fileHandleForReading.readabilityHandler = nil
-            let remainder = pipe.fileHandleForReading.readDataToEndOfFile()
-            if !remainder.isEmpty {
-                lock.lock()
-                output.append(remainder)
-                lock.unlock()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.activeProcess = process
+                if self.cancelRequested { Self.stop(process) }
             }
+            process.waitUntilExit()
+            _ = drained.wait(timeout: .now() + 1)
+            pipe.fileHandleForReading.readabilityHandler = nil
+            try? pipe.fileHandleForReading.close()
             lock.lock()
             let finalOutput = String(data: output, encoding: .utf8) ?? ""
             lock.unlock()

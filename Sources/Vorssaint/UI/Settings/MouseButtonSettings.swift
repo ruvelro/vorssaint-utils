@@ -54,6 +54,7 @@ struct MouseButtonShortcutsSection: View {
                     mappingRow(pendingButton, shortcut: nil)
                 }
                 captureRow
+                MouseExceptionsList(scope: .buttonShortcuts)
             }
         }
         .onDisappear {
@@ -134,7 +135,7 @@ struct MouseButtonShortcutsSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .onReceive(service.$lastButtonSeen) { seen in
+            .onReceive(service.$lastInputSeen) { seen in
                 handleCapture(seen)
             }
         } else {

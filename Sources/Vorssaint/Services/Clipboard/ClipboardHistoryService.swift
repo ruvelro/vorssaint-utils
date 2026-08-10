@@ -59,7 +59,6 @@ final class ClipboardHistoryService: ObservableObject {
     private var hotKeyHandler: EventHandlerRef?
     private var registeredShortcut: GlobalShortcut?
     private var pasteTargetApp: NSRunningApplication?
-    private let maxCharacters = 20_000
     /// Writes coalesce per mutation cycle; the JSON encode and the disk write
     /// stay off the main thread (a full history of long texts is real work),
     /// serialized so blobs land in mutation order.
@@ -231,6 +230,18 @@ final class ClipboardHistoryService: ObservableObject {
         selected.remove(entry.id)
         quickBatchEntryIDs = selected
         save()
+    }
+
+    @discardableResult
+    func updateText(_ entry: ClipboardHistoryEntry, to draft: String) -> Bool {
+        guard entry.kind == .text,
+              let text = ClipboardHistoryEditing.storableText(draft),
+              let index = entries.firstIndex(where: { $0.id == entry.id })
+        else { return false }
+        if entries[index].text == text { return true }
+        entries[index].text = text
+        save()
+        return true
     }
 
     func clearRecent() {
@@ -452,6 +463,7 @@ final class ClipboardHistoryService: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         isRunning = true
+        ClipboardIgnoredApps.shared.setHistoryRunning(true)
         baselinePasteboard()
     }
 
@@ -459,6 +471,7 @@ final class ClipboardHistoryService: ObservableObject {
         timer?.invalidate()
         timer = nil
         isRunning = false
+        ClipboardIgnoredApps.shared.setHistoryRunning(false)
         captureGeneration &+= 1
         captureInFlight = false
     }
@@ -520,11 +533,15 @@ final class ClipboardHistoryService: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, self.captureGeneration == generation else { return }
                 self.captureInFlight = false
+                // Asked once per check and before anything can return early,
+                // so the window it answers for always ends here: whether a
+                // listed app could be the one that copied since the last look.
+                let excludedSource = ClipboardIgnoredApps.shared.excludedSourceSinceLastCheck()
                 // Strictly forward: never re-capture a change that
                 // ignoreNextChange() consumed while the read was running.
                 guard changeCount > self.lastChangeCount else { return }
                 self.lastChangeCount = changeCount
-                guard self.isRunning, let content else { return }
+                guard self.isRunning, !excludedSource, let content else { return }
                 switch content {
                 case .files(let paths): self.promoteFiles(paths)
                 case .image(let image): self.promoteImage(image)
@@ -538,6 +555,13 @@ final class ClipboardHistoryService: ObservableObject {
     /// the pasteboard server, which is exactly why it stays off the main thread.
     private static func readPasteboard(includeImagesFiles: Bool) -> CapturedContent? {
         let pasteboard = NSPasteboard.general
+        // An app can mark what it puts on the pasteboard as a secret, which is
+        // what the apps that keep passwords do when they hand one over. Said
+        // that plainly by the app itself, it is taken at its word and the
+        // content is never even read, whatever the other options say.
+        if ClipboardHistorySensitiveText.isConcealed((pasteboard.types ?? []).map(\.rawValue)) {
+            return nil
+        }
         // Files first: a Finder copy also carries name strings, and a browser
         // image copy also carries URL text, so richer content wins over its
         // own textual fallbacks.
@@ -657,7 +681,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func promote(_ raw: String) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, text.count <= maxCharacters else { return }
+        guard !text.isEmpty, text.count <= ClipboardHistoryEditing.maxCharacters else { return }
         if UserDefaults.standard.bool(forKey: DefaultsKey.clipboardHistorySkipSensitive),
            looksSensitive(text) {
             return
@@ -961,7 +985,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 800, height: 560),
                             styleMask: [.titled, .closable, .fullSizeContentView, .nonactivatingPanel],
                             backing: .buffered,
                             defer: false)
@@ -985,7 +1009,7 @@ final class ClipboardHistoryService: ObservableObject {
 
     private func position(_ panel: NSPanel) {
         panel.contentViewController?.view.layoutSubtreeIfNeeded()
-        let size = panel.contentViewController?.view.fittingSize ?? NSSize(width: 520, height: 560)
+        let size = panel.contentViewController?.view.fittingSize ?? NSSize(width: 800, height: 560)
         let screen = NSScreen.pointerVisibleFrame
         let x = screen.midX - size.width / 2
         let y = min(screen.maxY - size.height - 54, screen.midY - size.height / 2)
@@ -1001,6 +1025,12 @@ final class ClipboardHistoryService: ObservableObject {
         removeKeyMonitor()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak panel] event in
             guard let self, let panel, event.window === panel else { return event }
+            // A multiline editor owns its normal editing keys. The search box
+            // uses a field editor, so its existing list shortcuts stay intact.
+            if let textView = panel.firstResponder as? NSTextView,
+               !textView.isFieldEditor {
+                return event
+            }
             if event.keyCode == UInt16(kVK_Escape) {
                 // Esc backs out one layer at a time: first the selection,
                 // then the window.

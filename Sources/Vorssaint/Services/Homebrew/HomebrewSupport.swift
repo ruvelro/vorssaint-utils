@@ -46,6 +46,16 @@ struct HomebrewPackageUpdate: Hashable {
     }
 }
 
+/// An installed cask as the catalog describes it, including which app
+/// bundles it drops into the Applications folder. The app update check needs
+/// that link to read the version the app itself reports.
+struct HomebrewCaskRecord: Hashable {
+    let token: String
+    let displayName: String
+    let installedVersion: String?
+    let appFileNames: [String]
+}
+
 enum HomebrewPackageOrdering {
     static func updatesFirst(_ packages: [HomebrewPackage]) -> [HomebrewPackage] {
         packages.filter(\.hasUpdateAvailable) + packages.filter { !$0.hasUpdateAvailable }
@@ -154,6 +164,22 @@ enum HomebrewCommandBuilder {
 
     static func outdated(brewPath: String) -> HomebrewCommand {
         HomebrewCommand(executable: brewPath, arguments: ["outdated", "--json=v2"])
+    }
+
+    /// Casks the plain listing hides because they carry their own updater.
+    /// Those are exactly the apps the update check is for, so it asks for
+    /// them explicitly and then checks each app bundle before believing the
+    /// answer (see `AppUpdatesSupport.packageUpdates`).
+    static func outdatedCasksIncludingSelfUpdating(brewPath: String) -> HomebrewCommand {
+        HomebrewCommand(executable: brewPath,
+                        arguments: ["outdated", "--cask", "--greedy", "--json=v2"])
+    }
+
+    static func upgradeCasks(brewPath: String, tokens: [String]) -> HomebrewCommand? {
+        let valid = tokens.filter(isValidToken)
+        guard !valid.isEmpty else { return nil }
+        return HomebrewCommand(executable: brewPath,
+                               arguments: ["upgrade", "--cask", "--greedy"] + valid)
     }
 
     static func update(brewPath: String) -> HomebrewCommand {
@@ -572,6 +598,53 @@ enum HomebrewParser {
                                        stableVersion: nil,
                                        homepage: nil)
             }
+    }
+
+    /// Installed casks with the app bundles they install, so a package token
+    /// can be traced back to the app on disk.
+    static func parseInstalledCaskRecords(_ output: String) -> [HomebrewCaskRecord] {
+        for json in [output] + balancedJSONObjects(in: output) {
+            let data = Data(json.utf8)
+            guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let casks = root["casks"] as? [[String: Any]] else { continue }
+            return casks.compactMap(parseCaskRecord)
+        }
+        return []
+    }
+
+    private static func parseCaskRecord(_ item: [String: Any]) -> HomebrewCaskRecord? {
+        guard let token = item["token"] as? String,
+              HomebrewCommandBuilder.isValidToken(token) else { return nil }
+        let displayName = (item["name"] as? [String])?.first(where: { !$0.isEmpty }) ?? token
+        let installed = item["installed"] as? String
+        var appFileNames: [String] = []
+        for artifact in (item["artifacts"] as? [Any] ?? []) {
+            guard let entry = artifact as? [String: Any],
+                  let apps = entry["app"] as? [Any] else { continue }
+            // A package can rename the bundle it installs. Prefer that target
+            // name, then keep the source name as a fallback for older output.
+            var targets: [String] = []
+            var sources: [String] = []
+            if let target = entry["target"] as? String { targets.append(target) }
+            for app in apps {
+                if let source = app as? String {
+                    sources.append(source)
+                } else if let mapping = app as? [String: Any],
+                          let target = mapping["target"] as? String {
+                    targets.append(target)
+                }
+            }
+            for candidate in targets.isEmpty ? sources : targets {
+                let fileName = URL(fileURLWithPath: candidate).lastPathComponent
+                if fileName.hasSuffix(".app"), !appFileNames.contains(fileName) {
+                    appFileNames.append(fileName)
+                }
+            }
+        }
+        return HomebrewCaskRecord(token: token,
+                                  displayName: displayName,
+                                  installedVersion: installed?.isEmpty == false ? installed : nil,
+                                  appFileNames: appFileNames)
     }
 
     static func parseOutdatedJSON(_ data: Data) throws -> [String: HomebrewPackageUpdate] {

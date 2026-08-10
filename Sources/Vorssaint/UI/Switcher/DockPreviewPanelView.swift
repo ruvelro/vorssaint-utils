@@ -67,6 +67,7 @@ private struct DockPreviewPanelContent: View {
     let onSelectNext: () -> Void
 
     @ObservedObject private var l10n = L10n.shared
+    @AppStorage(DefaultsKey.dockPreviewBackgroundOpacity) private var backgroundOpacity = 1.0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -115,8 +116,11 @@ private struct DockPreviewPanelContent: View {
         }
         .frame(height: DockPreviewSupport.panelSize(itemCount: 1,
                                                     screenVisibleFrame: CGRect(x: 0, y: 0, width: 500, height: 500)).height)
-        .background(HUDBackdrop(cornerRadius: 18))
+        .background(HUDBackdrop(cornerRadius: 18,
+                                opacity: DockPreviewSupport.sanitizedBackgroundOpacity(backgroundOpacity)))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        // The hairline keeps its full strength as the material fades: it is what
+        // still draws the panel's shape once the frost stops doing it.
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
@@ -331,21 +335,12 @@ private struct DockPreviewCard: View {
             .frame(width: DockPreviewSupport.cardWidth - 18,
                    height: DockPreviewSupport.cardHeight - 54)
 
-            VStack(spacing: 1) {
-                Text(window.displaySubtitle ?? window.displayTitle)
-                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .foregroundStyle(isSelected ? .primary : .secondary)
-                if window.displaySubtitle != nil {
-                    Text(window.displayTitle)
-                        .font(.system(size: 9.5, weight: .medium))
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            .frame(height: 24, alignment: .top)
+            Text(window.displayTitle)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .foregroundStyle(.primary)
+                .frame(height: 24)
                 .frame(maxWidth: DockPreviewSupport.cardWidth - 22)
         }
         .padding(9)

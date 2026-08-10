@@ -20,7 +20,7 @@ final class RadialMenuService: ObservableObject {
     /// Names of the submenus that were descended into, for the hub's back hint.
     @Published private(set) var trail: [String] = []
     @Published private(set) var highlightedIndex: Int?
-    /// True while a hold-capable session still owns its shortcut or side
+    /// True while a hold-capable session still owns its shortcut or mouse
     /// button; release behavior is determined by `sessionActivationMode`.
     @Published private(set) var holdPhase = false
     /// True when macOS refused the shortcut (taken by another app).
@@ -58,7 +58,9 @@ final class RadialMenuService: ObservableObject {
     private var pointerActivated = false
     private var sessionShortcut: GlobalShortcut?
     private var sessionActivationMode = RadialMenuActivationMode.pressOrHold
-    /// Set while a session was summoned by the side button and it is still
+    private var sessionUsesSuperKey = false
+    private var sessionID = 0
+    /// Set while a session was summoned by a mouse button and it is still
     /// down; releasing it runs the pointed slice, mirroring the chord.
     private var holdButton: Int64?
     private var mouseTrigger = RadialMenuMouseTrigger.off
@@ -100,14 +102,18 @@ final class RadialMenuService: ObservableObject {
 
     func suspend() {
         hotkey.unregister()
+        // The trigger ivar must die with the tap: the settings page's button
+        // test calls syncMouseTap() on appear, and a stale trigger would let
+        // it resurrect the tap — and the wheel — with the feature off.
+        mouseTrigger = .off
         tearDownMouseTap()
         endSession()
         panel = nil
     }
 
-    // MARK: - Side button trigger (a tap so the click never doubles as
-    // back/forward in the app under the pointer; alive only while a button
-    // is configured, torn down with the feature)
+    // MARK: - Mouse button trigger (a tap so the click never also reaches the
+    // app under the pointer; alive only while a button is configured, torn
+    // down with the feature)
 
     private func syncMouseTap() {
         guard mouseTrigger.buttonNumber != nil else {
@@ -238,8 +244,31 @@ final class RadialMenuService: ObservableObject {
         // outside click.
         sessionActivationMode = activationMode
         sessionShortcut = startsHeld && heldButton == nil ? shortcut : nil
+        sessionUsesSuperKey = startsHeld && heldButton == nil
+            && SuperKeyService.isEngaged && SuperKeyService.shared.isHeld
         holdButton = startsHeld ? heldButton : nil
         holdPhase = startsHeld
+        sessionID &+= 1
+        let activeSessionID = sessionID
+        if sessionUsesSuperKey {
+            SuperKeyService.shared.onHoldEnded = { [weak self] released in
+                guard let self,
+                      self.sessionUsesSuperKey,
+                      self.sessionID == activeSessionID else { return }
+                // No pointer event may mistake a queued cancellation for a
+                // physical release before the deferred resolution runs.
+                self.sessionShortcut = nil
+                DispatchQueue.main.async {
+                    guard self.sessionUsesSuperKey,
+                          self.sessionID == activeSessionID else { return }
+                    if released {
+                        self.endHoldPhase()
+                    } else {
+                        self.endSession()
+                    }
+                }
+            }
+        }
         stack = [items]
         trail = []
         highlightedIndex = nil
@@ -265,6 +294,7 @@ final class RadialMenuService: ObservableObject {
 
     private func endSession() {
         removeMonitors()
+        stopTrackingSuperKeyHold()
         panel?.orderOut(nil)
         stack = []
         trail = []
@@ -287,6 +317,7 @@ final class RadialMenuService: ObservableObject {
         items.compactMap { item in
             var item = item
             if let tool = item.tool, !tool.isRunnable() { return nil }
+            if item.kind == .quickToggle, !AppFeature.quickToggles.isAvailable { return nil }
             if item.kind == .windowLayout, !AppFeature.windowLayout.isAvailable { return nil }
             if item.kind == .submenu {
                 item.children = availableItems(item.children)
@@ -459,7 +490,11 @@ final class RadialMenuService: ObservableObject {
 
     private func handleFlagsChanged(_ flags: NSEvent.ModifierFlags) {
         guard sessionActive, holdPhase, let shortcut = sessionShortcut else { return }
-        guard !shortcut.requiredModifiersHeld(in: flags) else { return }
+        guard !RadialMenuSupport.shortcutIsStillHeld(
+            modifiersHeld: shortcut.requiredModifiersHeld(in: flags),
+            superKeyHeld: sessionUsesSuperKey && SuperKeyService.isEngaged
+                && SuperKeyService.shared.isHeld
+        ) else { return }
         endHoldPhase()
     }
 
@@ -482,6 +517,13 @@ final class RadialMenuService: ObservableObject {
     private func enterStickyPhase() {
         holdPhase = false
         holdButton = nil
+        stopTrackingSuperKeyHold()
+    }
+
+    private func stopTrackingSuperKeyHold() {
+        guard sessionUsesSuperKey else { return }
+        sessionUsesSuperKey = false
+        SuperKeyService.shared.onHoldEnded = nil
     }
 
     private func handleKeyDown(_ event: NSEvent) -> Bool {
@@ -545,6 +587,8 @@ final class RadialMenuService: ObservableObject {
             }
         case .tool:
             if let tool = item.tool { run(tool) }
+        case .quickToggle:
+            if let action = item.quickToggle { run(action) }
         case .windowLayout:
             if let action = item.windowLayoutAction { run(action) }
         case .submenu:
@@ -569,6 +613,23 @@ final class RadialMenuService: ObservableObject {
             case .shelf: ShelfService.shared.summon()
             case .cleaningMode: CleaningModeManager.shared.activate()
             case .keepAwake: KeepAwakeManager.shared.toggle()
+            }
+        }
+    }
+
+    private func run(_ action: RadialMenuQuickToggle) {
+        guard AppFeature.quickToggles.isAvailable else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            let toggles = QuickTogglesService.shared
+            switch action {
+            case .darkMode: toggles.toggleDarkMode()
+            case .emptyTrash: toggles.emptyTrash()
+            case .ejectDisks: toggles.ejectAllDisks()
+            case .hiddenFiles: toggles.toggleHiddenFiles()
+            case .desktopIcons: toggles.toggleDesktopIcons()
+            case .lockScreen: toggles.lockScreen()
+            case .displayOff: toggles.turnDisplayOff()
+            case .screenSaver: toggles.startScreenSaver()
             }
         }
     }
@@ -619,8 +680,10 @@ final class RadialMenuService: ObservableObject {
               let keyUp = CGEvent(keyboardEventSource: nil,
                                   virtualKey: CGKeyCode(shortcut.keyCode), keyDown: false)
         else { return }
-        keyDown.flags = shortcut.modifiers.cgFlags
-        keyUp.flags = shortcut.modifiers.cgFlags
+        // The flags a real press carries, so a shortcut on an arrow or an F
+        // key is recognised beyond the app in front as well (issue #401).
+        keyDown.flags = shortcut.syntheticEventFlags
+        keyUp.flags = shortcut.syntheticEventFlags
         keyDown.post(tap: .cghidEventTap)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.04) {
             keyUp.post(tap: .cghidEventTap)

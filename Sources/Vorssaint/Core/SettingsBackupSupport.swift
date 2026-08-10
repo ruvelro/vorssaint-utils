@@ -30,7 +30,10 @@ enum SettingsBackupSupport {
         DefaultsKey.shelfEnabled,
         DefaultsKey.finderCutPasteEnabled,
         DefaultsKey.textSnippets,
+        DefaultsKey.scratchpadDocument,
         DefaultsKey.radialMenuItems,
+        DefaultsKey.commandBarLinks,
+        DefaultsKey.commandBarRowShortcuts,
         DefaultsKey.language,
         DefaultsKey.appVolumes,
         DefaultsKey.appOutputDevices,
@@ -57,7 +60,6 @@ enum SettingsBackupSupport {
         // feature intros the user has already been through.
         DefaultsKey.hasOnboarded,
         DefaultsKey.onboardingStep,
-        DefaultsKey.dockPreviewIntroVersion,
         DefaultsKey.featuresOnboardingVersion,
         DefaultsKey.lastUpdateIntroVersion,
         DefaultsKey.supportUpdateIntroVersion,
@@ -72,9 +74,15 @@ enum SettingsBackupSupport {
     static let machineStateKeys: Set<String> = [
         DefaultsKey.micMuteActive,
         DefaultsKey.micMuteSavedVolume,
+        // Levels and device ids belong to the microphones of one Mac.
+        DefaultsKey.micMuteSavedVolumes,
+        DefaultsKey.micMuteMutedDevices,
         DefaultsKey.cleanerLastAutoRun,
+        // When the last check ran and what it found belong to one Mac.
+        DefaultsKey.appUpdatesLastCheck,
+        DefaultsKey.appUpdatesLastCount,
+        DefaultsKey.appUpdatesNotifiedIDs,
         DefaultsKey.cleanerLastAutoFreed,
-        DefaultsKey.cleanerBadgeSeen,
         DefaultsKey.whatsAppDownloadsAutomaticStartDate,
         DefaultsKey.whatsAppDownloadsLastAutoRun,
         DefaultsKey.whatsAppDownloadsLastCleanup,
@@ -91,11 +99,16 @@ enum SettingsBackupSupport {
         DefaultsKey.whatsAppOrganizerLastMoved,
         DefaultsKey.whatsAppOrganizerLastDuplicates,
         DefaultsKey.whatsAppOrganizerLastFailed,
+        // What one person runs most is habit, not configuration.
+        DefaultsKey.commandBarUsage,
         DefaultsKey.simulateUpdate,
         DefaultsKey.updateShowcaseIntroVersion,
         DefaultsKey.updateShowcaseMediaOverride,
         DefaultsKey.settingsWindowWidth,
         DefaultsKey.settingsWindowHeight,
+        DefaultsKey.screenshotSharingDeveloperEndpoint,
+        DefaultsKey.fanControlRecoveryNeeded,
+        DefaultsKey.fanControlHelperVersion,
     ]
 
     /// The file's content: an envelope with the format version, the app
@@ -134,19 +147,45 @@ enum SettingsBackupSupport {
     /// switch belongs, or text where a number belongs, would otherwise reach
     /// code that trusts its own settings.
     static func valueLooksRight(_ key: String, _ value: Any) -> Bool {
+        if key == DefaultsKey.scratchpadDocument {
+            return ScratchpadDocument.decoded(value as? Data, defaultName: "Scratchpad") != nil
+        }
         guard let expected = Defaults.registeredDefaults[key] else {
             // Not a registered setting, so there is nothing to compare
             // against; the allowed list is the only gate for these.
             return true
         }
         switch expected {
-        case is Bool: return value is Bool
-        case is Int: return value is Int
-        case is Double: return (value is Double) || (value is Int)
+        case is Bool: return isBoolean(value)
+        case is Int: return isInteger(value)
+        case is Double: return isNumber(value)
         case is String: return value is String
+        case is [String]: return value is [String]
+        case is [String: String]: return value is [String: String]
         case is [Any]: return value is [Any]
         case is [String: Any]: return value is [String: Any]
         default: return true
         }
+    }
+
+    private static func number(_ value: Any) -> NSNumber? {
+        value as? NSNumber
+    }
+
+    private static func isBoolean(_ value: Any) -> Bool {
+        guard let value = number(value) else { return false }
+        return CFGetTypeID(value) == CFBooleanGetTypeID()
+    }
+
+    private static func isInteger(_ value: Any) -> Bool {
+        guard let value = number(value), CFGetTypeID(value) != CFBooleanGetTypeID() else {
+            return false
+        }
+        return !CFNumberIsFloatType(unsafeBitCast(value, to: CFNumber.self))
+    }
+
+    private static func isNumber(_ value: Any) -> Bool {
+        guard let value = number(value) else { return false }
+        return CFGetTypeID(value) != CFBooleanGetTypeID()
     }
 }

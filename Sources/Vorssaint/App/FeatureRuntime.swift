@@ -63,12 +63,19 @@ final class FeatureRuntime: ObservableObject {
     /// else uninstalls. Nothing is deleted, so any feature returns with one
     /// click, settings intact.
     func apply(_ preset: FeaturePreset) {
-        for key in preset.enableKeys {
+        replaceAvailable(with: preset.features, enabling: preset.enableKeys)
+    }
+
+    /// Replaces the installed set after the first-run picker. It uses the same
+    /// availability layer as the hub, so unselected features disappear without
+    /// losing any of their settings.
+    func replaceAvailable(with selected: Set<AppFeature>, enabling keys: [String] = []) {
+        for key in keys {
             UserDefaults.standard.set(true, forKey: key)
         }
         for feature in AppFeature.allCases
-        where feature.isAvailable != preset.features.contains(feature) {
-            let joins = preset.features.contains(feature)
+        where feature.isAvailable != selected.contains(feature) {
+            let joins = selected.contains(feature)
             UserDefaults.standard.set(joins, forKey: feature.availabilityKey)
             if joins { loadedThisSession.insert(feature) }
             Self.bindings[feature]?()
@@ -76,7 +83,7 @@ final class FeatureRuntime: ObservableObject {
         // Features that stayed installed still need a sync: their enable
         // keys may have just flipped on. Syncs are idempotent, so a repeat
         // for the ones handled above costs nothing.
-        for feature in preset.features {
+        for feature in selected {
             Self.bindings[feature]?()
         }
         revision += 1
@@ -117,14 +124,14 @@ final class FeatureRuntime: ObservableObject {
     /// their surfaces simply follow availability in the UI.
     private static let bindings: [AppFeature: () -> Void] = [
         .switcher: {
-            AppActivationTracker.shared.syncWithFeatures()
+            WindowUseTracker.shared.syncWithFeatures()
             AppSwitcher.shared.syncWithPreferences()
         },
         .dockPreview: { DockPreviewService.shared.syncWithPreferences() },
         .dockClick: { DockClickService.shared.syncWithPreferences() },
         .windowMaximizer: { WindowMaximizer.shared.syncWithPreferences() },
         .windowLayout: {
-            AppActivationTracker.shared.syncWithFeatures()
+            WindowUseTracker.shared.syncWithFeatures()
             WindowLayoutService.shared.syncWithPreferences()
         },
         .autoQuit: { AutoQuitService.shared.syncWithPreferences() },
@@ -134,6 +141,7 @@ final class FeatureRuntime: ObservableObject {
         .mouseButtonShortcuts: { MouseButtonShortcutService.shared.syncWithPreferences() },
         .middleClick: { MiddleClickService.shared.syncWithPreferences() },
         .keyboardDebounce: { KeyboardDebounceService.shared.syncWithPreferences() },
+        .superKey: { SuperKeyService.shared.syncWithPreferences() },
         .textSnippets: {
             TextSnippetService.shared.syncWithPreferences()
             SnippetLibraryService.shared.syncWithPreferences()
@@ -141,8 +149,10 @@ final class FeatureRuntime: ObservableObject {
         .clipboardHistory: { ClipboardHistoryService.shared.syncWithPreferences() },
         .pastePlain: { PastePlainService.shared.syncWithPreferences() },
         .finderCutPaste: { FinderCutPaste.shared.syncWithPreferences() },
+        .finderRename: { FinderRenameService.shared.syncWithPreferences() },
         .shelf: { ShelfService.shared.syncWithPreferences() },
         .urlCleaner: { URLCleanerService.shared.syncWithPreferences() },
+        .diskImageInstaller: { DiskImageInstallerService.shared.syncWithPreferences() },
         .mixer: {
             AppVolumeMixer.shared.syncWithPreferences()
             AudioInputDeviceManager.shared.syncWithPreferences()
@@ -160,9 +170,11 @@ final class FeatureRuntime: ObservableObject {
         .colorPicker: { ColorSamplerService.shared.syncWithPreferences() },
         .screenOCR: { ScreenTextService.shared.syncWithPreferences() },
         .screenshot: { ScreenshotService.shared.syncWithPreferences() },
+        .screenRecorder: { ScreenRecorderService.shared.syncWithPreferences() },
         .cameraPreview: { CameraPreviewService.shared.syncWithPreferences() },
         .radialMenu: { RadialMenuService.shared.syncWithPreferences() },
         .scratchpad: { ScratchpadService.shared.syncWithPreferences() },
+        .commandBar: { CommandBarService.shared.syncWithPreferences() },
         .cleaner: {
             CleanerScheduler.shared.syncWithPreferences()
             WhatsAppDownloadScheduler.shared.syncWithPreferences()
@@ -172,12 +184,22 @@ final class FeatureRuntime: ObservableObject {
                 WhatsAppDownloadOrganizer.shared.stop()
             }
         },
+        .appUpdates: { AppUpdatesService.shared.syncWithPreferences() },
         .monitorCPU: { FeatureRuntime.syncMonitor() },
         .monitorGPU: { FeatureRuntime.syncMonitor() },
         .monitorMemory: { FeatureRuntime.syncMonitor() },
         .monitorNetwork: { FeatureRuntime.syncMonitor() },
         .monitorDisk: { FeatureRuntime.syncMonitor() },
         .monitorPower: { FeatureRuntime.syncMonitor() },
+        .fanControl: {
+            SystemMonitor.shared.planDidChange()
+            let defaults = UserDefaults.standard
+            let needsRecovery = defaults.bool(forKey: DefaultsKey.fanControlRecoveryNeeded)
+            let hasRegisteredHelper = !(defaults.string(forKey: DefaultsKey.fanControlHelperVersion) ?? "").isEmpty
+            if needsRecovery || (!AppFeature.fanControl.isAvailable && hasRegisteredHelper) {
+                FanControlService.shared.syncWithPreferences()
+            }
+        },
     ]
 
     private static func syncMonitor() {
