@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.3.2]
+
+### Summary
+Vorssaint 3.3.2 opens the Command Bar immediately, adds a direct Emoji shortcut
+and prevents a Switcher shortcut crash. It also removes false App Updates listings
+and improves feature setup, Dock Preview controls, keyboard navigation and custom
+Caps Lock settings.
+
+### Added
+- Emoji can open directly from a shortcut assigned to its Command Bar row.
+  Thanks to @MaximilianMauroner.
+
+### Changed
+- Installed Features rows open their Settings page and highlight the relevant
+  controls. Thanks to @dorlugasigal.
+- Cleaning and the Uninstaller now explain how to grant Full Disk Access and
+  that the app must reopen. Thanks to @PathGao.
+- Quit on close exceptions are no longer editable while the feature is off, since
+  nothing reads them there. Thanks to @PathGao.
+- Showing Clipboard in the panel now sits on its own in Settings, since it keeps
+  working while history capture is off. Thanks to @PathGao.
+- The Command Bar now accepts Control-P and Control-N to move through results.
+  Thanks to @theafox.
+
+### Fixed
+- The Command Bar now appears immediately while its results finish loading.
+  Thanks to @MaximilianMauroner.
+- App Updates no longer offers store updates that belong to a different app.
+  Thanks to @PathGao.
+- The App Switcher now shows its configured shortcut in the large icon mode label.
+  Thanks to @liuxxxu.
+- The app no longer quits while typing when the Switcher's Windows shortcut uses a
+  key whose label comes from the keyboard layout. Thanks to @eioz.
+- The Super key now works when Caps Lock is set to do nothing.
+- Dock Preview controls no longer show an oversized blue effect when focused or
+  hovered.
+
 ## [3.3.1] - 2026-08-09
 
 ### Summary

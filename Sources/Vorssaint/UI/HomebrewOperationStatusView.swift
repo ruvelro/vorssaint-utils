@@ -172,9 +172,6 @@ struct HomebrewOperationStatusView: View {
             if status.action == .upgradeAll {
                 return l10n.s.homebrewOperationUpgradeAll
             }
-            if status.action == .cleanup {
-                return l10n.s.homebrewOperationCleanup
-            }
             return String(format: runningTitleFormat, packageDisplayName)
         case .succeeded:
             if status.action == .updateHomebrew {
@@ -182,9 +179,6 @@ struct HomebrewOperationStatusView: View {
             }
             if status.action == .upgradeAll {
                 return l10n.s.homebrewOperationUpgradedAll
-            }
-            if status.action == .cleanup {
-                return l10n.s.homebrewOperationCleaned
             }
             return String(format: succeededTitleFormat, packageDisplayName)
         case .failed:
@@ -224,7 +218,6 @@ struct HomebrewOperationStatusView: View {
         case .upgrade: return l10n.s.homebrewOperationUpgradeFormat
         case .upgradeAll: return l10n.s.homebrewOperationUpgradeAll
         case .updateHomebrew: return l10n.s.homebrewOperationUpdateHomebrew
-        case .cleanup: return l10n.s.homebrewOperationCleanup
         }
     }
 
@@ -235,7 +228,6 @@ struct HomebrewOperationStatusView: View {
         case .upgrade: return l10n.s.homebrewOperationUpgradedFormat
         case .upgradeAll: return l10n.s.homebrewOperationUpgradedAll
         case .updateHomebrew: return l10n.s.homebrewOperationUpdatedHomebrew
-        case .cleanup: return l10n.s.homebrewOperationCleaned
         }
     }
 

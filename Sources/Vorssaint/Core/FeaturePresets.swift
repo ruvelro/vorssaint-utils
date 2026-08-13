@@ -110,10 +110,7 @@ extension AppFeature {
              .monitorCPU, .monitorGPU, .monitorMemory,
              .monitorNetwork, .monitorDisk, .monitorPower:
             return .periodic
-        case .mixer:
-            return UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
-                ? .keyboard : .idle
-        case .pastePlain, .soundOutputSwitcher, .micMute,
+        case .pastePlain, .mixer, .soundOutputSwitcher, .micMute,
              .musicBlock, .keepAwake, .brightness, .quickLauncher, .quickToggles, .colorPicker,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .fanControl,

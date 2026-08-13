@@ -4,6 +4,7 @@
 import CoreAudio
 import CoreGraphics
 import Carbon.HIToolbox
+import Combine
 import Darwin
 import Foundation
 
@@ -1821,7 +1822,7 @@ struct MetricsTests {
         // per-release decision: this check fails on every version bump so the
         // decision above is made consciously, never by omission.
         let plistVersion = (NSDictionary(contentsOfFile: "Resources/Info.plist")?["CFBundleShortVersionString"] as? String) ?? ""
-        expect(plistVersion == "3.3.1",
+        expect(plistVersion == "3.3.2",
                "bumping the app version requires re-deciding the support prompt pin above")
         expect(SupportUpdateIntroInfo.releaseVersion == "3.3.0",
                "3.3.0 shows the deliberately curated community and support intro")
@@ -1834,7 +1835,8 @@ struct MetricsTests {
                "highlights tour shows once after updating to its pinned release")
         expect(!UpdateHighlightsInfo.shouldShow(appVersion: "3.3.1", lastSeenVersion: "3.3.1"),
                "highlights tour stays hidden after it is seen")
-        expect(!UpdateHighlightsInfo.shouldShow(appVersion: "3.3.0", lastSeenVersion: nil),
+        expect(!UpdateHighlightsInfo.shouldShow(appVersion: "3.3.0", lastSeenVersion: nil)
+               && !UpdateHighlightsInfo.shouldShow(appVersion: "3.3.2", lastSeenVersion: nil),
                "highlights tour never leaks into another release")
         expect(registeredDefaults[DefaultsKey.mixerLowerVolumeOnHeadphonesDisconnect] as? Bool == false,
                "headphone disconnect volume lowering is opt-in")
@@ -2310,6 +2312,13 @@ struct MetricsTests {
         expect(GlobalShortcut(keyCode: Int64(kVK_ISO_Section),
                               modifiers: [.control, .option, .command]).isValid,
                "the extra ISO key (paragraph/caret above Tab) is recordable as a shortcut")
+        GlobalShortcut.refreshLayoutLabels()
+        let backgroundISOKeyIsValid = DispatchQueue.global().sync {
+            GlobalShortcut(keyCode: Int64(kVK_ISO_Section),
+                           modifiers: [.control, .option, .command]).isValid
+        }
+        expect(backgroundISOKeyIsValid,
+               "layout-dependent shortcut labels are safe to read off the main thread")
 
         // The native full screen action, wired like the sixths: real strings,
         // a stable id, and no system-wide key claimed until someone asks.
@@ -6771,9 +6780,6 @@ struct MetricsTests {
         expect(HomebrewCommandBuilder.update(brewPath: brewPath).arguments
                == ["update"],
                "Homebrew update command refreshes Homebrew metadata")
-        expect(HomebrewCommandBuilder.cleanup(brewPath: brewPath).arguments
-               == ["cleanup"],
-               "Homebrew cleanup command removes stale Homebrew downloads and old package versions")
         expect(HomebrewCommandBuilder.install(brewPath: brewPath, package: cask).arguments
                == ["install", "--cask", "sample-tool"],
                "cask install command uses --cask")
@@ -6800,8 +6806,6 @@ struct MetricsTests {
                "Homebrew package update status uses an update icon")
         expect(HomebrewOperation.Action.updateHomebrew.runningSystemImage == "arrow.triangle.2.circlepath",
                "Homebrew metadata refresh status uses a refresh icon")
-        expect(HomebrewOperation.Action.cleanup.runningSystemImage == "trash.circle.fill",
-               "Homebrew cleanup status uses a cleanup icon")
         expect(HomebrewCommandBuilder.needsTerminalFallback(output: "sudo: a terminal is required to read the password"),
                "sudo terminal error triggers Homebrew terminal fallback")
         expect(HomebrewCommandBuilder.installerCommand == #"/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)""#,
@@ -6849,9 +6853,6 @@ struct MetricsTests {
         expect(HomebrewProgressParser.phase(in: "Already up-to-date.",
                                             action: .updateHomebrew) == .refreshing,
                "Homebrew progress parser detects metadata refresh")
-        expect(HomebrewProgressParser.phase(in: "Removing: /Users/test/Library/Caches/Homebrew/foo",
-                                            action: .cleanup) == .finalizing,
-               "Homebrew progress parser treats cleanup output as finalizing")
         expect(HomebrewProgressParser.activity(in: "\u{001B}[32m==> Moving App 'Sample.app'\u{001B}[0m")
                == "Moving App 'Sample.app'",
                "Homebrew progress parser cleans activity lines")
@@ -7034,8 +7035,7 @@ struct MetricsTests {
             expectFormat(strings.homebrewConfirmUpgradeBodyFormat, ["@"], "\(prefix) Homebrew upgrade format")
             expect(!strings.homebrewUpgradeAll.isEmpty, "\(prefix) Homebrew update all title is present")
             expect(!strings.homebrewUpdateHomebrew.isEmpty, "\(prefix) Homebrew update Homebrew title is present")
-            expect(!strings.homebrewCleanup.isEmpty, "\(prefix) Homebrew cleanup title is present")
-            expect(!strings.switcherIconRowMode.isEmpty, "\(prefix) App Switcher icon-row title is present")
+            expectFormat(strings.switcherIconRowMode, ["@"], "\(prefix) App Switcher icon-row title format")
             expect(!strings.switcherIconRowModeCaption.isEmpty, "\(prefix) App Switcher icon-row caption is present")
             expect(!strings.switcherSimpleMode.isEmpty, "\(prefix) App Switcher simple-mode title is present")
             expect(!strings.switcherSimpleModeCaption.isEmpty, "\(prefix) App Switcher simple-mode caption is present")
@@ -7154,21 +7154,17 @@ struct MetricsTests {
             expect(!strings.homebrewConfirmUpgradeAllBody.isEmpty, "\(prefix) Homebrew update all confirmation body is present")
             expect(!strings.homebrewConfirmUpdateHomebrewTitle.isEmpty, "\(prefix) Homebrew update Homebrew confirmation title is present")
             expect(!strings.homebrewConfirmUpdateHomebrewBody.isEmpty, "\(prefix) Homebrew update Homebrew confirmation body is present")
-            expect(!strings.homebrewConfirmCleanupTitle.isEmpty, "\(prefix) Homebrew cleanup confirmation title is present")
-            expect(!strings.homebrewConfirmCleanupBody.isEmpty, "\(prefix) Homebrew cleanup confirmation body is present")
             expectFormat(strings.homebrewPopularityFormat, ["@", "@"], "\(prefix) Homebrew popularity format")
             expectFormat(strings.homebrewOperationInstallFormat, ["@"], "\(prefix) Homebrew operation install format")
             expectFormat(strings.homebrewOperationUninstallFormat, ["@"], "\(prefix) Homebrew operation uninstall format")
             expectFormat(strings.homebrewOperationUpgradeFormat, ["@"], "\(prefix) Homebrew operation upgrade format")
             expect(!strings.homebrewOperationUpgradeAll.isEmpty, "\(prefix) Homebrew operation update all is present")
             expect(!strings.homebrewOperationUpdateHomebrew.isEmpty, "\(prefix) Homebrew operation update Homebrew is present")
-            expect(!strings.homebrewOperationCleanup.isEmpty, "\(prefix) Homebrew operation cleanup is present")
             expectFormat(strings.homebrewOperationInstalledFormat, ["@"], "\(prefix) Homebrew operation installed format")
             expectFormat(strings.homebrewOperationUninstalledFormat, ["@"], "\(prefix) Homebrew operation uninstalled format")
             expectFormat(strings.homebrewOperationUpgradedFormat, ["@"], "\(prefix) Homebrew operation upgraded format")
             expect(!strings.homebrewOperationUpgradedAll.isEmpty, "\(prefix) Homebrew operation updated all is present")
             expect(!strings.homebrewOperationUpdatedHomebrew.isEmpty, "\(prefix) Homebrew operation updated Homebrew is present")
-            expect(!strings.homebrewOperationCleaned.isEmpty, "\(prefix) Homebrew operation cleaned is present")
             expectFormat(strings.homebrewOperationFailedFormat, ["@"], "\(prefix) Homebrew operation failed format")
             expectFormat(strings.homebrewOperationElapsedFormat, ["@"], "\(prefix) Homebrew operation elapsed format")
 
@@ -7778,10 +7774,6 @@ struct MetricsTests {
         expect(!activeSet(.accessibility, on: [DefaultsKey.brightnessControlEnabled])
                 .contains(.brightness),
                "brightness sliders alone never use accessibility")
-        expect(activeSet(.accessibility, on: [DefaultsKey.preciseVolumeRollerEnabled]).contains(.mixer),
-               "mixer uses accessibility only for precise volume roller")
-        expect(!activeSet(.accessibility).contains(.mixer),
-               "mixer without precise volume roller does not use accessibility")
         expect(activeSet(.accessibility).contains(.screenRecorder),
                "the recorder uses accessibility for anonymous typing timing while active")
 
@@ -7976,7 +7968,7 @@ struct MetricsTests {
                    "no em-dash in visible menu bar appearance strings (\(language.rawValue))")
             let appUpdateValues = Mirror(reflecting: FeatureStrings.appUpdates(language)).children
                 .compactMap { $0.value as? String }
-            expect(appUpdateValues.count == 35 && appUpdateValues.allSatisfy { !$0.isEmpty },
+            expect(appUpdateValues.count == 29 && appUpdateValues.allSatisfy { !$0.isEmpty },
                    "every app update string is set for \(language.rawValue)")
             expect(appUpdateValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible app update strings (\(language.rawValue))")
@@ -8240,6 +8232,75 @@ struct MetricsTests {
                "the quick toggles alone keep the quick tools page")
         expect(pageVisible(.clipboard, available: [.finderCutPaste]),
                "the image paste option keeps the Clipboard page available")
+        expect(AppFeature.allCases.allSatisfy { feature in
+            let destination = feature.settingsDestination
+            let gate = FeatureVisibilitySupport.features(for: destination.page)
+            return gate.isEmpty || gate.contains(feature)
+        }, "every feature destination is either always visible or gated by that feature")
+        expect(AppFeature.allCases.allSatisfy { $0.settingsDestination.hasValidSectionAnchor },
+               "every feature anchor belongs to its destination page")
+        expect(Set(AppFeature.allCases.compactMap(\.settingsDestination.sectionAnchor))
+                == Set(SettingsSectionAnchor.allCases),
+               "every declared Settings section anchor is used by a feature destination")
+        expect(AppFeature.windowMaximizer.settingsDestination
+                == FeatureSettingsDestination(.general, sectionAnchor: .panelConfiguration)
+                && AppFeature.mixer.settingsDestination
+                == FeatureSettingsDestination(.general, sectionAnchor: .panelConfiguration)
+                && AppFeature.cleaningMode.settingsDestination
+                == FeatureSettingsDestination(.general, sectionAnchor: .panelConfiguration),
+               "panel-oriented features land on General panel configuration")
+        expect(AppFeature.musicBlock.settingsDestination
+                == FeatureSettingsDestination(.general, sectionAnchor: .musicBlocking)
+                && AppFeature.soundOutputSwitcher.settingsDestination
+                == FeatureSettingsDestination(.shortcuts, sectionAnchor: .soundOutputSwitcher)
+                && AppFeature.diskImageInstaller.settingsDestination
+                == FeatureSettingsDestination(.features),
+               "features without dedicated pages use explicit nearest Settings destinations")
+        expect(!AppFeature.diskImageInstaller.hasNavigableSettingsDestination
+                && AppFeature.allCases.filter { $0 != .diskImageInstaller }
+                    .allSatisfy(\.hasNavigableSettingsDestination),
+               "a feature without a separate configuration surface does not show a dead-end link")
+        expect(AppFeature.monitorCPU.settingsDestination == FeatureSettingsDestination(.monitor)
+                && AppFeature.fanControl.settingsDestination
+                == FeatureSettingsDestination(.monitor, sectionAnchor: .fanControl),
+               "shared monitor destinations distinguish the dedicated fan controls")
+        let settingsRouter = SettingsRouter.shared
+        var settingsRequestCount = 0
+        var settingsRequestsPublishedReady = true
+        let settingsRequestObservation = settingsRouter.$requestID
+            .dropFirst()
+            .sink { requestID in
+                settingsRequestCount += 1
+                settingsRequestsPublishedReady =
+                    settingsRequestsPublishedReady
+                    && settingsRouter.pendingDestinationRequest?.id == requestID
+            }
+        let repeatedDestination = FeatureSettingsDestination(.mouse, sectionAnchor: .middleClick)
+        settingsRouter.request(repeatedDestination)
+        let firstSettingsRequestID = settingsRouter.requestID
+        settingsRouter.request(repeatedDestination)
+        expect(settingsRouter.destination == repeatedDestination
+                && settingsRouter.page == repeatedDestination.page,
+               "a Settings destination request selects its page and preserves its anchor")
+        expect(settingsRequestCount == 2 && settingsRouter.requestID != firstSettingsRequestID,
+               "repeated requests for the same Settings destination remain observable")
+        expect(settingsRequestsPublishedReady,
+               "a Settings request is ready to consume when its request identity is published")
+        let repeatedSettingsRequestID = settingsRouter.requestID
+        settingsRouter.consumeDestinationRequest(id: firstSettingsRequestID)
+        expect(settingsRouter.pendingDestinationRequest?.id == repeatedSettingsRequestID,
+               "consuming an older Settings request cannot clear a newer request")
+        settingsRouter.consumeDestinationRequest(id: repeatedSettingsRequestID)
+        expect(settingsRouter.pendingDestinationRequest == nil,
+               "a handled Settings destination request is cleared")
+        settingsRouter.cleanerTool = "tool-id"
+        settingsRouter.request(FeatureSettingsDestination(.cleaner))
+        expect(settingsRouter.page == .cleaner && settingsRouter.cleanerTool == "tool-id",
+               "requesting Cleaner Settings preserves its one-shot tool hint")
+        settingsRouter.consumeDestinationRequest(id: settingsRouter.requestID)
+        settingsRouter.cleanerTool = nil
+        settingsRouter.page = .general
+        withExtendedLifetime(settingsRequestObservation) {}
 
         // MARK: Display brightness (DDC/CI helpers)
 
@@ -10136,6 +10197,8 @@ struct MetricsTests {
 
         let capsMapping = SuperKeyMapping(source: SuperKeySupport.capsLockUsage,
                                           destination: SuperKeySupport.triggerUsage)
+        let noActionMapping = SuperKeyMapping(source: SuperKeySupport.noActionUsage,
+                                              destination: SuperKeySupport.triggerUsage)
         let foreignMapping = SuperKeyMapping(source: 0x700000064, destination: 0x700000035)
         expect(SuperKeySupport.mappings(enablingSuperKey: true, existing: []) == [capsMapping],
                "turning the key on maps caps lock to the key it arrives as")
@@ -10150,6 +10213,14 @@ struct MetricsTests {
                                                                    destination: 0x700000029)])
                 == [capsMapping],
                "caps lock never carries two mappings at once")
+        expect(SuperKeySupport.mappings(enablingSuperKey: true,
+                                        existing: [foreignMapping],
+                                        includeNoAction: true)
+                == [capsMapping, noActionMapping, foreignMapping]
+                && SuperKeySupport.mappings(enablingSuperKey: false,
+                                            existing: [capsMapping, noActionMapping, foreignMapping])
+                == [foreignMapping],
+               "the no-action mapping belongs to the feature and leaves with it")
         expect(SuperKeySupport.mappingArgument([capsMapping])
                 == "{\"UserKeyMapping\":[{\"HIDKeyboardModifierMappingSrc\":30064771129,\"HIDKeyboardModifierMappingDst\":30064771181}]}",
                "the mapping table goes out in the form the system takes")
@@ -10176,6 +10247,24 @@ struct MetricsTests {
         expect(SuperKeySupport.parseMappings("RegistryID  Key  Value\n100000a84 UserKeyMapping (null)").isEmpty
                 && SuperKeySupport.parseMappings("").isEmpty,
                "a keyboard with no mapping reads as none")
+
+        let disabledCaps = SuperKeyMapping(source: SuperKeySupport.capsLockUsage,
+                                           destination: SuperKeySupport.noActionUsage)
+        let disabledControl = SuperKeyMapping(source: 0x7000000E0,
+                                              destination: SuperKeySupport.noActionUsage)
+        expect(SuperKeySupport.canMapNoAction(from: [disabledCaps])
+                && !SuperKeySupport.canMapNoAction(from: [disabledControl])
+                && !SuperKeySupport.canMapNoAction(from: [disabledCaps, disabledControl])
+                && !SuperKeySupport.canMapNoAction(from: []),
+               "the shared no-action sentinel is recovered only when Caps Lock owns it")
+        let noActionReport = """
+        HIDKeyboardModifierMappingPairs = {
+          HIDKeyboardModifierMappingSrc = 30064771129;
+          HIDKeyboardModifierMappingDst = "-1";
+        }
+        """
+        expect(SuperKeySupport.parseMappings(noActionReport) == [disabledCaps],
+               "hidutil's signed no-action value keeps its unsigned HID meaning")
 
         var superKeyState = SuperKeySupport.State()
         expect(superKeyState.decide(.otherKey) == .pass,
@@ -10554,43 +10643,6 @@ struct MetricsTests {
                "text where a per-app rule dictionary belongs is dropped on import")
         expect(shapeChecked?[DefaultsKey.smoothScrollStep] as? Int == 60,
                "a value of the right shape still restores")
-        expect(Defaults.registeredDefaults[DefaultsKey.preciseVolumeRollerEnabled] as? Bool == false,
-               "precise volume roller is opt-in")
-
-        // MARK: Precise volume roller
-
-        var volumeGate = PreciseVolumeRollerGate()
-        expect(volumeGate.accepts(.up, at: 100.00),
-               "precise volume accepts the first wheel step")
-        expect(!volumeGate.accepts(.up, at: 100.01),
-               "precise volume drops repeats that arrive inside the spacing window")
-        expect(volumeGate.accepts(.up, at: 100.05),
-               "precise volume accepts a later step in the same direction")
-
-        var reversalGate = PreciseVolumeRollerGate()
-        expect(reversalGate.accepts(.up, at: 200.00),
-               "precise volume reversal setup accepts the initial direction")
-        expect(!reversalGate.accepts(.down, at: 200.08),
-               "precise volume ignores the first opposite pulse inside the reversal window")
-        expect(!reversalGate.accepts(.down, at: 200.16),
-               "precise volume waits for a stable opposite direction")
-        expect(reversalGate.accepts(.down, at: 200.24),
-               "precise volume accepts the confirmed opposite direction")
-
-        var oldDirectionGate = PreciseVolumeRollerGate()
-        expect(oldDirectionGate.accepts(.up, at: 300.00),
-               "precise volume accepts first old-direction step")
-        expect(oldDirectionGate.accepts(.down, at: 300.40),
-               "precise volume accepts an opposite step after the reversal window")
-        var fastStreamGate = PreciseVolumeRollerGate()
-        let fastAccepted = stride(from: 400.00, through: 400.10, by: 0.02)
-            .filter { fastStreamGate.accepts(.up, at: $0) }
-        expect(fastAccepted.count == 3,
-               "precise volume rate-limits sustained fast input instead of starving it")
-        expect(PreciseVolumeMediaKey.volumeUp.rollerDirection == .up
-                && PreciseVolumeMediaKey.volumeDown.rollerDirection == .down
-                && PreciseVolumeMediaKey.mute.rollerDirection == nil,
-               "precise volume only remaps volume up and down media keys")
         let bridgedInput: [String: Any] = [
             SettingsBackupSupport.formatVersionKey: 1,
             SettingsBackupSupport.settingsKey: [
@@ -10690,7 +10742,7 @@ struct MetricsTests {
         // to 1.130: believing the receipt would offer an update that happened.
         let bundles = ["Editor.app": (name: "Editor", version: "1.130.0", path: "/Applications/Editor.app"),
                        "Chat.app": (name: "Chat", version: "0.0.401", path: "/Applications/Chat.app")]
-        let packageRows = AppUpdatesSupport.homebrewCaskUpdates(
+        let packageRows = AppUpdatesSupport.packageUpdates(
             outdated: [caskUpdate("editor", installed: "1.129.0", current: "1.130.0"),
                        caskUpdate("chat", installed: "0.0.374", current: "0.0.402"),
                        caskUpdate("installer", installed: "26.078", current: "26.119"),
@@ -10704,20 +10756,16 @@ struct MetricsTests {
                "the version the app reports wins over the package receipt")
         expect(!packageRows.contains { $0.token == "installer" },
                "a package record without an app bundle is not presented as an installed app")
-        expect(packageRows.allSatisfy { $0.source == .homebrewCask },
-               "Homebrew casks are marked as the Homebrew app source")
-        expect(packageRows.contains { $0.id == "packageManager:chat" },
-               "Homebrew casks keep their legacy notification identifier")
         // Packages that install through an installer declare no app, so the
         // catalog name is tried as a bundle name before giving up.
-        let namedRows = AppUpdatesSupport.homebrewCaskUpdates(
+        let namedRows = AppUpdatesSupport.packageUpdates(
             outdated: [caskUpdate("installer", installed: "26.078", current: "26.119")],
             installed: caskRecords,
             bundleVersion: { ["Installer.app": (name: "Installer", version: "26.084",
                                                 path: "/Applications/Installer.app")][$0] })
         expect(namedRows.first?.installedVersion == "26.084",
                "a package with no declared app is matched by its catalog name")
-        let alreadyCurrent = AppUpdatesSupport.homebrewCaskUpdates(
+        let alreadyCurrent = AppUpdatesSupport.packageUpdates(
             outdated: [caskUpdate("installer", installed: "26.078", current: "26.119")],
             installed: caskRecords,
             bundleVersion: { ["Installer.app": (name: "Installer", version: "26.200",
@@ -10729,31 +10777,13 @@ struct MetricsTests {
                "pinned packages and packages without a version stay out")
         expect(packageRows.allSatisfy { $0.canInstallInPlace },
                "package rows can be installed on the spot")
-        let ownPackageRows = AppUpdatesSupport.homebrewCaskUpdates(
-            outdated: [caskUpdate("vorssaint", installed: "3.1.4", current: "3.2.0")],
-            installed: [HomebrewCaskRecord(token: "vorssaint", displayName: "Vorssaint",
-                                           installedVersion: "3.1.4", appFileNames: ["Vorssaint.app"])],
+        let ownPackageRows = AppUpdatesSupport.packageUpdates(
+            outdated: [caskUpdate("vorssaint", installed: "3.1.12", current: "3.2.0")],
+            installed: [],
             ignoredTokens: ["vorssaint"],
             bundleVersion: { _ in nil })
         expect(ownPackageRows.isEmpty,
-               "the app update list does not offer to replace Vorssaint through its own Homebrew cask")
-        let formulaRows = AppUpdatesSupport.homebrewFormulaUpdates(
-            outdated: [HomebrewPackageUpdate(kind: .formula, name: "swiftlint",
-                                             installedVersions: ["0.58.0"],
-                                             currentVersion: "0.59.0", isPinned: false),
-                       HomebrewPackageUpdate(kind: .formula, name: "pinned-cli",
-                                             installedVersions: ["1.0"],
-                                             currentVersion: "2.0", isPinned: true),
-                       HomebrewPackageUpdate(kind: .formula, name: "rolling-cli",
-                                             installedVersions: ["latest"],
-                                             currentVersion: "latest", isPinned: false),
-                       HomebrewPackageUpdate(kind: .formula, name: "current-cli",
-                                             installedVersions: ["2.0"],
-                                             currentVersion: "2.0", isPinned: false)],
-            ignoredTokens: ["ignored-cli"])
-        expect(formulaRows.count == 1 && formulaRows[0].source == .homebrewFormula
-                && formulaRows[0].token == "swiftlint" && formulaRows[0].canInstallInPlace,
-               "Homebrew formulae become CLI rows only when they have a real newer version")
+               "the app update list never offers to replace Vorssaint through its own package")
 
         let storeApps = [
             AppUpdatesSupport.InstalledApp(name: "Blocker", bundleID: "net.example.blocker",
@@ -10792,18 +10822,16 @@ struct MetricsTests {
                 && !storeRows[0].canInstallInPlace,
                "a store app is listed only when its newer version runs on this macOS")
 
-        let mergedRows = AppUpdatesSupport.merged(storeRows, packageRows, formulaRows)
-        expect(mergedRows.count == packageRows.count + storeRows.count + formulaRows.count
+        let mergedRows = AppUpdatesSupport.merged(storeRows, packageRows)
+        expect(mergedRows.count == packageRows.count + storeRows.count
                 && mergedRows.first?.canInstallInPlace == true
                 && mergedRows.last?.canInstallInPlace == false,
                "the merged list puts what can be updated here first")
         let everything = Set(mergedRows.map(\.id))
-        expect(AppUpdatesSupport.tokens(source: .homebrewCask, in: mergedRows, selection: everything).count == packageRows.count
-                && AppUpdatesSupport.tokens(source: .homebrewFormula, in: mergedRows, selection: everything) == ["swiftlint"]
+        expect(AppUpdatesSupport.tokens(in: mergedRows, selection: everything).count == packageRows.count
                 && AppUpdatesSupport.hasStoreSelection(in: mergedRows, selection: everything),
                "the selection splits into package tokens and store hand-offs")
-        expect(AppUpdatesSupport.tokens(source: .homebrewCask, in: mergedRows, selection: []).isEmpty
-                && AppUpdatesSupport.tokens(source: .homebrewFormula, in: mergedRows, selection: []).isEmpty
+        expect(AppUpdatesSupport.tokens(in: mergedRows, selection: []).isEmpty
                 && !AppUpdatesSupport.hasStoreSelection(in: mergedRows, selection: []),
                "an empty selection asks for nothing")
 
@@ -10828,21 +10856,15 @@ struct MetricsTests {
         let noCountry = AppUpdatesSupport.storeLookupURL(bundleIDs: ["a.b"], country: nil)?
             .absoluteString ?? ""
         expect(!noCountry.contains("country="), "without a region the request carries none")
-        let lookupBody = Data(#"{"resultCount":1,"results":[{"bundleId":"a.b","version":"2.0","minimumOsVersion":"15.0","trackViewUrl":"https://x"}]}"#.utf8)
-        let lookupEntry = AppUpdatesSupport.parseStoreLookup(lookupBody)["a.b"]
+        let lookupBody = Data(#"{"resultCount":2,"results":[{"kind":"mac-software","bundleId":"a.b","version":"2.0","minimumOsVersion":"15.0","trackViewUrl":"https://x"},{"kind":"software","bundleId":"c.d","version":"9.0","minimumOsVersion":"12.0"}]}"#.utf8)
+        let lookupEntries = AppUpdatesSupport.parseStoreLookup(lookupBody)
+        let lookupEntry = lookupEntries["a.b"]
         expect(lookupEntry?.version == "2.0" && lookupEntry?.minimumOSVersion == "15.0",
                "the store answer is read back")
+        expect(lookupEntries["c.d"] == nil,
+               "another platform's listing is not the installed Mac app's version")
         expect(AppUpdatesSupport.parseStoreLookup(Data("not json".utf8)).isEmpty,
                "a broken store answer yields nothing instead of throwing")
-        let discoveredPaths = AppUpdatesSupport.applicationScanPaths(
-            folderPaths: ["/Applications/Editor.app",
-                          "/System/Applications/Mail.app",
-                          "/Applications/Editor.app"],
-            spotlightPaths: ["/Users/me/Tools/Side App.app",
-                             "/Library/Apple/System Helper.app",
-                             "/Users/me/Tools/not-an-app"])
-        expect(discoveredPaths == ["/Applications/Editor.app", "/Users/me/Tools/Side App.app"],
-               "app discovery merges Applications folders with Spotlight and filters system apps")
 
         let noon = Date(timeIntervalSince1970: 1_800_000_000)
         expect(AppUpdatesSupport.nextCheckDate(lastCheck: noon, frequency: .off, now: noon) == nil,
@@ -10883,14 +10905,6 @@ struct MetricsTests {
                                                    tokens: ["chat", "--force", "editor"])?.arguments
                 == ["upgrade", "--cask", "--greedy", "chat", "editor"],
                "only real package names reach the upgrade command")
-        expect(HomebrewCommandBuilder.outdatedFormulae(brewPath: "/opt/x/brew").arguments
-                == ["outdated", "--formula", "--json=v2"],
-               "the CLI update check asks Homebrew for formulae separately")
-        expect(HomebrewCommandBuilder.upgradeFormulaeAndCasks(brewPath: "/opt/x/brew",
-                                                             formulaTokens: ["swiftlint"],
-                                                             caskTokens: ["chat"])?.arguments
-                == ["-lc", "/opt/x/brew upgrade swiftlint && /opt/x/brew upgrade --cask --greedy chat"],
-               "mixed app updates run formulae and casks in one Homebrew operation")
         expect(HomebrewCommandBuilder.outdatedCasksIncludingSelfUpdating(brewPath: "/opt/x/brew").arguments
                 == ["outdated", "--cask", "--greedy", "--json=v2"],
                "the update check asks for the apps that carry their own updater too")
@@ -10916,9 +10930,7 @@ struct MetricsTests {
                "an empty saved order does not lose the entry")
         expect(Defaults.registeredDefaults[DefaultsKey.appUpdatesCheckFrequency] as? String == "off",
                "the background check starts off")
-        expect(Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeHomebrewApps] as? Bool == true
-                && Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeAppStore] as? Bool == true
-                && Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeHomebrewCLI] as? Bool == false
+        expect(Defaults.registeredDefaults[DefaultsKey.appUpdatesIncludeAppStore] as? Bool == true
                 && Defaults.registeredDefaults[DefaultsKey.appUpdatesNotify] as? Bool == true
                 && Defaults.registeredDefaults[DefaultsKey.panelUtilityAppUpdates] as? Bool == true,
                "the app update defaults are registered")
@@ -11063,7 +11075,10 @@ struct MetricsTests {
         expect(CommandBarPreferences.source(ofRowID: "app.x") == .apps
                 && CommandBarPreferences.source(ofRowID: "menu.1.Bold") == .menus
                 && CommandBarPreferences.source(ofRowID: "folder./tmp") == .folders
-                && CommandBarPreferences.source(ofRowID: "action.screenshot") == .actions,
+                && CommandBarPreferences.source(ofRowID: "action.screenshot") == .actions
+                && CommandBarPreferences.emojiBrowserRowID == "emoji.browse"
+                && CommandBarPreferences.source(ofRowID: CommandBarPreferences.emojiBrowserRowID)
+                    == .emoji,
                "every row knows which source it came from")
         expect(CommandBarPreferences.isEnabled(.folders, disabledRaw: "folders,emoji") == false
                 && CommandBarPreferences.isEnabled(.apps, disabledRaw: "folders,emoji") == true
@@ -12012,6 +12027,48 @@ struct MetricsTests {
 
         // MARK: Command bar search and ranking
 
+        let firstBarPresentation = UUID()
+        let secondBarPresentation = UUID()
+        var barLifecycle = CommandBarPresentationLifecycle()
+        barLifecycle.beginHome(firstBarPresentation)
+        expect(barLifecycle.isLoadingHome,
+               "home presents with no stale runnable rows while its catalog hydrates")
+        barLifecycle.hide()
+        expect(!barLifecycle.completeHomeHydration(firstBarPresentation, isVisible: false),
+               "closing the panel cancels deferred hydration")
+
+        barLifecycle.beginHome(firstBarPresentation)
+        barLifecycle.beginHome(secondBarPresentation)
+        expect(!barLifecycle.completeHomeHydration(firstBarPresentation, isVisible: true)
+                && barLifecycle.completeHomeHydration(secondBarPresentation, isVisible: true),
+               "only the latest visible home presentation may receive deferred work")
+        expect(barLifecycle.acceptsHomeUpdates(secondBarPresentation, isVisible: true)
+                && !barLifecycle.acceptsHomeUpdates(firstBarPresentation, isVisible: true)
+                && !barLifecycle.acceptsHomeUpdates(secondBarPresentation, isVisible: false),
+               "background rows update only their still-visible home presentation")
+        expect(barLifecycle.acceptsSharedCacheCompletion(
+                    startedBy: firstBarPresentation,
+                    currentID: secondBarPresentation,
+                    isVisible: true),
+               "a shared cache completion refreshes the newer visible Home")
+        barLifecycle.hide()
+        expect(!barLifecycle.acceptsSharedCacheCompletion(
+                    startedBy: firstBarPresentation,
+                    currentID: secondBarPresentation,
+                    isVisible: true),
+               "a shared cache completion never mutates a hidden panel")
+
+        var deferredShortcut = CommandBarDeferredRowShortcut()
+        deferredShortcut.schedule("action.trash", for: firstBarPresentation)
+        expect(deferredShortcut.take(for: secondBarPresentation) == nil
+                && deferredShortcut.take(for: firstBarPresentation) == "action.trash"
+                && deferredShortcut.take(for: firstBarPresentation) == nil,
+               "a prompt shortcut runs once and only on the presentation that requested it")
+        deferredShortcut.schedule("action.trash", for: firstBarPresentation)
+        deferredShortcut.cancel()
+        expect(deferredShortcut.take(for: firstBarPresentation) == nil,
+               "closing or superseding a presentation cancels its prompt shortcut")
+
         expect(CommandBarSearch.normalized("  Brilho   da\tTela ") == "brilho da tela",
                "command bar folds case and collapses whitespace")
         expect(CommandBarSearch.matches(title: "Reunião com João", query: "reuniao joao"),
@@ -12110,6 +12167,7 @@ struct MetricsTests {
         // A combination tied to one row of the bar.
         let optionB = GlobalShortcut(keyCode: 11, modifiers: [.option, .command])
         let optionN = GlobalShortcut(keyCode: 45, modifiers: [.option, .command])
+        let commandPeriod = GlobalShortcut(keyCode: 47, modifiers: [.command])
         var bound = CommandBarRowShortcuts.setting(optionB, for: "app.bundle.a", in: [:])
         expect(bound["app.bundle.a"] == optionB, "a row answers to the keys it was given")
         bound = CommandBarRowShortcuts.setting(optionB, for: "app.bundle.b", in: bound)
@@ -12125,6 +12183,11 @@ struct MetricsTests {
                "a bare letter is never taken from every app on the Mac")
         expect(CommandBarRowShortcuts.decode(CommandBarRowShortcuts.encode(bound)) == bound,
                "the bindings survive a round trip through storage")
+        let emojiBinding = CommandBarRowShortcuts.setting(
+            commandPeriod, for: CommandBarPreferences.emojiBrowserRowID, in: [:])
+        expect(CommandBarRowShortcuts.key(for: commandPeriod, in: emojiBinding)
+                == CommandBarPreferences.emojiBrowserRowID,
+               "the Emoji browser row can own a global shortcut like any other row")
         var full: [String: GlobalShortcut] = [:]
         for index in 0..<CommandBarRowShortcuts.limit {
             full["row.\(index)"] = GlobalShortcut(keyCode: Int64(index), modifiers: [.control])

@@ -157,7 +157,6 @@ if (( TEST )); then
         Sources/Vorssaint/Services/GeneralPasteboardAccess.swift \
         Sources/Vorssaint/Services/Audio/MixerRoutingSupport.swift \
         Sources/Vorssaint/Services/Audio/BoostLimiter.swift \
-        Sources/Vorssaint/Services/Audio/PreciseVolumeRollerSupport.swift \
         Sources/Vorssaint/Services/Audio/MixerRender.swift \
         Sources/Vorssaint/Services/DockPreview/DockPreviewSupport.swift \
         Sources/Vorssaint/Services/Homebrew/HomebrewSupport.swift \
@@ -323,10 +322,24 @@ xattr -c -r "$STAGE" 2>/dev/null || true
 #      designated requirement across their local builds.
 #   3. Ad-hoc — fresh clone with no identity at all.
 DEVID="$(developer_id_identity)"
+codesign_with_timestamp_retry() {
+    local attempt
+    for attempt in 1 2 3; do
+        if codesign "$@"; then
+            return 0
+        fi
+        if (( attempt < 3 )); then
+            echo "  Developer ID signing failed; retrying ($((attempt + 1))/3)"
+            sleep "$attempt"
+        fi
+    done
+    return 1
+}
+
 codesign_app() {
     local target="$1"
     if [[ -n "$DEVID" ]]; then
-        codesign --force --strip-disallowed-xattrs --options runtime --timestamp \
+        codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --entitlements "$ENTITLEMENTS" --sign "$DEVID" "$target"
     elif security find-identity -p codesigning 2>/dev/null | grep -q "$LEGACY_IDENTITY"; then
         codesign --force --strip-disallowed-xattrs --sign "$LEGACY_IDENTITY" "$target"
@@ -338,7 +351,7 @@ codesign_app() {
 codesign_fan_helper() {
     local target="$1"
     if [[ -n "$DEVID" ]]; then
-        codesign --force --strip-disallowed-xattrs --options runtime --timestamp \
+        codesign_with_timestamp_retry --force --strip-disallowed-xattrs --options runtime --timestamp \
             --identifier "$FAN_HELPER_ID" --sign "$DEVID" "$target"
     elif security find-identity -p codesigning 2>/dev/null | grep -q "$LEGACY_IDENTITY"; then
         codesign --force --strip-disallowed-xattrs --identifier "$FAN_HELPER_ID" \
