@@ -7,6 +7,7 @@ import Carbon.HIToolbox
 import Combine
 import Darwin
 import Foundation
+import ImageIO
 
 // Standalone unit tests for pure helpers. Compiled without IOKit or UI by
 // `./build.sh --test`, so they run fast and deterministically on any machine.
@@ -3889,12 +3890,20 @@ struct MetricsTests {
         expect(exactFill.exactMode == .fill
                && exactFill.targetSize(for: CGSize(width: 1600, height: 1200)) == CGSize(width: 320, height: 180),
                "Image exact resize stores fit/fill behavior without changing the target canvas")
-        expect(MediaSupport.cappedImageRenderSize(CGSize(width: 20_000, height: 20_000))
-               == CGSize(width: MediaSupport.maxImageRenderDimension, height: MediaSupport.maxImageRenderDimension),
-               "Image render target caps square custom outputs before bitmap allocation")
-        expect(MediaSupport.cappedImageRenderSize(CGSize(width: 20_000, height: 200_000)).height
-               <= CGFloat(MediaSupport.maxImageRenderDimension),
-               "Image render target caps extreme proportional outputs before bitmap allocation")
+        expect(MediaSupport.imageRenderSizeIsSafe(CGSize(width: 9_000, height: 100)),
+               "Image render safety accepts a wide image without changing its dimensions")
+        expect(!MediaSupport.imageRenderSizeIsSafe(CGSize(width: 9_000, height: 9_000)),
+               "Image render safety rejects an allocation above the pixel budget")
+        expect(!MediaSupport.imageRenderSizeIsSafe(CGSize(width: 20_001, height: 1)),
+               "Image render safety rejects dimensions above the supported bound")
+        let rotatedImageProperties: [CFString: Any] = [
+            kCGImagePropertyPixelWidth: 640,
+            kCGImagePropertyPixelHeight: 480,
+            kCGImagePropertyOrientation: 6,
+        ]
+        expect(MediaSupport.imageDisplaySize(properties: rotatedImageProperties)
+               == CGSize(width: 480, height: 640),
+               "Image dimensions follow the source orientation used by the renderer")
         let renameDate = Date(timeIntervalSince1970: 1_704_067_200) // 2024-01-01 UTC
         let renamePattern = MediaImageRenamePattern("{name}-{counter:03}-{date}-{time}-{width}x{height}-{ext}")
         expect(renamePattern.outputBaseName(for: URL(fileURLWithPath: "/tmp/Photo One.tiff"),
@@ -3965,6 +3974,45 @@ struct MetricsTests {
                                                        reservedPaths: [uniqueDir.appendingPathComponent("Reserved.png").standardizedFileURL.path])
         expect(reservedURL.lastPathComponent == "Reserved 2.png",
                "Image batch output names avoid paths already reserved in the current run")
+        let renamedOptions = MediaImageOptions(quality: 0.8,
+                                               maxDimension: 1600,
+                                               format: .png,
+                                               stripMetadata: true,
+                                               resizeMode: MediaImageResizeMode.none,
+                                               renamePattern: MediaImageRenamePattern("{name}-{index:02}"))
+        let renamedSingle = MediaSupport.imageOutputURL(
+            for: uniqueDir.appendingPathComponent("First.jpg"),
+            outputDirectory: uniqueDir,
+            options: renamedOptions,
+            index: 1,
+            outputSize: CGSize(width: 9000, height: 100))
+        let renamedBatch = MediaSupport.imageOutputURL(
+            for: uniqueDir.appendingPathComponent("Second.jpg"),
+            outputDirectory: uniqueDir,
+            options: renamedOptions,
+            index: 2,
+            outputSize: CGSize(width: 320, height: 200))
+        expect(renamedSingle.lastPathComponent == "First-01.png"
+               && renamedBatch.lastPathComponent == "Second-02.png",
+               "Image rename patterns apply to both single and batch outputs")
+
+        for language in AppLanguage.allCases {
+            let strings = MediaImageConverterStrings.localized(language)
+            let values = Mirror(reflecting: strings).children.compactMap { $0.value as? String }
+            expect(values.count == 56 && values.allSatisfy { !$0.isEmpty },
+                   "every image converter string is set for \(language.rawValue)")
+            expect(values.allSatisfy { !$0.contains("—") },
+                   "no em-dash in visible image converter strings (\(language.rawValue))")
+            expect(strings.filesSelectedFormat.contains("%d")
+                   && strings.profileDefaultNameFormat.contains("%d")
+                   && strings.savedBytesFormat.contains("%@")
+                   && strings.grewBytesFormat.contains("%@")
+                   && strings.batchSavedFormat.contains("%d")
+                   && strings.batchPartialFormat.filter { $0 == "%" }.count == 2
+                   && strings.batchSummaryHeaderFormat.filter { $0 == "%" }.count == 2
+                   && strings.batchSummaryItemFormat.filter { $0 == "%" }.count == 2,
+                   "image converter formats keep their arguments in \(language.rawValue)")
+        }
 
         let trim = MediaSupport.sanitizedTrim(start: -5, end: 3, assetDuration: 10)
         expect(trim == MediaTrimRange(start: 0, end: 3),
@@ -10945,6 +10993,25 @@ struct MetricsTests {
                "the launch at login choice travels with the settings backup")
         expect(backupKeys.contains(DefaultsKey.appearance),
                "the light or dark choice travels with the settings backup")
+        expect(Set([
+            DefaultsKey.mediaImageResizeKind,
+            DefaultsKey.mediaImageResizeWidth,
+            DefaultsKey.mediaImageResizeHeight,
+            DefaultsKey.mediaImageExactResizeMode,
+            DefaultsKey.mediaImageWatermarkKind,
+            DefaultsKey.mediaImageWatermarkText,
+            DefaultsKey.mediaImageWatermarkLogoPath,
+            DefaultsKey.mediaImageWatermarkPosition,
+            DefaultsKey.mediaImageWatermarkOpacity,
+            DefaultsKey.mediaImageWatermarkMargin,
+            DefaultsKey.mediaImageWatermarkScale,
+            DefaultsKey.mediaImageRenamePattern,
+            DefaultsKey.mediaImageBackground,
+            DefaultsKey.mediaImagePreserveModificationDate,
+            DefaultsKey.mediaImageProfiles,
+            DefaultsKey.mediaImageSelectedProfileID,
+        ]).isSubset(of: backupKeys),
+               "image converter choices and profiles travel with the settings backup")
         expect(backupKeys.contains(DefaultsKey.dockClickHide)
                 && backupKeys.contains(DefaultsKey.panelControlDockClickHide),
                "Dock hiding and its panel visibility travel with the settings backup")

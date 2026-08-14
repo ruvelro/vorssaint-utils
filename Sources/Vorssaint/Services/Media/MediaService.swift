@@ -87,6 +87,7 @@ enum MediaFailure: Equatable {
     case noVideoTrack
     case sameOutput
     case unsupported
+    case imageTooLarge
     case cancelled
     case failed(String)
 }
@@ -446,17 +447,14 @@ final class MediaService: ObservableObject {
             throw MediaFailureBox(.unsupported)
         }
         try checkCancellation(token)
-        let propertyWidth = properties[kCGImagePropertyPixelWidth] as? CGFloat
-        let propertyHeight = properties[kCGImagePropertyPixelHeight] as? CGFloat
-        let sourceSize = CGSize(width: propertyWidth ?? CGFloat(options.maxDimension),
-                                height: propertyHeight ?? CGFloat(options.maxDimension))
-        let expectedSize = options.resizeMode.targetSize(for: sourceSize)
-        let maxPixel: Int
-        if options.resizeMode.kind == .none {
-            maxPixel = max(1, min(20_000, max(Int(sourceSize.width.rounded()), Int(sourceSize.height.rounded()))))
-        } else {
-            maxPixel = max(1, min(20_000, max(Int(expectedSize.width.rounded()), Int(expectedSize.height.rounded()))))
+        guard let sourceSize = MediaSupport.imageDisplaySize(properties: properties) else {
+            throw MediaFailureBox(.unsupported)
         }
+        let expectedSize = options.resizeMode.targetSize(for: sourceSize)
+        guard MediaSupport.imageRenderSizeIsSafe(expectedSize) else {
+            throw MediaFailureBox(.imageTooLarge)
+        }
+        let maxPixel = max(1, max(Int(expectedSize.width.rounded()), Int(expectedSize.height.rounded())))
         let imageOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
@@ -466,9 +464,12 @@ final class MediaService: ObservableObject {
         guard let sourceImage = CGImageSourceCreateThumbnailAtIndex(source, 0, imageOptions as CFDictionary) else {
             throw MediaFailureBox(.unsupported)
         }
-        let targetSize = MediaSupport.cappedImageRenderSize(
-            options.resizeMode.targetSize(for: CGSize(width: sourceImage.width, height: sourceImage.height))
+        let targetSize = options.resizeMode.targetSize(
+            for: CGSize(width: sourceImage.width, height: sourceImage.height)
         )
+        guard MediaSupport.imageRenderSizeIsSafe(targetSize) else {
+            throw MediaFailureBox(.imageTooLarge)
+        }
         guard let image = renderImage(sourceImage,
                                       targetSize: targetSize,
                                       resizeMode: options.resizeMode,
@@ -593,9 +594,8 @@ final class MediaService: ObservableObject {
                              watermark: MediaImageWatermark,
                              background: MediaImageBackground,
                              forceOpaque: Bool) -> CGImage? {
-        let cappedSize = MediaSupport.cappedImageRenderSize(targetSize)
-        let width = max(1, Int(cappedSize.width.rounded()))
-        let height = max(1, Int(cappedSize.height.rounded()))
+        let width = max(1, Int(targetSize.width.rounded()))
+        let height = max(1, Int(targetSize.height.rounded()))
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
                                          pixelsWide: width,
                                          pixelsHigh: height,
@@ -923,6 +923,7 @@ final class MediaService: ObservableObject {
         case .noVideoTrack: return "This file has no video track."
         case .sameOutput: return "Choose a destination different from the original file."
         case .unsupported: return "This format is not supported by macOS."
+        case .imageTooLarge: return "These dimensions are too large to process safely."
         case .cancelled: return "Cancelled."
         case let .failed(message): return message.isEmpty ? "This format is not supported by macOS." : message
         }

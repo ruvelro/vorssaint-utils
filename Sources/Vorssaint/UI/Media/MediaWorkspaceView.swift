@@ -90,12 +90,14 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
 
     @State private var inputURLs: [URL] = []
+    @State private var inputImageSize: CGSize?
     @State private var outputURL: URL?
     @State private var outputWasChosenManually = false
     @State private var isDropTargeted = false
     @State private var localMessage: String?
     @State private var mediaDefaultsTask: Task<Void, Never>?
     @State private var profileName = ""
+    @State private var imageMoreOptionsExpanded = false
 
     var compact: Bool
     var onClose: (() -> Void)? = nil
@@ -109,6 +111,9 @@ struct MediaWorkspaceView: View {
         get { MediaSupport.sanitizedTool(toolRaw) }
         nonmutating set {
             toolRaw = newValue.rawValue
+            inputImageSize = newValue == .imageCompressor
+                ? inputURL.flatMap { MediaSupport.imageDisplaySize(at: $0) }
+                : nil
             outputURL = defaultOutputURL(for: inputURLs, tool: newValue)
             outputWasChosenManually = false
             applyMediaDefaults(for: inputURL, tool: newValue)
@@ -144,7 +149,7 @@ struct MediaWorkspaceView: View {
                 content
             }
         }
-        .onChange(of: imageFormatRaw) { _, _ in
+        .onChange(of: currentImageOptions) { _, _ in
             guard selectedTool == .imageCompressor, !outputWasChosenManually else { return }
             outputURL = defaultOutputURL(for: inputURLs, tool: .imageCompressor)
         }
@@ -295,7 +300,6 @@ struct MediaWorkspaceView: View {
             .panelCard()
         case .imageCompressor:
             VStack(alignment: .leading, spacing: 10) {
-                imageProfileRow
                 imageQuickPresetsRow
                 imagePreviewSection
                 Picker(l10n.s.mediaFormat, selection: $imageFormatRaw) {
@@ -307,17 +311,23 @@ struct MediaWorkspaceView: View {
                 .pickerStyle(.segmented)
                 compressionRow(value: $imageQuality)
                 imageResizeSection
-                // PDF output never carries EXIF (the image is re-encoded
-                // into the document), so the toggle would be a dead control.
-                if MediaImageFormat.sanitized(imageFormatRaw) != .pdf {
-                    Toggle(l10n.s.mediaStripMetadata, isOn: $imageStripMetadata)
-                        .toggleStyle(.checkbox)
+                DisclosureGroup(imageText.moreOptions, isExpanded: $imageMoreOptionsExpanded) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        imageProfileRow
+                        // PDF output never carries EXIF (the image is re-encoded
+                        // into the document), so the toggle would be a dead control.
+                        if MediaImageFormat.sanitized(imageFormatRaw) != .pdf {
+                            Toggle(l10n.s.mediaStripMetadata, isOn: $imageStripMetadata)
+                                .toggleStyle(.checkbox)
+                        }
+                        imageBackgroundSection
+                        imageWatermarkSection
+                        imageRenameSection
+                        Toggle(imageText.preserveDate, isOn: $imagePreserveModificationDate)
+                            .toggleStyle(.checkbox)
+                    }
+                    .padding(.top, 6)
                 }
-                imageBackgroundSection
-                imageWatermarkSection
-                imageRenameSection
-                Toggle(imageText.preserveDate, isOn: $imagePreserveModificationDate)
-                    .toggleStyle(.checkbox)
             }
             .panelCard()
         case .textExtractor:
@@ -588,9 +598,7 @@ struct MediaWorkspaceView: View {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(previewBackgroundColor)
                 if let thumbnail = inputURL.flatMap({ ImageThumbnailer.thumbnail(for: $0, pointSize: compact ? 96 : 128) }) {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .scaledToFit()
+                    previewImage(thumbnail)
                         .padding(4)
                 } else {
                     Image(systemName: "photo")
@@ -598,10 +606,10 @@ struct MediaWorkspaceView: View {
                         .foregroundStyle(.secondary)
                 }
                 previewWatermarkOverlay
-                    .padding(CGFloat(min(imageWatermarkMargin, compact ? 14 : 18)))
+                    .padding(previewWatermarkMargin)
                     .opacity(imageWatermarkOpacity)
             }
-            .frame(width: compact ? 108 : 136, height: compact ? 74 : 92)
+            .frame(width: previewFrameSize.width, height: previewFrameSize.height)
             .overlay(
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .strokeBorder(PanelSurface.border(for: colorScheme), lineWidth: 0.8)
@@ -621,12 +629,33 @@ struct MediaWorkspaceView: View {
     }
 
     @ViewBuilder
+    private func previewImage(_ image: NSImage) -> some View {
+        if currentResizeMode.kind == .exact, currentResizeMode.exactMode == .stretch {
+            Image(nsImage: image)
+                .resizable()
+        } else if currentResizeMode.kind == .exact, currentResizeMode.exactMode == .fill {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFill()
+                .clipped()
+        } else {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
+        }
+    }
+
+    @ViewBuilder
     private var previewWatermarkOverlay: some View {
         if currentWatermark.isEnabled {
             HStack(spacing: 4) {
                 if currentWatermark.usesLogo {
-                    Image(systemName: "photo")
-                        .font(.system(size: compact ? 10 : 12, weight: .semibold))
+                    if let logo = NSImage(contentsOfFile: currentWatermark.logoPath) {
+                        Image(nsImage: logo)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: previewWatermarkLogoSide, height: previewWatermarkLogoSide)
+                    }
                 }
                 if currentWatermark.usesText {
                     Text(currentWatermark.text)
@@ -931,11 +960,36 @@ struct MediaWorkspaceView: View {
 
     private var previewOutputName: String {
         guard let inputURL else { return l10n.s.mediaOutputAutomatic }
-        let base = currentImageOptions.renamePattern.outputBaseName(for: inputURL,
-                                                                    index: 1,
-                                                                    size: currentResizeMode.targetSize(for: CGSize(width: 1600, height: 1200)),
-                                                                    format: MediaImageFormat.sanitized(imageFormatRaw))
-        return "\(base).\(MediaImageFormat.sanitized(imageFormatRaw).fileExtension)"
+        if outputWasChosenManually, let outputURL { return outputURL.lastPathComponent }
+        return defaultOutputURL(for: [inputURL], tool: .imageCompressor)?.lastPathComponent
+            ?? l10n.s.mediaOutputAutomatic
+    }
+
+    private var previewOutputSize: CGSize {
+        guard inputURL != nil, let sourceSize = inputImageSize else {
+            return currentResizeMode.targetSize(for: CGSize(width: 1600, height: 1200))
+        }
+        return currentResizeMode.targetSize(for: sourceSize)
+    }
+
+    private var previewFrameSize: CGSize {
+        let bounds = CGSize(width: compact ? 108 : 136, height: compact ? 74 : 92)
+        let ratio = max(0.01, previewOutputSize.width / previewOutputSize.height)
+        if ratio > bounds.width / bounds.height {
+            return CGSize(width: bounds.width, height: max(1, bounds.width / ratio))
+        }
+        return CGSize(width: max(1, bounds.height * ratio), height: bounds.height)
+    }
+
+    private var previewWatermarkLogoSide: CGFloat {
+        let side = min(previewFrameSize.width, previewFrameSize.height)
+        return min(side, max(4, side * CGFloat(currentWatermark.scale)))
+    }
+
+    private var previewWatermarkMargin: CGFloat {
+        let outputSide = max(1, min(previewOutputSize.width, previewOutputSize.height))
+        let previewSide = min(previewFrameSize.width, previewFrameSize.height)
+        return min(previewSide / 2, CGFloat(imageWatermarkMargin) * previewSide / outputSide)
     }
 
     private var previewAlignment: Alignment {
@@ -949,6 +1003,10 @@ struct MediaWorkspaceView: View {
     }
 
     private var previewBackgroundColor: Color {
+        if MediaImageFormat.sanitized(imageFormatRaw) == .jpeg
+            || MediaImageFormat.sanitized(imageFormatRaw) == .pdf {
+            return MediaImageBackground.sanitized(imageBackgroundRaw) == .black ? .black : .white
+        }
         switch MediaImageBackground.sanitized(imageBackgroundRaw) {
         case .transparent:
             return Color.primary.opacity(0.045)
@@ -1101,6 +1159,9 @@ struct MediaWorkspaceView: View {
 
     private func setInputs(_ urls: [URL]) {
         inputURLs = selectedTool == .imageCompressor ? urls : Array(urls.prefix(1))
+        inputImageSize = selectedTool == .imageCompressor
+            ? inputURL.flatMap { MediaSupport.imageDisplaySize(at: $0) }
+            : nil
         outputURL = defaultOutputURL(for: inputURLs, tool: selectedTool)
         outputWasChosenManually = false
         applyMediaDefaults(for: inputURL, tool: selectedTool)
@@ -1111,6 +1172,7 @@ struct MediaWorkspaceView: View {
     private func clearInput() {
         mediaDefaultsTask?.cancel()
         inputURLs = []
+        inputImageSize = nil
         outputURL = nil
         outputWasChosenManually = false
         localMessage = nil
@@ -1228,8 +1290,12 @@ struct MediaWorkspaceView: View {
             if inputURLs.count > 1 {
                 return inputURL.deletingLastPathComponent()
             }
-            return MediaSupport.uniqueOutputURL(for: inputURL, suffix: "-compressed",
-                                                fileExtension: MediaImageFormat.sanitized(imageFormatRaw).fileExtension)
+            let sourceSize = inputImageSize ?? CGSize(width: 1600, height: 1200)
+            return MediaSupport.imageOutputURL(for: inputURL,
+                                               outputDirectory: inputURL.deletingLastPathComponent(),
+                                               options: currentImageOptions,
+                                               index: 1,
+                                               outputSize: currentResizeMode.targetSize(for: sourceSize))
         case .textExtractor:
             return MediaSupport.uniqueOutputURL(for: inputURL, suffix: "-text", fileExtension: "txt")
         }
@@ -1241,6 +1307,7 @@ struct MediaWorkspaceView: View {
         case .noVideoTrack: return l10n.s.mediaErrorNoVideo
         case .sameOutput: return l10n.s.mediaErrorSameOutput
         case .unsupported: return l10n.s.mediaErrorUnsupported
+        case .imageTooLarge: return imageText.tooLarge
         case .cancelled: return l10n.s.mediaCancelled
         case let .failed(message): return message.isEmpty ? l10n.s.mediaErrorUnsupported : message
         }

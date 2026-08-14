@@ -4,6 +4,7 @@
 import CoreGraphics
 import Darwin
 import Foundation
+import ImageIO
 import UniformTypeIdentifiers
 
 enum MediaTool: String, CaseIterable, Identifiable {
@@ -332,7 +333,7 @@ struct MediaTrimRange: Equatable {
 }
 
 enum MediaSupport {
-    static let maxImageRenderDimension = 8_192
+    static let maxImageRenderDimension = 20_000
     static let maxImageRenderPixels = 8_192 * 8_192
     private static let maxFilenameBytes = 255
 
@@ -467,16 +468,32 @@ enum MediaSupport {
         return shortened.isEmpty ? "Output" : shortened
     }
 
-    static func cappedImageRenderSize(_ size: CGSize,
+    static func imageDisplaySize(at url: URL) -> CGSize? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
+                as? [CFString: Any] else { return nil }
+        return imageDisplaySize(properties: properties)
+    }
+
+    static func imageDisplaySize(properties: [CFString: Any]) -> CGSize? {
+        guard let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.doubleValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.doubleValue,
+              width.isFinite, height.isFinite, width > 0, height > 0 else { return nil }
+        let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue ?? 1
+        if 5...8 ~= orientation {
+            return integralImageSize(width: CGFloat(height), height: CGFloat(width))
+        }
+        return integralImageSize(width: CGFloat(width), height: CGFloat(height))
+    }
+
+    static func imageRenderSizeIsSafe(_ size: CGSize,
                                       maxDimension: Int = maxImageRenderDimension,
-                                      maxPixels: Int = maxImageRenderPixels) -> CGSize {
-        let width = max(1, abs(size.width))
-        let height = max(1, abs(size.height))
-        let dimensionScale = min(1, CGFloat(maxDimension) / max(width, height))
-        let pixelCount = width * height
-        let pixelScale = pixelCount > CGFloat(maxPixels) ? sqrt(CGFloat(maxPixels) / pixelCount) : 1
-        let scale = min(dimensionScale, pixelScale)
-        return integralImageSize(width: width * scale, height: height * scale)
+                                      maxPixels: Int = maxImageRenderPixels) -> Bool {
+        let width = abs(size.width)
+        let height = abs(size.height)
+        guard width.isFinite, height.isFinite, width >= 1, height >= 1,
+              width <= CGFloat(maxDimension), height <= CGFloat(maxDimension) else { return false }
+        return width * height <= CGFloat(maxPixels)
     }
 
     static func sanitizedImageProfiles(_ profiles: [MediaImageProfile]) -> [MediaImageProfile] {
