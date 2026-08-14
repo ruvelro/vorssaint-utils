@@ -273,9 +273,16 @@ struct MetricsTests {
                "clipboard editing preserves intentional outer spacing")
         expect(ClipboardHistoryEditing.storableText(" \n\t ") == nil,
                "clipboard editing rejects an empty text item")
+        let largeClipboardText = String(repeating: "long copied text ", count: 10_000)
+        expect(ClipboardHistoryEditing.storableText(largeClipboardText) == largeClipboardText,
+               "clipboard history keeps copied documents larger than the old short-text bound")
         expect(ClipboardHistoryEditing.storableText(
             String(repeating: "a", count: ClipboardHistoryEditing.maxCharacters + 1)) == nil,
                "clipboard editing keeps the history text size bound")
+        let largeClipboardPreview = ClipboardHistoryEntry(text: largeClipboardText).preview
+        expect(largeClipboardPreview.hasSuffix("…")
+                && largeClipboardPreview.count <= ClipboardHistoryEditing.previewCharacters + 1,
+               "clipboard rows keep very large text previews bounded")
         let previewID = UUID(uuidString: "00000000-0000-0000-0000-000000000101")!
         let nextPreviewID = UUID(uuidString: "00000000-0000-0000-0000-000000000102")!
         let updatedPreview = ClipboardHistoryEntry(id: previewID, text: "updated")
@@ -2412,6 +2419,11 @@ struct MetricsTests {
         expect(WindowLayoutGeometry.accepts(actualRect: .zero, targetRect: .zero,
                                             action: .fullScreen, anchorTolerance: 10) == false,
                "full screen never joins the frame-based gesture acceptance")
+        expect(WindowLayoutAction.center.targetCapability == .position
+                && WindowLayoutAction.fullScreen.targetCapability == .fullScreen
+                && WindowLayoutAction.maximize.targetCapability == .frame
+                && WindowLayoutAction.restore.targetCapability == .frame,
+               "window layout targets only the attributes each action changes")
 
         // MARK: Editing, navigation and upper function keys as shortcuts (#308)
 
@@ -4044,6 +4056,12 @@ struct MetricsTests {
                "Media OCR language defaults include Turkish and English")
         expect(MediaSupport.recognitionLanguages(for: "ko") == ["ko-KR", "en-US"],
                "Media OCR language defaults include Korean and English")
+        expect(MediaSupport.recognitionLanguages(for: "zh-Hans") == ["zh-Hans", "en-US"],
+               "Media OCR language defaults include simplified Chinese and English")
+        expect(MediaSupport.recognitionLanguages(for: "zh-TW") == ["zh-Hant", "en-US"],
+               "Media OCR maps Taiwan Chinese to Vision traditional Chinese")
+        expect(MediaSupport.recognitionLanguages(for: "zh-HK") == ["zh-Hant", "en-US"],
+               "Media OCR maps Hong Kong Chinese to Vision traditional Chinese")
         expectClose(Defaults.sanitizedAppVolume(1.5), 1.5, "valid app volume is preserved")
         expectClose(Defaults.sanitizedAppVolume(3), 2, "high app volume clamps to boost maximum")
         expectClose(Defaults.sanitizedAppVolume(-1), 0, "negative app volume clamps to mute")
@@ -4638,6 +4656,104 @@ struct MetricsTests {
         }
         expect(stereoLinked,
                "both channels of a frame share one gain so the stereo image stays put")
+
+        var lookaheadInput = sine(amplitude: 1.5, frames: 9600)
+        let lookahead = BoostLookaheadLimiter(channels: 1)
+        _ = lookaheadInput.withUnsafeMutableBufferPointer { buffer in
+            lookahead.process(buffer.baseAddress!, frames: buffer.count, channels: 1,
+                              release: BoostLimiter.release(sampleRate: 48000))
+        }
+        let delayedSine = Array(repeating: Float(0), count: BoostLookaheadLimiter.lookaheadFrames)
+            + Array(sine(amplitude: BoostLimiter.ceiling,
+                         frames: 9600 - BoostLookaheadLimiter.lookaheadFrames))
+        expect(lookaheadInput.allSatisfy { abs($0) <= BoostLimiter.ceiling + 0.0001 },
+               "lookahead keeps every boosted sample inside the output range")
+        expect(zip(lookaheadInput.dropFirst(960), delayedSine.dropFirst(960)).allSatisfy {
+            abs($0 - $1) < 0.0001
+        }, "lookahead preserves a steady loud waveform instead of reshaping its peaks")
+
+        var quietLookahead = sine(amplitude: 0.6, frames: 2048)
+        let quietLookaheadSource = quietLookahead
+        let quietLookaheadLimiter = BoostLookaheadLimiter(channels: 1)
+        _ = quietLookahead.withUnsafeMutableBufferPointer { buffer in
+            quietLookaheadLimiter.process(buffer.baseAddress!, frames: buffer.count, channels: 1,
+                                          release: BoostLimiter.release(sampleRate: 48000))
+        }
+        expect(Array(quietLookahead.prefix(BoostLookaheadLimiter.lookaheadFrames))
+                == Array(repeating: 0, count: BoostLookaheadLimiter.lookaheadFrames)
+            && Array(quietLookahead.dropFirst(BoostLookaheadLimiter.lookaheadFrames))
+                == Array(quietLookaheadSource.dropLast(BoostLookaheadLimiter.lookaheadFrames)),
+               "quiet routed audio stays bit-identical after the fixed lookahead delay")
+
+        let lookaheadSource = sine(amplitude: 1.5, frames: 4096)
+        var wholeLookahead = lookaheadSource
+        let wholeLookaheadLimiter = BoostLookaheadLimiter(channels: 1)
+        _ = wholeLookahead.withUnsafeMutableBufferPointer { buffer in
+            wholeLookaheadLimiter.process(buffer.baseAddress!, frames: buffer.count, channels: 1,
+                                          release: BoostLimiter.release(sampleRate: 48000))
+        }
+        let chunkedLookaheadLimiter = BoostLookaheadLimiter(channels: 1)
+        var chunkedLookahead = [Float]()
+        for sourceChunk in [Array(lookaheadSource[0..<511]),
+                            Array(lookaheadSource[511..<1537]),
+                            Array(lookaheadSource[1537...])] {
+            var chunk = sourceChunk
+            _ = chunk.withUnsafeMutableBufferPointer { buffer in
+                chunkedLookaheadLimiter.process(buffer.baseAddress!, frames: buffer.count,
+                                                channels: 1,
+                                                release: BoostLimiter.release(sampleRate: 48000))
+            }
+            chunkedLookahead += chunk
+        }
+        expect(wholeLookahead == chunkedLookahead,
+               "lookahead produces the same signal across realtime buffer boundaries")
+
+        var impulseTrain = [Float](repeating: 0.2, count: 4096)
+        for frame in stride(from: 256, to: impulseTrain.count, by: 173) {
+            impulseTrain[frame] = frame.isMultiple(of: 2) ? 2 : -2
+        }
+        let impulseLimiter = BoostLookaheadLimiter(channels: 1)
+        _ = impulseTrain.withUnsafeMutableBufferPointer { buffer in
+            impulseLimiter.process(buffer.baseAddress!, frames: buffer.count, channels: 1,
+                                   release: BoostLimiter.release(sampleRate: 48000))
+        }
+        expect(impulseTrain.allSatisfy { abs($0) <= BoostLimiter.ceiling + 0.0001 },
+               "overlapping future peaks are attenuated before they reach the output")
+
+        var lookaheadStereo = [Float](repeating: 0, count: 4096 * 2)
+        for frame in 0..<4096 {
+            let value = Float(sin(2 * Double.pi * 440 * Double(frame) / 48000))
+            lookaheadStereo[frame * 2] = 1.5 * value
+            lookaheadStereo[frame * 2 + 1] = 0.75 * value
+        }
+        let stereoLookaheadLimiter = BoostLookaheadLimiter(channels: 2)
+        _ = lookaheadStereo.withUnsafeMutableBufferPointer { buffer in
+            stereoLookaheadLimiter.process(buffer.baseAddress!, frames: buffer.count / 2,
+                                           channels: 2,
+                                           release: BoostLimiter.release(sampleRate: 48000))
+        }
+        expect((BoostLookaheadLimiter.lookaheadFrames..<4096).allSatisfy { frame in
+            abs(lookaheadStereo[frame * 2 + 1] - lookaheadStereo[frame * 2] / 2) < 0.0001
+        }, "lookahead applies one gain to every channel in a frame")
+
+        var changedChannels = [Float](repeating: 0.4, count: 16)
+        let adaptableLimiter = BoostLookaheadLimiter(channels: 2)
+        let changedChannelsWereHandled = changedChannels.withUnsafeMutableBufferPointer { buffer in
+            adaptableLimiter.process(
+                buffer.baseAddress!, frames: 8, channels: 2,
+                release: BoostLimiter.release(sampleRate: 48000))
+        }
+        expect(changedChannelsWereHandled,
+               "a stream shape change reuses the preallocated lookahead storage")
+
+        var tooManyChannels = [Float](repeating: 1.2, count: 24)
+        let overflowWasHandled = tooManyChannels.withUnsafeMutableBufferPointer { buffer in
+            BoostLookaheadLimiter(channels: 2).process(
+                buffer.baseAddress!, frames: 8, channels: 3,
+                release: BoostLimiter.release(sampleRate: 48000))
+        }
+        expect(!overflowWasHandled && tooManyChannels.allSatisfy { $0 == 1.2 },
+               "a stream larger than the preallocated capacity falls through safely")
 
         var fallbackLimiter = BoostLimiter()
         let fallbackLimited = limited(sine(amplitude: 1.5, frames: 480),
@@ -8739,6 +8855,18 @@ struct MetricsTests {
                "the final active display can never be disabled")
         expect(!BrightnessSupport.canDisableDisplay(activeDisplayIDs: [1, 3], target: 8),
                "an inactive display cannot enter the disable path")
+        expect(BrightnessSupport.headlessRecoveryCandidates(
+            activeDisplayIDs: [3], managedDisabledIDs: [1], builtInDisabledIDs: [1]).isEmpty,
+               "an active external display preserves an intentionally disabled built-in panel")
+        expect(BrightnessSupport.headlessRecoveryCandidates(
+            activeDisplayIDs: [], managedDisabledIDs: [1, 4], builtInDisabledIDs: [1]) == [1, 4],
+               "losing the last active display tries the built-in panel before other managed displays")
+        expect(BrightnessSupport.headlessRecoveryCandidates(
+            activeDisplayIDs: [], managedDisabledIDs: [7, 4], builtInDisabledIDs: []) == [4, 7],
+               "a headless desktop Mac can recover one display switched off by this app")
+        expect(BrightnessSupport.headlessRecoveryCandidates(
+            activeDisplayIDs: [], managedDisabledIDs: [], builtInDisabledIDs: [1]).isEmpty,
+               "a display disabled elsewhere is never changed during headless recovery")
 
         expect(BrightnessSupport.ddcCommandDelay(nowMicroseconds: 1_000_000,
                                                  lastCommandEndMicroseconds: nil) == 0,
@@ -9480,6 +9608,20 @@ struct MetricsTests {
                                                        fromCenter: true)
         expect(centered == CGRect(x: 30, y: 40, width: 40, height: 20),
                "option grows the selection from the center")
+        let cropBounds = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let cropDraft = CGRect(x: 120, y: 90, width: 400, height: 300)
+        expect(ScreenshotSupport.startsNewCropSelection(
+                    at: CGPoint(x: 300, y: 250), draft: cropBounds, within: cropBounds),
+               "dragging inside the initial full-image crop starts a new selection")
+        expect(!ScreenshotSupport.startsNewCropSelection(
+                    at: CGPoint(x: 300, y: 250), draft: cropDraft, within: cropBounds),
+               "dragging inside an adjusted crop keeps moving it")
+        expect(ScreenshotSupport.startsNewCropSelection(
+                    at: CGPoint(x: 700, y: 500), draft: cropDraft, within: cropBounds),
+               "dragging elsewhere in the image replaces an adjusted crop")
+        expect(!ScreenshotSupport.startsNewCropSelection(
+                    at: CGPoint(x: 900, y: 700), draft: cropDraft, within: cropBounds),
+               "a drag outside the image cannot start a crop")
         expect(ScreenshotSupport.isClick(from: CGPoint(x: 5, y: 5), to: CGPoint(x: 7, y: 8))
                 && !ScreenshotSupport.isClick(from: .zero, to: CGPoint(x: 12, y: 0)),
                "a tiny drag is a click, a real drag is not")
@@ -11176,6 +11318,22 @@ struct MetricsTests {
         expect(AppUpdatesSupport.tokens(in: mergedRows, selection: []).isEmpty
                 && !AppUpdatesSupport.hasStoreSelection(in: mergedRows, selection: []),
                "an empty selection asks for nothing")
+        expect(AppUpdatesSupport.singleStorePage(in: mergedRows, selection: everything)
+                == "https://apps.apple.com/app",
+               "one ticked store row hands off to its own page, where its own button goes")
+        let secondStoreRow = AppUpdatesSupport.Item(id: "store:com.example.notes",
+                                                    source: .appStore,
+                                                    name: "Notes",
+                                                    installedVersion: "1.0",
+                                                    latestVersion: "2.0",
+                                                    token: nil,
+                                                    bundlePath: nil,
+                                                    storePage: "https://apps.apple.com/notes")
+        let twoStoreRows = mergedRows + [secondStoreRow]
+        expect(AppUpdatesSupport.singleStorePage(in: twoStoreRows,
+                                                 selection: Set(twoStoreRows.map(\.id))) == nil
+                && AppUpdatesSupport.singleStorePage(in: mergedRows, selection: []) == nil,
+               "two store rows, or none, have no single page to land on")
 
         let keptSelection = AppUpdatesSupport.reconciledSelection(
             previous: [mergedRows[0].id, "gone:row"],
@@ -11207,7 +11365,7 @@ struct MetricsTests {
                "another platform's listing is not the installed Mac app's version")
         expect(AppUpdatesSupport.parseStoreLookup(Data("not json".utf8)).isEmpty,
                "a broken store answer yields nothing instead of throwing")
-        let discoveredPaths = AppUpdatesSupport.applicationScanPaths(
+        let discoveredPaths = InstalledApps.applicationScanPaths(
             folderPaths: ["/Applications/Editor.app",
                           "/System/Applications/System Utility.app",
                           "/Applications/Editor.app"],
@@ -11219,7 +11377,7 @@ struct MetricsTests {
                              "/Volumes/Installer/Sample.app"],
             homeDirectory: "/Users/test")
         expect(discoveredPaths == ["/Applications/Editor.app", "/Users/test/Tools/Side App.app"],
-               "app discovery keeps installed apps and rejects system, transient, nested and duplicate copies")
+               "shared app discovery keeps installed apps and rejects system, transient, nested and duplicate copies")
 
         let noon = Date(timeIntervalSince1970: 1_800_000_000)
         expect(AppUpdatesSupport.nextCheckDate(lastCheck: noon, frequency: .off, now: noon) == nil,
@@ -11587,6 +11745,27 @@ struct MetricsTests {
                 .map { abs($0.value - 150) < 0.001 } == true,
                "a comma decimal converts where that is the custom")
 
+        expect(units("180 cm to ft") == "5 ft 10.87 in",
+               "a length converting to feet keeps precise feet and inches")
+        expect(units("1.75 m to ft") == "5 ft 8.9 in",
+               "a decimal length keeps its fractional inches")
+        expect(units("6 ft to ft") == "6 ft",
+               "a whole number of feet has no leftover inches shown")
+        expect(units("5.9999 ft to ft") == "6 ft",
+               "inches that round up to twelve carry into the next whole foot")
+        expect(units("2 cm to ft") == "0.0656 ft",
+               "a length below one foot stays precise instead of rounding to inches")
+        expect(units("-180 cm to ft") == "-5.91 ft",
+               "a negative length keeps the existing decimal format")
+        expect(units("180 cm to in") == "70.87 in",
+               "converting to inches specifically stays a plain decimal, unaffected by the feet formatting")
+        expect(CommandBarUnits.convert("180 cm para pes",
+                                       decimalSeparator: ",",
+                                       groupingSeparator: ".",
+                                       locale: Locale(identifier: "pt_BR"))?.formatted
+                == "5 ft 10,87 pol.",
+               "feet and inches follow the person's number and unit language")
+
         // MARK: Command bar emoji
 
         expect(CommandBarEmoji.emoji.count > 150, "the curated emoji set is there")
@@ -11664,6 +11843,13 @@ struct MetricsTests {
                 && Defaults.registeredDefaults[DefaultsKey.recorderCountdown] as? Int == 3
                 && Defaults.registeredDefaults[DefaultsKey.recorderOpenEditor] as? Bool == true,
                "the recorder ships balanced, smooth, with a short countdown and the editor on")
+        expect(ScreenshotSupport.countdownRingProgress(elapsed: 0) == 1
+                && ScreenshotSupport.countdownRingProgress(elapsed: 0.46) == 0.5
+                && ScreenshotSupport.countdownRingProgress(elapsed: 0.92) == 0,
+               "the countdown ring drains smoothly across each displayed number")
+        expect(ScreenshotSupport.countdownRingProgress(elapsed: -1) == 1
+                && ScreenshotSupport.countdownRingProgress(elapsed: 2) == 0,
+               "the countdown ring clamps delayed and early frames")
         expect(GlobalShortcutRole.screenRecorder.requiredEnableKeys
                 == [DefaultsKey.recorderShortcutEnabled]
                 && GlobalShortcutRole.screenRecorder.feature == .screenRecorder,
