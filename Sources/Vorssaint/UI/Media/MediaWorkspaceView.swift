@@ -960,7 +960,7 @@ struct MediaWorkspaceView: View {
 
     private var previewOutputName: String {
         guard let inputURL else { return l10n.s.mediaOutputAutomatic }
-        if outputWasChosenManually, let outputURL { return outputURL.lastPathComponent }
+        if let outputURL { return outputURL.lastPathComponent }
         return defaultOutputURL(for: [inputURL], tool: .imageCompressor)?.lastPathComponent
             ?? l10n.s.mediaOutputAutomatic
     }
