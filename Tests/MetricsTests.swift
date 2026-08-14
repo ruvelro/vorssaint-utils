@@ -3877,6 +3877,12 @@ struct MetricsTests {
         expect(exactFill.exactMode == .fill
                && exactFill.targetSize(for: CGSize(width: 1600, height: 1200)) == CGSize(width: 320, height: 180),
                "Image exact resize stores fit/fill behavior without changing the target canvas")
+        expect(MediaSupport.cappedImageRenderSize(CGSize(width: 20_000, height: 20_000))
+               == CGSize(width: MediaSupport.maxImageRenderDimension, height: MediaSupport.maxImageRenderDimension),
+               "Image render target caps square custom outputs before bitmap allocation")
+        expect(MediaSupport.cappedImageRenderSize(CGSize(width: 20_000, height: 200_000)).height
+               <= CGFloat(MediaSupport.maxImageRenderDimension),
+               "Image render target caps extreme proportional outputs before bitmap allocation")
         let renameDate = Date(timeIntervalSince1970: 1_704_067_200) // 2024-01-01 UTC
         let renamePattern = MediaImageRenamePattern("{name}-{counter:03}-{date}-{time}-{width}x{height}-{ext}")
         expect(renamePattern.outputBaseName(for: URL(fileURLWithPath: "/tmp/Photo One.tiff"),
@@ -3899,8 +3905,11 @@ struct MetricsTests {
                                                                      format: .jpeg)
                == "bad-name",
                "Image rename pattern removes path separators")
-        expect(MediaSupport.sanitizedFileBaseName(String(repeating: "a", count: 220)).count == 180,
-               "Image rename pattern output is capped before hitting filesystem name limits")
+        let emojiName = MediaSupport.sanitizedFileBaseName(String(repeating: "🙂", count: 120),
+                                                           fileExtension: "png",
+                                                           uniquenessSuffixByteReservation: 4)
+        expect(emojiName.utf8.count <= 247,
+               "Image rename pattern output is capped by filesystem bytes, not character count")
         let profileOptions = MediaImageOptions(quality: 0.8,
                                                maxDimension: 1400,
                                                format: .png,

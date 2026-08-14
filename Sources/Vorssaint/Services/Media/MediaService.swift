@@ -371,7 +371,7 @@ final class MediaService: ObservableObject {
 
         for (offset, inputURL) in inputs.enumerated() {
             try checkCancellation(token)
-            originalBytes += fileSize(inputURL)
+            let inputBytes = fileSize(inputURL)
             do {
                 let prepared = try makeProcessedImage(inputURL: inputURL, options: options, token: token)
                 let outputURL = explicitOutputURL ?? MediaSupport.imageOutputURL(for: inputURL,
@@ -389,25 +389,26 @@ final class MediaService: ObservableObject {
                 MediaSupport.makeVisibleIfNeeded(outputURL)
                 preserveModificationDateIfNeeded(from: inputURL, to: outputURL, options: options)
                 let itemOutputBytes = fileSize(outputURL)
+                originalBytes += inputBytes
                 outputBytes += itemOutputBytes
                 outputURLs.append(outputURL)
                 itemResults.append(MediaImageBatchItemResult(inputURL: inputURL,
                                                              outputURL: outputURL,
-                                                             originalBytes: fileSize(inputURL),
+                                                             originalBytes: inputBytes,
                                                              outputBytes: itemOutputBytes,
                                                              failure: nil))
             } catch let failure as MediaFailureBox {
                 if inputs.count == 1 { throw failure }
                 itemResults.append(MediaImageBatchItemResult(inputURL: inputURL,
                                                              outputURL: nil,
-                                                             originalBytes: fileSize(inputURL),
+                                                             originalBytes: inputBytes,
                                                              outputBytes: 0,
                                                              failure: failure.failure))
             } catch {
                 if inputs.count == 1 { throw error }
                 itemResults.append(MediaImageBatchItemResult(inputURL: inputURL,
                                                              outputURL: nil,
-                                                             originalBytes: fileSize(inputURL),
+                                                             originalBytes: inputBytes,
                                                              outputBytes: 0,
                                                              failure: .failed(error.localizedDescription)))
             }
@@ -465,7 +466,9 @@ final class MediaService: ObservableObject {
         guard let sourceImage = CGImageSourceCreateThumbnailAtIndex(source, 0, imageOptions as CFDictionary) else {
             throw MediaFailureBox(.unsupported)
         }
-        let targetSize = options.resizeMode.targetSize(for: CGSize(width: sourceImage.width, height: sourceImage.height))
+        let targetSize = MediaSupport.cappedImageRenderSize(
+            options.resizeMode.targetSize(for: CGSize(width: sourceImage.width, height: sourceImage.height))
+        )
         guard let image = renderImage(sourceImage,
                                       targetSize: targetSize,
                                       resizeMode: options.resizeMode,
@@ -590,8 +593,9 @@ final class MediaService: ObservableObject {
                              watermark: MediaImageWatermark,
                              background: MediaImageBackground,
                              forceOpaque: Bool) -> CGImage? {
-        let width = max(1, Int(targetSize.width.rounded()))
-        let height = max(1, Int(targetSize.height.rounded()))
+        let cappedSize = MediaSupport.cappedImageRenderSize(targetSize)
+        let width = max(1, Int(cappedSize.width.rounded()))
+        let height = max(1, Int(cappedSize.height.rounded()))
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil,
                                          pixelsWide: width,
                                          pixelsHigh: height,

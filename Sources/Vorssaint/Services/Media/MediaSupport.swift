@@ -332,6 +332,10 @@ struct MediaTrimRange: Equatable {
 }
 
 enum MediaSupport {
+    static let maxImageRenderDimension = 8_192
+    static let maxImageRenderPixels = 8_192 * 8_192
+    private static let maxFilenameBytes = 255
+
     static func sanitizedTool(_ value: String) -> MediaTool {
         MediaTool(rawValue: value) ?? .videoCompressor
     }
@@ -399,7 +403,9 @@ enum MediaSupport {
 
     static func outputURL(in directory: URL, baseName: String, fileExtension: String) -> URL {
         directory
-            .appendingPathComponent(sanitizedFileBaseName(baseName))
+            .appendingPathComponent(sanitizedFileBaseName(baseName,
+                                                          fileExtension: fileExtension,
+                                                          uniquenessSuffixByteReservation: 4))
             .appendingPathExtension(fileExtension)
     }
 
@@ -442,7 +448,9 @@ enum MediaSupport {
                                fileManager: fileManager)
     }
 
-    static func sanitizedFileBaseName(_ value: String) -> String {
+    static func sanitizedFileBaseName(_ value: String,
+                                      fileExtension: String = "",
+                                      uniquenessSuffixByteReservation: Int = 0) -> String {
         let invalid = CharacterSet(charactersIn: "/:\\\0")
             .union(.newlines)
             .union(.controlCharacters)
@@ -451,10 +459,24 @@ enum MediaSupport {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".- "))
         let visible = clean.isEmpty ? "Output" : clean
-        guard visible.count > 180 else { return visible }
-        let shortened = String(visible.prefix(180))
+        let extensionBytes = fileExtension.isEmpty ? 0 : fileExtension.utf8.count + 1
+        let byteLimit = max(1, maxFilenameBytes - extensionBytes - max(0, uniquenessSuffixByteReservation))
+        guard visible.utf8.count > byteLimit else { return visible }
+        let shortened = prefix(visible, maxUTF8Bytes: byteLimit)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".- "))
         return shortened.isEmpty ? "Output" : shortened
+    }
+
+    static func cappedImageRenderSize(_ size: CGSize,
+                                      maxDimension: Int = maxImageRenderDimension,
+                                      maxPixels: Int = maxImageRenderPixels) -> CGSize {
+        let width = max(1, abs(size.width))
+        let height = max(1, abs(size.height))
+        let dimensionScale = min(1, CGFloat(maxDimension) / max(width, height))
+        let pixelCount = width * height
+        let pixelScale = pixelCount > CGFloat(maxPixels) ? sqrt(CGFloat(maxPixels) / pixelCount) : 1
+        let scale = min(dimensionScale, pixelScale)
+        return integralImageSize(width: width * scale, height: height * scale)
     }
 
     static func sanitizedImageProfiles(_ profiles: [MediaImageProfile]) -> [MediaImageProfile] {
@@ -556,5 +578,17 @@ enum MediaSupport {
 
     private static func multipleOf16(_ value: Int) -> Int {
         max(16, (max(16, value) / 16) * 16)
+    }
+
+    private static func prefix(_ value: String, maxUTF8Bytes: Int) -> String {
+        var result = ""
+        var usedBytes = 0
+        for character in value {
+            let count = String(character).utf8.count
+            guard usedBytes + count <= maxUTF8Bytes else { break }
+            result.append(character)
+            usedBytes += count
+        }
+        return result
     }
 }
