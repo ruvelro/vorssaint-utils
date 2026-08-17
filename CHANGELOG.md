@@ -43,6 +43,9 @@ compatibility with older development tools.
   with ⌘Return or from the actions key.
 
 ### Changed
+- The Command Bar now remembers which row you picked after which few letters
+  and puts it first when you type them again. It is never written down: like
+  everything you type into the bar, it is forgotten when the app quits.
 - The Command Bar now finds an app by the other names macOS knows it under, so
   iCal finds Calendar, Address Book finds Contacts and System Preferences finds
   System Settings.

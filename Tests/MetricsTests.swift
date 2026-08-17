@@ -12156,6 +12156,52 @@ struct MetricsTests {
         expect(!CommandBarClipboardAccess.canUseHistory(captureEnabled: false,
                                                         hasSavedItems: false),
                "an empty disabled clipboard still points to setup")
+        // MARK: What the bar noticed about this session
+        expect(CommandBarQueryMemory.prefixes(of: "wha") == ["w", "wh", "wha"],
+               "choosing a row for what was typed also answers every shorter piece of it")
+        expect(CommandBarQueryMemory.prefixes(of: "  Códex ") == ["c", "co", "cod", "code", "codex"],
+               "what is remembered is folded the way the ranking folds, accents and all")
+        expect(CommandBarQueryMemory.prefixes(of: "   ").isEmpty,
+               "an empty field teaches nothing")
+        expect(CommandBarQueryMemory.prefixes(of: String(repeating: "a", count: 40)).count
+                == CommandBarQueryMemory.longestPrefix,
+               "past a word's worth of letters the ranking already knows what to do")
+
+        var barMemory = CommandBarQueryMemory()
+        expect(barMemory.isEmpty && barMemory.boost(query: "wha", id: "app.whatsapp") == 0,
+               "a row never chosen for these letters is worth nothing extra")
+        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 1)
+        expect(barMemory.boost(query: "wha", id: "app.whatsapp") > 0
+                && barMemory.boost(query: "wha", id: "app.wallet") == 0
+                && barMemory.boost(query: "what", id: "app.whatsapp") > 0,
+               "the row chosen for a word answers to the letters on the way to it")
+        expect(barMemory.boost(query: "whatsapp web", id: "app.whatsapp") == 0,
+               "letters that were never typed on their own teach nothing")
+        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 2)
+        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 3)
+        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 4)
+        expect(barMemory.boost(query: "wha", id: "app.whatsapp")
+                == CommandBarQueryMemory.maximumBoost,
+               "choosing the same row again stops adding up once it is certain")
+        expect(CommandBarQueryMemory.maximumBoost < 200,
+               "what the bar noticed reorders equal matches and never beats a better one")
+        barMemory.forget(id: "app.whatsapp")
+        expect(barMemory.isEmpty, "forgetting one row takes it out of every prefix")
+        barMemory.record(query: "a", id: "one", step: 1)
+        barMemory.clear()
+        expect(barMemory.isEmpty, "and the whole session can be forgotten at once")
+        // Five rows compete for one prefix; the least chosen is the one that
+        // stops being remembered.
+        var crowdedPrefix = CommandBarQueryMemory()
+        for index in 0..<(CommandBarQueryMemory.idsPerQuery + 1) {
+            for repeatCount in 0...(index == 0 ? 0 : 3) {
+                crowdedPrefix.record(query: "x", id: "row.\(index)", step: index * 10 + repeatCount)
+            }
+        }
+        expect(crowdedPrefix.boost(query: "x", id: "row.0") == 0
+                && crowdedPrefix.boost(query: "x", id: "row.4") > 0,
+               "one prefix remembers a few rows, and the one picked least drops out")
+
         expect(CommandBarPreferences.source(ofRowID: "app.x") == .apps
                 && CommandBarPreferences.source(ofRowID: "menu.1.Bold") == .menus
                 && CommandBarPreferences.source(ofRowID: "folder./tmp") == .folders

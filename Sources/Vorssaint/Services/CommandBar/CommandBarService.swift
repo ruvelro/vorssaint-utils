@@ -95,6 +95,11 @@ final class CommandBarService: ObservableObject {
 
     private var catalog: [CommandBarEntry] = []
     let scriptRunner = CommandBarScriptRunner()
+    /// Which row answered which few letters, for as long as the app runs. Not
+    /// stored: the bar forgets everything typed into it when it goes.
+    private var queryMemory = CommandBarQueryMemory()
+    /// Counts choices, so the memory can order its own entries without a clock.
+    private var queryMemoryStep = 0
     private var entriesByID: [String: CommandBarEntry] = [:]
     private var normalizedByID: [String: (title: String, keywords: String)] = [:]
     private var entriesByStableKey: [String: CommandBarEntry] = [:]
@@ -674,6 +679,16 @@ final class CommandBarService: ObservableObject {
             UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage))
         usage.removeValue(forKey: entry.id)
         UserDefaults.standard.set(CommandBarUsage.encode(usage), forKey: DefaultsKey.commandBarUsage)
+        queryMemory.forget(id: entry.id)
+        refreshAfterPreferenceChange()
+    }
+
+    /// Forgets the whole habit, for the button in Settings that offers it.
+    /// What one session noticed about what was typed goes with it, or clearing
+    /// the ranking would leave half of it standing.
+    func forgetLearnedRanking() {
+        UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarUsage)
+        queryMemory.clear()
         refreshAfterPreferenceChange()
     }
 
@@ -1134,6 +1149,11 @@ final class CommandBarService: ObservableObject {
                                         : 0)
                                     + (entry.isActive ? 20 : 0)
                                     + aliasBoost
+                                    // What this session already answered with
+                                    // for exactly these letters.
+                                    + (entry.countsUsage
+                                        ? queryMemory.boost(query: effectiveQuery, id: entry.id)
+                                        : 0)
                                     // What the Mac itself holds leads what is
                                     // borrowed from the app in front.
                                     + CommandBarPreferences.rankBias(for: sources[index])
@@ -1648,6 +1668,12 @@ final class CommandBarService: ObservableObject {
     }
 
     private func finish(_ entry: CommandBarEntry, value: Int?) {
+        if entry.countsUsage, isVisible {
+            // Only what is on screen teaches anything: a row run from its own
+            // combination was never typed for.
+            queryMemoryStep &+= 1
+            queryMemory.record(query: query, id: entry.id, step: queryMemoryStep)
+        }
         if entry.countsUsage {
             let stored = UserDefaults.standard.string(forKey: DefaultsKey.commandBarUsage)
             let next = CommandBarUsage.recording(CommandBarUsage.decode(stored),
