@@ -95,6 +95,7 @@ final class CommandBarService: ObservableObject {
 
     private var catalog: [CommandBarEntry] = []
     let scriptRunner = CommandBarScriptRunner()
+    let fileSearch = CommandBarFileSearch()
     /// Which row answered which few letters, for as long as the app runs. Not
     /// stored: the bar forgets everything typed into it when it goes.
     private var queryMemory = CommandBarQueryMemory()
@@ -161,6 +162,7 @@ final class CommandBarService: ObservableObject {
     private init() {
         hotkey.onPress = { [weak self] in self?.toggle() }
         scriptRunner.onResult = { [weak self] in self?.refreshResults() }
+        fileSearch.onResult = { [weak self] in self?.refreshResults() }
     }
 
     // MARK: - Lifecycle
@@ -260,6 +262,7 @@ final class CommandBarService: ObservableObject {
     private func beginPresentation() -> UUID {
         deferredRowShortcut.cancel()
         scriptRunner.reset()
+        fileSearch.reset()
         let id = UUID()
         presentationID = id
         presentationLifecycle.beginHome(id)
@@ -320,6 +323,7 @@ final class CommandBarService: ObservableObject {
         }
         deferredRowShortcut.cancel()
         scriptRunner.reset()
+        fileSearch.reset()
         // Closing while listening for a combination must give every global key
         // back, or the whole app would go quiet until the next relaunch.
         if case .capturingShortcut = mode { endCapturingShortcut() }
@@ -555,7 +559,7 @@ final class CommandBarService: ObservableObject {
                 CommandBarPreferences.source(ofRowID: $0.id) == source
                     && !hidden.contains($0.stableKey)
             }
-        case .quitApps, .answers, .calculator, .selection:
+        case .quitApps, .answers, .calculator, .selection, .files:
             return false
         }
     }
@@ -581,7 +585,7 @@ final class CommandBarService: ObservableObject {
             rows = CommandBarCatalog.clipboardBrowseEntries(limit: limit, bar: bar) { [weak self] entry in
                 self?.paste(entry)
             }
-        case .quitApps, .answers, .calculator, .selection:
+        case .quitApps, .answers, .calculator, .selection, .files:
             rows = []
         }
         return rows.filter { !hidden.contains($0.stableKey) }
@@ -614,6 +618,7 @@ final class CommandBarService: ObservableObject {
         case .answers: return bar.sourceAnswers
         case .calculator: return bar.sourceCalculator
         case .selection: return bar.sourceSelection
+        case .files: return bar.sourceFiles
         case .links: return bar.linksTitle
         }
     }
@@ -627,10 +632,33 @@ final class CommandBarService: ObservableObject {
     /// from disk there means parsing the same JSON ninety times for one frame.
     private var pinCache: Set<String> = []
     private var shortcutCache: [String: GlobalShortcut] = [:]
+    /// The folders a file search looks in, already resolved, and the names it
+    /// never shows. Resolving reads the home folder, which is far too much to
+    /// do on a keystroke and never changes between two of them.
+    private var fileScopeCache: [String] = []
+    private var fileIgnoreCache: [String] = []
 
     private func reloadPreferenceCaches() {
         pinCache = Set(pins)
         shortcutCache = rowShortcuts
+        reloadFileSearchCaches()
+    }
+
+    private func reloadFileSearchCaches() {
+        let saved = CommandBarFileSearchSupport.decodeList(
+            UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileScopes) ?? "")
+        fileIgnoreCache = CommandBarFileSearchSupport.shippedIgnores
+            + CommandBarFileSearchSupport.decodeList(
+                UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileIgnores) ?? "")
+        guard !saved.isEmpty else {
+            fileScopeCache = []
+            return
+        }
+        let home = NSHomeDirectory()
+        let children = (try? FileManager.default.contentsOfDirectory(atPath: home)) ?? []
+        fileScopeCache = CommandBarFileSearchSupport.resolvedScopes(saved,
+                                                                    homeDirectory: home,
+                                                                    homeChildren: children)
     }
 
     func isPinned(_ entry: CommandBarEntry) -> Bool {
@@ -977,7 +1005,7 @@ final class CommandBarService: ObservableObject {
         case .snippets: return bar.kindSnippet
         case .folders: return bar.kindFolder
         case .actions, .apps, .menus, .windows, .quitApps, .settingsPages, .macSettings,
-             .clipboard, .emoji, .calculator, .selection:
+             .clipboard, .emoji, .calculator, .selection, .files:
             return entry.subtitle.isEmpty ? bar.everythingTitle : entry.subtitle
         }
     }
@@ -990,6 +1018,7 @@ final class CommandBarService: ObservableObject {
     private static let kindLimits: [(prefix: String, limit: Int)] = [
         ("app.", 5), ("window.", 4), ("quit.", 3), ("menu.", 5), ("emoji.", 6),
         ("settings.", 4), ("macsettings.", 4), ("clipboard.", 4), ("snippet.", 4),
+        ("file.", 4),
         // Every switch answers to the same verb, so searching that verb would
         // otherwise fill the list with twenty rows that all read alike.
         ("toggle.", 5),
@@ -1017,6 +1046,10 @@ final class CommandBarService: ObservableObject {
         // Inside a category, typing filters that category and nothing else:
         // no answer row, no caps per kind, just the ranking over one list.
         if let category = activeCategory {
+            // A search inside one category is not a search for files, so any
+            // pending one goes: it would land on a list that has no room for
+            // it and refresh the bar for nothing.
+            fileSearch.cancelPending()
             let hidden = hiddenKeys
             let pool = category == .clipboard
                 ? CommandBarCatalog.clipboardEntries(matching: trimmed, bar: bar, limit: 40) {
@@ -1070,6 +1103,23 @@ final class CommandBarService: ObservableObject {
             }
         } else {
             scriptRunner.cancelPending()
+        }
+
+        // Files, once the person has named a folder to look in. Asked for
+        // rather than waited on: the answer lands a moment later and refreshes
+        // the list, the way a saved script's answer does.
+        var fileRows: [CommandBarEntry] = []
+        if isEnabled(.files), !fileScopeCache.isEmpty {
+            if let paths = fileSearch.cachedPaths(for: trimmed) {
+                fileSearch.cancelPending()
+                fileRows = CommandBarCatalog.fileEntries(paths, bar: bar)
+            } else {
+                fileSearch.schedule(query: trimmed,
+                                    scopes: fileScopeCache,
+                                    patterns: fileIgnoreCache)
+            }
+        } else {
+            fileSearch.cancelPending()
         }
 
         // "brilho 40" is a command with a value; "code 1234" is a search for
@@ -1126,6 +1176,7 @@ final class CommandBarService: ObservableObject {
             pool.append(contentsOf: emojiEntries)
         }
         pool.append(contentsOf: clipboard)
+        pool.append(contentsOf: fileRows)
 
         // The kind of each surviving row, worked out once: the switches are
         // read from disk here instead of once per row per keystroke, and the

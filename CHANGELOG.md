@@ -39,6 +39,10 @@ compatibility with older development tools.
   Thanks to @MaximilianMauroner.
 - The clipboard can now clear itself after a delay, and when the Mac sleeps, the
   display sleeps or the screen locks. Under Clipboard.
+- The Command Bar can now find files by name in the folders you name, through
+  the Mac's own search. Nothing is indexed, no permission is asked for, and it
+  only offers what you can already see in Finder. Under Command Bar, and it does
+  nothing until you add a folder.
 - The Command Bar can now open any of the Mac's own System Settings panes, and
   finds them by what they hold in your language even where macOS only names them
   in English. It is its own source, so it can be switched off on its own.

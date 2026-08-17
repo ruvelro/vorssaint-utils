@@ -26,6 +26,9 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
     case selection
     /// The links, folders and searches the person saved themselves.
     case links
+    /// Files found by name in the folders the person named. Last, because it
+    /// is the one source that has to go and look.
+    case files
 
     var id: String { rawValue }
 
@@ -50,6 +53,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
         case .calculator: return "equal.square"
         case .selection: return "text.cursor"
         case .links: return "bookmark"
+        case .files: return "doc.text.magnifyingglass"
         }
     }
 
@@ -71,6 +75,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
         case .calculator: return nil
         case .selection: return "selection."
         case .links: return "link."
+        case .files: return "file."
         }
     }
 }
@@ -121,6 +126,10 @@ enum CommandBarPreferences {
     static func rankBias(for source: CommandBarSource) -> Int {
         switch source {
         case .menus: return -80
+        // A file is the deepest and most numerous thing the bar can find, and
+        // a bar is for running things first. So a file has to be a plainly
+        // better match than a command to lead the list, never merely as good.
+        case .files: return -40
         case .actions, .apps, .windows, .quitApps, .settingsPages, .macSettings, .snippets,
              .clipboard, .emoji, .folders, .answers, .calculator, .selection, .links:
             return 0
@@ -151,7 +160,7 @@ enum CommandBarPreferences {
     /// pinned to one would silently point somewhere else tomorrow.
     static func acceptsAlias(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
-        case .menus, .windows, .clipboard, .selection: return false
+        case .menus, .windows, .clipboard, .selection, .files: return false
         case .actions, .apps, .quitApps, .settingsPages, .macSettings, .snippets, .emoji,
              .folders, .answers, .calculator, .links:
             return true
@@ -219,7 +228,7 @@ enum CommandBarPreferences {
     /// again, which reads as the pin being broken.
     static func acceptsPin(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
-        case .menus, .quitApps, .clipboard, .emoji, .selection: return false
+        case .menus, .quitApps, .clipboard, .emoji, .selection, .files: return false
         case .actions, .apps, .windows, .settingsPages, .macSettings, .snippets, .folders,
              .links, .answers, .calculator:
             return true

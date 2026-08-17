@@ -776,6 +776,39 @@ enum CommandBarCatalog {
             }
     }
 
+    // MARK: - Files
+
+    /// One row per file Spotlight found in the folders the person named.
+    ///
+    /// A found file is a passing thing, like something copied: it is not
+    /// pinned, named or learned from, because the row exists for exactly as
+    /// long as the words that found it. What it does keep is where it lives,
+    /// so ⌘Return shows it in Finder.
+    static func fileEntries(_ paths: [String],
+                            bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
+        let home = NSHomeDirectory()
+        return paths.map { path in
+            let url = URL(fileURLWithPath: path)
+            let folder = CommandBarFileSearchSupport.abbreviating(
+                url.deletingLastPathComponent().path, homeDirectory: home)
+            return CommandBarEntry(
+                id: "file.\(path)",
+                title: url.lastPathComponent,
+                subtitle: folder,
+                keywords: bar.sourceFiles,
+                icon: .filePath(path),
+                countsUsage: false,
+                revealPath: path,
+                run: { _ in
+                    guard FileManager.default.fileExists(atPath: path) else {
+                        QuickToolHUD.show(icon: "doc.questionmark", message: url.lastPathComponent)
+                        return
+                    }
+                    NSWorkspace.shared.open(url)
+                })
+        }
+    }
+
     // MARK: - The Mac's own Settings panes
 
     /// One row per pane System Settings shows, opened by the address macOS

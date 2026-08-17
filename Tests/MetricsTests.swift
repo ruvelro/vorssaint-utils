@@ -12142,7 +12142,7 @@ struct MetricsTests {
         expect(CommandBarSource.allCases.map(\.rawValue) == [
             "actions", "apps", "menus", "windows", "quitApps", "settingsPages", "macSettings",
             "snippets", "clipboard", "emoji", "folders", "answers", "calculator",
-            "selection", "links",
+            "selection", "links", "files",
         ], "source ids are stable (they persist inside the disabled list)")
         expect(CommandBarSource.actions.isAlwaysOn
                 && CommandBarSource.allCases.filter(\.isAlwaysOn).count == 1,
@@ -12201,6 +12201,72 @@ struct MetricsTests {
         expect(crowdedPrefix.boost(query: "x", id: "row.0") == 0
                 && crowdedPrefix.boost(query: "x", id: "row.4") > 0,
                "one prefix remembers a few rows, and the one picked least drops out")
+
+        // MARK: Finding a file from the bar
+        expect(CommandBarFileSearchSupport.expression(for: "annual report")
+                == "kMDItemFSName == \"*annual*\"cd && kMDItemFSName == \"*report*\"cd",
+               "every word has to be in the name, in any order")
+        expect(CommandBarFileSearchSupport.expression(for: "a") == nil
+                && CommandBarFileSearchSupport.expression(for: "   ") == nil,
+               "one letter is not a search, so Spotlight is never asked")
+        expect(CommandBarFileSearchSupport.escaped("re*port") == "re\\*port"
+                && CommandBarFileSearchSupport.escaped("say \"hi\"") == "say \\\"hi\\\"",
+               "a wildcard somebody typed is the character, not a wider search")
+        expect(CommandBarFileSearchSupport.resolvedScopes(["~/Notes", "~/Notes/", "/tmp"],
+                                                          homeDirectory: "/Users/x",
+                                                          homeChildren: [])
+                == ["/Users/x/Notes", "/tmp"],
+               "a folder saved twice is searched once, tilde or not")
+        expect(CommandBarFileSearchSupport.resolvedScopes(["~"],
+                                                          homeDirectory: "/Users/x",
+                                                          homeChildren: ["Documents", "Library", ".ssh"])
+                == ["/Users/x/Documents"],
+               "the home folder means the folders inside it, never Library or a hidden one")
+        expect(CommandBarFileSearchSupport.resolvedScopes([], homeDirectory: "/Users/x",
+                                                          homeChildren: ["Documents"]).isEmpty,
+               "a list the person cleared searches nothing, instead of searching everything")
+        expect(CommandBarFileSearchSupport.isOfferable(path: "/Users/x/Notes/plan.md")
+                && !CommandBarFileSearchSupport.isOfferable(path: "/Users/x/.ssh/config")
+                && !CommandBarFileSearchSupport.isOfferable(path: "/Users/x/Notes/.draft.md"),
+               "a hidden file, and anything under a hidden folder, is never offered")
+        expect(CommandBarFileSearchSupport.isOfferable(path: "/Applications/Mail.app")
+                && !CommandBarFileSearchSupport.isOfferable(
+                    path: "/Applications/Mail.app/Contents/Info.plist")
+                && !CommandBarFileSearchSupport.isOfferable(
+                    path: "/Users/x/Pictures/Photos.photoslibrary/database/store.db"),
+               "a package is a thing people open; what is inside one is not")
+        expect(CommandBarFileSearchSupport.isIgnored(path: "/x/node_modules/a/index.js",
+                                                     patterns: ["node_modules"])
+                && !CommandBarFileSearchSupport.isIgnored(path: "/x/rebuild-notes.md",
+                                                          patterns: ["build"]),
+               "a name never worth showing matches a whole name, never half of one")
+        expect(CommandBarFileSearchSupport.isIgnored(path: "/x/run.log", patterns: ["*.log"])
+                && CommandBarFileSearchSupport.isIgnored(path: "/x/run.log", patterns: [".log"])
+                && !CommandBarFileSearchSupport.isIgnored(path: "/x/log", patterns: [".log"]),
+               "an extension written either way takes out the kind of file, not a folder called log")
+        expect(CommandBarFileSearchSupport.offerable(
+            paths: ["/x/a.md", "/x/a.md", "/x/.hidden", "/x/node_modules/b.js", "/x/c.md"],
+            patterns: ["node_modules"]) == ["/x/a.md", "/x/c.md"],
+               "one path is one row, and what is filtered stays filtered")
+        expect(CommandBarFileSearchSupport.decodeList(" a \n\n b \na") == ["a", "b"]
+                && CommandBarFileSearchSupport.encodeList(["a", "", "a", "b"]) == "a\nb",
+               "the saved lists never repeat themselves and survive a round trip")
+        expect(CommandBarFileSearchSupport.abbreviating("/Users/x/Notes", homeDirectory: "/Users/x")
+                == "~/Notes"
+                && CommandBarFileSearchSupport.abbreviating("/tmp/a", homeDirectory: "/Users/x")
+                == "/tmp/a",
+               "a path is written the short way only where it really is inside home")
+        expect(CommandBarFileSearchSupport.candidateLimit >= CommandBarFileSearchSupport.resultLimit,
+               "more names are asked for than are shown, since most are filtered away")
+        expect(Defaults.registeredDefaults[DefaultsKey.commandBarFileScopes] as? String == ""
+                && Defaults.registeredDefaults[DefaultsKey.commandBarFileIgnores] as? String == "",
+               "out of the box the bar has been given no folder, so it looks for no files")
+        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarFileScopes)
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarFileIgnores),
+               "the folders and the names never to show travel to another Mac")
+        expect(CommandBarPreferences.rankBias(for: .files) < 0
+                && CommandBarPreferences.rankBias(for: .apps) == 0,
+               "a file leads only when it is a plainly better match than a command")
 
         // MARK: The Mac's own Settings panes
         let openablePane: [String: Any] = [
@@ -13305,7 +13371,7 @@ struct MetricsTests {
         for language in AppLanguage.allCases {
             let commandBarValues = Mirror(reflecting: FeatureStrings.commandBar(language)).children
                 .compactMap { $0.value as? String }
-            expect(commandBarValues.count == 135 && commandBarValues.allSatisfy { !$0.isEmpty },
+            expect(commandBarValues.count == 143 && commandBarValues.allSatisfy { !$0.isEmpty },
                    "every command bar string is set for \(language.rawValue)")
             expect(commandBarValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible command bar strings (\(language.rawValue))")
