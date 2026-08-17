@@ -13206,7 +13206,7 @@ struct MetricsTests {
         for language in AppLanguage.allCases {
             let commandBarValues = Mirror(reflecting: FeatureStrings.commandBar(language)).children
                 .compactMap { $0.value as? String }
-            expect(commandBarValues.count == 133 && commandBarValues.allSatisfy { !$0.isEmpty },
+            expect(commandBarValues.count == 134 && commandBarValues.allSatisfy { !$0.isEmpty },
                    "every command bar string is set for \(language.rawValue)")
             expect(commandBarValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible command bar strings (\(language.rawValue))")
@@ -13498,6 +13498,16 @@ struct MetricsTests {
             CommandBarLink(name: "", kind: .link, destination: "x"),
             CommandBarLink(name: "ok", kind: .link, destination: "x"),
         ])).count == 1, "a half-written shortcut never survives a round trip")
+        expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "notes", kind: .place,
+                                                              destination: "~/Notes"))
+                == NSHomeDirectory() + "/Notes",
+               "a saved folder can be shown where it lives")
+        expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "site", kind: .link,
+                                                              destination: "https://x.com")) == nil,
+               "a site has no place on the disk to show")
+        expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "day", kind: .place,
+                                                              destination: "~/Notes/{date}.md")) == nil,
+               "a place still holding a placeholder is a different file every time it runs")
         expect(CommandBarLinks.rankingTitle(name: "gh", query: "gh vorssaint utils")
                 == "gh vorssaint utils",
                "once an argument follows the name, the row is scored against the whole query")

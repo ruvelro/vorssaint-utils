@@ -39,6 +39,8 @@ compatibility with older development tools.
   Thanks to @MaximilianMauroner.
 - The clipboard can now clear itself after a delay, and when the Mac sleeps, the
   display sleeps or the screen locks. Under Clipboard.
+- The Command Bar can now show an app, a folder or a saved place where it lives,
+  with ⌘Return or from the actions key.
 
 ### Changed
 - Clipboard history now opens as a compact palette with uncluttered rows and an

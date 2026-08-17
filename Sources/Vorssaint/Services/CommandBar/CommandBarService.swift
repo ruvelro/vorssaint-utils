@@ -1276,6 +1276,13 @@ final class CommandBarService: ObservableObject {
                 })
             }
         }
+        if entry.canRevealInFinder {
+            actions.append(RowAction(id: "reveal",
+                                     title: bar.actionRevealInFinder,
+                                     symbolName: "folder") { [weak self] in
+                self?.revealInFinder(entry)
+            })
+        }
         if CommandBarPreferences.acceptsPin(rowID: entry.id) {
             actions.append(RowAction(id: "pin",
                                      title: isPinned(entry) ? bar.actionUnpin : bar.actionPin,
@@ -1321,6 +1328,23 @@ final class CommandBarService: ObservableObject {
             })
         }
         return actions
+    }
+
+    /// Shows a row where it lives instead of running it. An app that was
+    /// moved or deleted since the scan says so rather than opening a Finder
+    /// window on nothing, the same answer a saved folder already gives.
+    func revealInFinder(_ entry: CommandBarEntry) {
+        guard let path = entry.revealPath else {
+            NSSound.beep()
+            return
+        }
+        guard FileManager.default.fileExists(atPath: path) else {
+            hide()
+            QuickToolHUD.show(icon: "folder.badge.questionmark", message: entry.title)
+            return
+        }
+        hide()
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
     }
 
     private func installedApp(for entry: CommandBarEntry) -> InstalledApps.InstalledApp? {
@@ -2070,6 +2094,17 @@ final class CommandBarService: ObservableObject {
             if event.modifierFlags.contains(.command), Int(event.keyCode) == kVK_ANSI_K {
                 self.openActions()
                 return nil
+            }
+            // ⌘Return shows the selected row where it lives. Guarded by the
+            // row's own rule, so a row with nowhere to go hands the keys back
+            // and Return goes on meaning what it always did.
+            if event.modifierFlags.contains(.command),
+               Int(event.keyCode) == kVK_Return || Int(event.keyCode) == kVK_ANSI_KeypadEnter {
+                if case .search = self.mode, let entry = self.selectedEntry,
+                   entry.canRevealInFinder {
+                    self.revealInFinder(entry)
+                    return nil
+                }
             }
             if event.modifierFlags.contains(.command), Int(event.keyCode) == kVK_ANSI_P {
                 if let entry = self.selectedEntry, !entry.isAnswer,

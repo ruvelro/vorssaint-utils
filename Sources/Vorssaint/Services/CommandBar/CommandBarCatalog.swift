@@ -66,7 +66,16 @@ struct CommandBarEntry: Identifiable {
     /// moment it was about to run. A row that does nothing with those words
     /// goes on answering to its name alone.
     let takesArgument: Bool
+    /// Where this row lives on the disk, for the rows that are a real file:
+    /// an app, one of the Mac's own folders, a place the person saved. The
+    /// rows the bar makes up have no such place, and saying so here is what
+    /// keeps ⌘Return and the actions list from ever disagreeing about it.
+    let revealPath: String?
     let run: (Int?) -> Void
+
+    /// Whether this row can be shown where it lives. One rule, read by the
+    /// combination and by the actions list alike.
+    var canRevealInFinder: Bool { revealPath != nil }
 
     /// Whether running this row asks the person something first. A row that
     /// would confirm, or wait for a number, or send them to a Settings page
@@ -88,7 +97,7 @@ struct CommandBarEntry: Identifiable {
                         confirmationPrompt: confirmationPrompt, answerValue: answerValue,
                         isAnswer: isAnswer, countsUsage: countsUsage,
                         matchTitle: matchTitle, keepsBarOpen: keepsBarOpen,
-                        takesArgument: takesArgument, run: run)
+                        takesArgument: takesArgument, revealPath: revealPath, run: run)
     }
 
     /// Glyph rows get a tinted plate behind the icon; real app, file and
@@ -118,6 +127,7 @@ struct CommandBarEntry: Identifiable {
          matchTitle: String? = nil,
          keepsBarOpen: Bool = false,
          takesArgument: Bool = false,
+         revealPath: String? = nil,
          run: @escaping (Int?) -> Void) {
         self.id = id
         self.stableKey = stableKey ?? id
@@ -138,6 +148,7 @@ struct CommandBarEntry: Identifiable {
         self.matchTitle = matchTitle
         self.keepsBarOpen = keepsBarOpen
         self.takesArgument = takesArgument
+        self.revealPath = revealPath
         self.run = run
     }
 }
@@ -722,6 +733,7 @@ enum CommandBarCatalog {
                 keywords: bar.kindFolder,
                 icon: .filePath(folder.url.path),
                 countsUsage: true,
+                revealPath: folder.url.path,
                 run: { _ in NSWorkspace.shared.open(folder.url) }))
         }
 
@@ -810,6 +822,7 @@ enum CommandBarCatalog {
                 subtitle: bar.kindApp,
                 icon: .appIcon(path: app.url.path),
                 isActive: isRunning,
+                revealPath: app.url.path,
                 run: { _ in
                     NSWorkspace.shared.openApplication(at: app.url,
                                                        configuration: NSWorkspace.OpenConfiguration()) { _, error in
@@ -1092,6 +1105,7 @@ enum CommandBarCatalog {
                 // Only a search or a script reads the words that follow its
                 // name; a plain site or folder opens the same either way.
                 takesArgument: link.takesArgument,
+                revealPath: CommandBarLinks.revealPath(for: link),
                 run: { _ in
                     if link.kind == .script {
                         runScript(link)
