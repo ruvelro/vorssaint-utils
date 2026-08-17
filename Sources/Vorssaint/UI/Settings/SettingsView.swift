@@ -635,6 +635,7 @@ struct EnergySettings: View {
                         .frame(width: 52, alignment: .trailing)
                 }
             }
+            DisplayHDRButton(display: display)
             DisplayPowerButton(display: display)
         }
     }
