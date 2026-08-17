@@ -10,6 +10,9 @@ All notable changes to this project are documented here. The format follows
 - The radial menu now includes a Now Playing media action with a floating track card and direct app access. Thanks to @ruvelro.
 - The radial menu editor now includes a broader built-in SF Symbol catalog with runtime availability filtering. Thanks to @ruvelro.
 - Sound Mixer now includes an option to hide inactive applications while keeping custom volume and output selections visible. Thanks to @ruvelro.
+- Extra brightness now works on external HDR monitors as well as the XDR panel
+  of a MacBook Pro, using whatever headroom each display reports and scaling
+  down when it grants less.
 
 ### Changed
 - Embedded utilities in the Quick Launcher now provide distinct Back and Close buttons. Thanks to @ruvelro.
