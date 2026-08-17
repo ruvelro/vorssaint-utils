@@ -820,6 +820,11 @@ enum CommandBarCatalog {
                 stableKey: app.bundleID.map { "app.bundle.\($0)" } ?? "app.\(app.id)",
                 title: app.name,
                 subtitle: bar.kindApp,
+                // The names macOS itself knows the app by, so the one the
+                // person learned still finds it: iCal, Address Book, System
+                // Preferences. They rank as keywords, under any title that
+                // really holds what was typed.
+                keywords: app.alternateNames.joined(separator: " "),
                 icon: .appIcon(path: app.url.path),
                 isActive: isRunning,
                 revealPath: app.url.path,

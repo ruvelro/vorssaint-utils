@@ -13498,6 +13498,27 @@ struct MetricsTests {
             CommandBarLink(name: "", kind: .link, destination: "x"),
             CommandBarLink(name: "ok", kind: .link, destination: "x"),
         ])).count == 1, "a half-written shortcut never survives a round trip")
+        // MARK: The other names macOS knows an app by
+        expect(SpotlightNamesSupport.usableAlternateNames(["iCal", "Calendar.app"],
+                                                          displayName: "Calendar",
+                                                          fileName: "Calendar.app") == ["iCal"],
+               "a real alias is kept and the bundle's own file name is not")
+        expect(SpotlightNamesSupport.usableAlternateNames(
+                ["Preferences", "Settings", "System Settings.app", "System Preferences",
+                 "System Settings"],
+                displayName: "System Settings",
+                fileName: "System Settings.app")
+                == ["Preferences", "Settings", "System Preferences"],
+               "an alias repeating the name under the icon teaches the search nothing")
+        expect(SpotlightNamesSupport.usableAlternateNames(["ALTERNATE_NAME_1", "  ", "browser"],
+                                                          displayName: "Safari",
+                                                          fileName: "Safari.app") == ["browser"],
+               "an untranslated placeholder is not a name anybody types")
+        expect(SpotlightNamesSupport.usableAlternateNames(["Códex", "codex"],
+                                                          displayName: "Chat",
+                                                          fileName: "Chat.app") == ["Códex"],
+               "two aliases that differ only by accent or case are one alias")
+
         expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "notes", kind: .place,
                                                               destination: "~/Notes"))
                 == NSHomeDirectory() + "/Notes",

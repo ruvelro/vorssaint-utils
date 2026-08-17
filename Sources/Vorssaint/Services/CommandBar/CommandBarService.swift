@@ -1746,9 +1746,9 @@ final class CommandBarService: ObservableObject {
         guard !appsLoading else { return }
         appsLoading = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let apps = InstalledApps.installedApplications(
+            let apps = SpotlightNames.enriching(InstalledApps.installedApplications(
                 includeSystemApplications: true,
-                spotlightPaths: Self.spotlightApplicationPaths())
+                spotlightPaths: Self.spotlightApplicationPaths()))
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.cachedApps = apps

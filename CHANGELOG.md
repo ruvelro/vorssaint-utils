@@ -43,6 +43,9 @@ compatibility with older development tools.
   with ⌘Return or from the actions key.
 
 ### Changed
+- The Command Bar now finds an app by the other names macOS knows it under, so
+  iCal finds Calendar, Address Book finds Contacts and System Preferences finds
+  System Settings.
 - Clipboard history now opens as a compact palette with uncluttered rows and an
   on-demand preview for reading or editing the full item.
 - Menu bar icons now match surrounding icons in size and alignment. Thanks to @bambidotexe.
