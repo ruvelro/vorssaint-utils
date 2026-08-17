@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 - The radial menu now includes a Now Playing media action with a floating track card and direct app access. Thanks to @ruvelro.
 - The radial menu editor now includes a broader built-in SF Symbol catalog with runtime availability filtering. Thanks to @ruvelro.
 - Sound Mixer now includes an option to hide inactive applications while keeping custom volume and output selections visible. Thanks to @ruvelro.
+- Displays can now control the speakers built into an external monitor, with a
+  volume slider and a mute button on the same channel the monitor's own buttons
+  use. Monitors with no speakers never show one. The keyboard volume keys can
+  reach those speakers too, while the sound is actually leaving through that
+  monitor, instead of moving a level macOS cannot change. Under Displays, and
+  off until you switch it on.
 - Extra brightness now works on external HDR monitors as well as the XDR panel
   of a MacBook Pro, using whatever headroom each display reports and scaling
   down when it grants less.
