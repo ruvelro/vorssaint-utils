@@ -7,11 +7,9 @@ import Foundation
 /// The other names macOS itself knows an app by.
 ///
 /// Spotlight keeps a list of aliases for every bundle, and no key inside an
-/// app's own Info.plist exposes them: it is where "iCal" still finds Calendar,
-/// "Address Book" finds Contacts, "System Preferences" finds System Settings
-/// and "browser" finds Safari, in whatever language the alias was written.
-/// Without them the bar can only find an app by the name written under its
-/// icon, which is not always the name the person learned.
+/// app's own Info.plist exposes them. Without those aliases the bar can only
+/// find an app by the name written under its icon, which is not always the
+/// name the person learned.
 ///
 /// Nothing here runs while the bar is closed, and nothing is written to disk.
 enum SpotlightNames {

@@ -32,6 +32,12 @@ final class CommandBarFileSearch {
     private var inFlight: Set<String> = []
     private var pendingWorkItem: DispatchWorkItem?
     private var generation = 0
+    private var currentQuery: String?
+    private let searchQueue = DispatchQueue(label: "com.vorssaint.commandbar.files",
+                                            qos: .userInitiated)
+    private let activeQueryLock = NSLock()
+    private var cancellationGeneration = 0
+    private var activeQuery: (generation: Int, query: MDQuery)?
 
     /// One opening of the bar owns its results. Clearing the session also
     /// stops a search started before it closed from publishing into the next.
@@ -45,6 +51,8 @@ final class CommandBarFileSearch {
     func cancelPending() {
         pendingWorkItem?.cancel()
         pendingWorkItem = nil
+        currentQuery = nil
+        stopActiveQuery()
     }
 
     /// The paths already found for exactly this query, or nil while nothing
@@ -56,6 +64,7 @@ final class CommandBarFileSearch {
     /// Asks for this query once the field stops moving. A query already
     /// answered, or already being answered, is left alone.
     func schedule(query: String, scopes: [String], patterns: [String]) {
+        currentQuery = query
         guard !scopes.isEmpty,
               CommandBarFileSearchSupport.expression(for: query) != nil,
               cache[query] == nil, !inFlight.contains(query)
@@ -63,26 +72,40 @@ final class CommandBarFileSearch {
         // The newest query is the only one worth waiting for: a search whose
         // text the person has already typed past must never land.
         pendingWorkItem?.cancel()
+        stopActiveQuery()
+        let runCancellationGeneration = activeQueryLock.withLock { cancellationGeneration }
         let workItem = DispatchWorkItem { [weak self] in
-            self?.execute(query: query, scopes: scopes, patterns: patterns)
+            self?.execute(query: query, scopes: scopes, patterns: patterns,
+                          cancellationGeneration: runCancellationGeneration)
         }
         pendingWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounce, execute: workItem)
     }
 
-    private func execute(query: String, scopes: [String], patterns: [String]) {
+    private func execute(query: String, scopes: [String], patterns: [String],
+                         cancellationGeneration runCancellationGeneration: Int) {
         guard let expression = CommandBarFileSearchSupport.expression(for: query) else { return }
+        pendingWorkItem = nil
         let runGeneration = generation
         inFlight.insert(query)
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let found = Self.search(expression: expression, scopes: scopes)
-            let paths = CommandBarFileSearchSupport.offerable(paths: found, patterns: patterns)
+        searchQueue.async { [weak self] in
+            guard let self else { return }
+            let found = self.search(expression: expression,
+                                    scopes: scopes,
+                                    cancellationGeneration: runCancellationGeneration)
+            let paths = CommandBarFileSearchSupport.offerable(
+                paths: found,
+                patterns: patterns,
+                isPackage: { Self.isPackage(atPath: $0) })
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.generation == runGeneration else { return }
                 self.inFlight.remove(query)
+                guard self.activeQueryLock.withLock({
+                    self.cancellationGeneration == runCancellationGeneration
+                }) else { return }
                 self.cache[query] = paths
-                // Even an empty answer is an answer: the row that said
-                // "looking" has to stop saying it.
+                guard CommandBarFileSearchSupport.shouldPublishResult(
+                    for: query, currentQuery: self.currentQuery) else { return }
                 self.onResult?()
             }
         }
@@ -90,11 +113,26 @@ final class CommandBarFileSearch {
 
     /// The Spotlight call itself, kept inside one synchronous function so the
     /// query object never outlives it.
-    private static func search(expression: String, scopes: [String]) -> [String] {
+    private func search(expression: String,
+                        scopes: [String],
+                        cancellationGeneration runGeneration: Int) -> [String] {
+        let liveScopes = scopes.filter(Self.isSearchableDirectory)
+        guard !liveScopes.isEmpty else { return [] }
         guard let query = MDQueryCreate(kCFAllocatorDefault, expression as CFString, nil, nil)
         else { return [] }
+        let canStart = activeQueryLock.withLock {
+            guard cancellationGeneration == runGeneration else { return false }
+            activeQuery = (runGeneration, query)
+            return true
+        }
+        guard canStart else { return [] }
+        defer {
+            activeQueryLock.withLock {
+                if activeQuery?.generation == runGeneration { activeQuery = nil }
+            }
+        }
         MDQuerySetMaxCount(query, CFIndex(CommandBarFileSearchSupport.candidateLimit))
-        MDQuerySetSearchScope(query, scopes as CFArray, 0)
+        MDQuerySetSearchScope(query, liveScopes as CFArray, 0)
         guard MDQueryExecute(query, CFOptionFlags(kMDQuerySynchronous.rawValue)) else { return [] }
         let count = MDQueryGetResultCount(query)
         var paths: [String] = []
@@ -113,5 +151,32 @@ final class CommandBarFileSearch {
             let byName = left.localizedCaseInsensitiveCompare(right)
             return byName == .orderedSame ? $0 < $1 : byName == .orderedAscending
         }
+    }
+
+    /// Stops the synchronous Spotlight query itself, not merely its callback.
+    /// The queue is serial, so a slow old query can never overlap the text the
+    /// person is typing now or keep working after the bar closes.
+    private func stopActiveQuery() {
+        activeQueryLock.withLock {
+            cancellationGeneration &+= 1
+            if let activeQuery { MDQueryStop(activeQuery.query) }
+            activeQuery = nil
+        }
+    }
+
+    /// Finder package status comes from the filesystem, so document bundles
+    /// and future package types are sealed without maintaining an extension list.
+    private static func isPackage(atPath path: String) -> Bool {
+        let url = URL(fileURLWithPath: path).resolvingSymlinksInPath()
+        return (try? url.resourceValues(forKeys: [.isPackageKey]).isPackage) == true
+    }
+
+    /// A restored preference can point at something that moved or became a
+    /// file. Only live, ordinary directories become Spotlight scopes.
+    static func isSearchableDirectory(atPath path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return false }
+        return !isPackage(atPath: path)
     }
 }

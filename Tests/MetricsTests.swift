@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
-import CoreAudio
-import CoreGraphics
+import AppKit
 import Carbon.HIToolbox
 import Combine
+import CoreAudio
+import CoreGraphics
 import Darwin
 import Foundation
 import ImageIO
@@ -3409,9 +3410,10 @@ struct MetricsTests {
         let reusedHistoryWindow = WindowLayoutWindowKey(processID: 41,
                                                         processLaunchTime: 101,
                                                         windowID: 414)
-        let historyFrames = (0...WindowLayoutHistory.perWindowLimit).map {
-            WindowLayoutFrame(origin: CGPoint(x: $0 * 10, y: $0 * 20),
-                              size: CGSize(width: 800 + $0, height: 500 + $0))
+        let historyFrames: [WindowLayoutFrame] = (0...WindowLayoutHistory.perWindowLimit).map { index in
+            let origin = CGPoint(x: index * 10, y: index * 20)
+            let size = CGSize(width: 800 + index, height: 500 + index)
+            return WindowLayoutFrame(origin: origin, size: size)
         }
         var layoutHistory = WindowLayoutHistory()
         layoutHistory.record(historyFrames[0], for: historyWindow)
@@ -4318,6 +4320,45 @@ struct MetricsTests {
         expectClose(Defaults.sanitizedAppVolume(3), 2, "high app volume clamps to boost maximum")
         expectClose(Defaults.sanitizedAppVolume(-1), 0, "negative app volume clamps to mute")
         expectClose(Defaults.sanitizedAppVolume(.infinity), 1, "non-finite app volume falls back to unity")
+        expectClose(MixerRoutingSupport.volumeFraction(fromPercentageText: "40",
+                                                       maximumPercent: 200) ?? -1,
+                    0.4,
+                    "mixer percentage input becomes app gain")
+        expectClose(MixerRoutingSupport.volumeFraction(fromPercentageText: " 75% ",
+                                                       maximumPercent: 100) ?? -1,
+                    0.75,
+                    "mixer percentage input accepts a percent sign")
+        expectClose(MixerRoutingSupport.volumeFraction(fromPercentageText: "250",
+                                                       maximumPercent: 200) ?? -1,
+                    2,
+                    "mixer percentage input clamps to the row maximum")
+        expectClose(MixerRoutingSupport.volumeFraction(fromPercentageText: "-10",
+                                                       maximumPercent: 100) ?? -1,
+                    0,
+                    "mixer percentage input clamps negative values")
+        expect(MixerRoutingSupport.volumeFraction(fromPercentageText: "loud",
+                                                  maximumPercent: 100) == nil,
+               "mixer percentage input rejects non-numbers")
+        expect(MixerRoutingSupport.volumeFraction(fromPercentageText: "nan",
+                                                  maximumPercent: 100) == nil,
+               "mixer percentage input rejects non-finite numbers")
+        let percentWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 80, height: 24),
+                                     styleMask: .borderless,
+                                     backing: .buffered,
+                                     defer: false)
+        let percentField = MixerPercentNativeTextField(frame: percentWindow.contentView!.bounds)
+        percentField.stringValue = "37"
+        var percentFieldAttached = false
+        percentField.didAttachToWindow = { percentFieldAttached = true }
+        percentWindow.contentView?.addSubview(percentField)
+        expect(percentFieldAttached,
+               "mixer percentage field notices when it joins its popover window")
+        expect(percentField.focusAndSelectAll(),
+               "mixer percentage field becomes the native first responder")
+        expect((percentField.currentEditor() as? NSTextView)?.selectedRange()
+                == NSRange(location: 0, length: 2),
+               "mixer percentage field selects its existing value for direct replacement")
+        percentWindow.orderOut(nil)
         expect(Defaults.sanitizedMixerHeadphonesDisconnectVolumePercent(35) == 35,
                "headphone disconnect volume preserves valid percentages")
         expect(Defaults.sanitizedMixerHeadphonesDisconnectVolumePercent(-5)
@@ -12159,7 +12200,8 @@ struct MetricsTests {
         // MARK: What the bar noticed about this session
         expect(CommandBarQueryMemory.prefixes(of: "wha") == ["w", "wh", "wha"],
                "choosing a row for what was typed also answers every shorter piece of it")
-        expect(CommandBarQueryMemory.prefixes(of: "  Códex ") == ["c", "co", "cod", "code", "codex"],
+        expect(CommandBarQueryMemory.prefixes(of: "  Résumé ")
+                == ["r", "re", "res", "resu", "resum", "resume"],
                "what is remembered is folded the way the ranking folds, accents and all")
         expect(CommandBarQueryMemory.prefixes(of: "   ").isEmpty,
                "an empty field teaches nothing")
@@ -12168,24 +12210,30 @@ struct MetricsTests {
                "past a word's worth of letters the ranking already knows what to do")
 
         var barMemory = CommandBarQueryMemory()
-        expect(barMemory.isEmpty && barMemory.boost(query: "wha", id: "app.whatsapp") == 0,
+        expect(barMemory.isEmpty && barMemory.boost(query: "pri", id: "app.primary") == 0,
                "a row never chosen for these letters is worth nothing extra")
-        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 1)
-        expect(barMemory.boost(query: "wha", id: "app.whatsapp") > 0
-                && barMemory.boost(query: "wha", id: "app.wallet") == 0
-                && barMemory.boost(query: "what", id: "app.whatsapp") > 0,
+        barMemory.record(query: "primary", id: "app.primary", step: 1)
+        expect(barMemory.boost(query: "pri", id: "app.primary") > 0
+                && barMemory.boost(query: "pri", id: "app.other") == 0
+                && barMemory.boost(query: "prim", id: "app.primary") > 0,
                "the row chosen for a word answers to the letters on the way to it")
-        expect(barMemory.boost(query: "whatsapp web", id: "app.whatsapp") == 0,
+        expect(barMemory.boost(query: "primary extra", id: "app.primary") == 0,
                "letters that were never typed on their own teach nothing")
-        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 2)
-        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 3)
-        barMemory.record(query: "whatsapp", id: "app.whatsapp", step: 4)
-        expect(barMemory.boost(query: "wha", id: "app.whatsapp")
+        barMemory.record(query: "primary", id: "app.primary", step: 2)
+        barMemory.record(query: "primary", id: "app.primary", step: 3)
+        barMemory.record(query: "primary", id: "app.primary", step: 4)
+        expect(barMemory.boost(query: "pri", id: "app.primary")
                 == CommandBarQueryMemory.maximumBoost,
                "choosing the same row again stops adding up once it is certain")
-        expect(CommandBarQueryMemory.maximumBoost < 200,
-               "what the bar noticed reorders equal matches and never beats a better one")
-        barMemory.forget(id: "app.whatsapp")
+        let keywordPrefixScore = CommandBarSearch.score(title: "Other",
+                                                        keywords: "primary",
+                                                        query: "pri") ?? 0
+        let keywordExactScore = CommandBarSearch.score(title: "Other",
+                                                       keywords: "pri",
+                                                       query: "pri") ?? 0
+        expect(keywordPrefixScore + CommandBarQueryMemory.maximumBoost < keywordExactScore,
+               "what the bar noticed reorders ties and never beats a better keyword match")
+        barMemory.forget(id: "app.primary")
         expect(barMemory.isEmpty, "forgetting one row takes it out of every prefix")
         barMemory.record(query: "a", id: "one", step: 1)
         barMemory.clear()
@@ -12212,29 +12260,46 @@ struct MetricsTests {
         expect(CommandBarFileSearchSupport.escaped("re*port") == "re\\*port"
                 && CommandBarFileSearchSupport.escaped("say \"hi\"") == "say \\\"hi\\\"",
                "a wildcard somebody typed is the character, not a wider search")
-        expect(CommandBarFileSearchSupport.resolvedScopes(["~/Notes", "~/Notes/", "/tmp"],
-                                                          homeDirectory: "/Users/x",
-                                                          homeChildren: [])
+        let searchableDirectories: Set<String> = [
+            "/Users/x/Notes", "/Users/x/Documents", "/tmp",
+        ]
+        expect(CommandBarFileSearchSupport.resolvedScopes(
+                ["~/Notes", "~/Notes/", "~/single.txt", "/tmp"],
+                homeDirectory: "/Users/x",
+                homeChildren: [],
+                isSearchableDirectory: searchableDirectories.contains)
                 == ["/Users/x/Notes", "/tmp"],
-               "a folder saved twice is searched once, tilde or not")
-        expect(CommandBarFileSearchSupport.resolvedScopes(["~"],
-                                                          homeDirectory: "/Users/x",
-                                                          homeChildren: ["Documents", "Library", ".ssh"])
+               "saved scopes are live directories, deduplicated after tilde expansion")
+        expect(CommandBarFileSearchSupport.resolvedScopes(
+                ["~"],
+                homeDirectory: "/Users/x",
+                homeChildren: ["Documents", "Library", ".ssh", "single.txt", "Archive.pkg"],
+                isSearchableDirectory: searchableDirectories.contains)
                 == ["/Users/x/Documents"],
-               "the home folder means the folders inside it, never Library or a hidden one")
-        expect(CommandBarFileSearchSupport.resolvedScopes([], homeDirectory: "/Users/x",
-                                                          homeChildren: ["Documents"]).isEmpty,
+               "home expands only to visible ordinary directories, never files or packages")
+        expect(CommandBarFileSearchSupport.resolvedScopes(
+                [], homeDirectory: "/Users/x", homeChildren: ["Documents"],
+                isSearchableDirectory: searchableDirectories.contains).isEmpty,
                "a list the person cleared searches nothing, instead of searching everything")
-        expect(CommandBarFileSearchSupport.isOfferable(path: "/Users/x/Notes/plan.md")
-                && !CommandBarFileSearchSupport.isOfferable(path: "/Users/x/.ssh/config")
-                && !CommandBarFileSearchSupport.isOfferable(path: "/Users/x/Notes/.draft.md"),
+        let packagePaths: Set<String> = [
+            "/Applications/Utility.app", "/Users/x/Notes/Archive.unknownpackage",
+        ]
+        expect(CommandBarFileSearchSupport.isOfferable(
+                    path: "/Users/x/Notes/plan.md", isPackage: packagePaths.contains)
+                && !CommandBarFileSearchSupport.isOfferable(
+                    path: "/Users/x/.ssh/config", isPackage: packagePaths.contains)
+                && !CommandBarFileSearchSupport.isOfferable(
+                    path: "/Users/x/Notes/.draft.md", isPackage: packagePaths.contains),
                "a hidden file, and anything under a hidden folder, is never offered")
-        expect(CommandBarFileSearchSupport.isOfferable(path: "/Applications/Mail.app")
+        expect(CommandBarFileSearchSupport.isOfferable(
+                    path: "/Applications/Utility.app", isPackage: packagePaths.contains)
                 && !CommandBarFileSearchSupport.isOfferable(
-                    path: "/Applications/Mail.app/Contents/Info.plist")
+                    path: "/Applications/Utility.app/Contents/Info.plist",
+                    isPackage: packagePaths.contains)
                 && !CommandBarFileSearchSupport.isOfferable(
-                    path: "/Users/x/Pictures/Photos.photoslibrary/database/store.db"),
-               "a package is a thing people open; what is inside one is not")
+                    path: "/Users/x/Notes/Archive.unknownpackage/data/item",
+                    isPackage: packagePaths.contains),
+               "filesystem package metadata seals known and future package types")
         expect(CommandBarFileSearchSupport.isIgnored(path: "/x/node_modules/a/index.js",
                                                      patterns: ["node_modules"])
                 && !CommandBarFileSearchSupport.isIgnored(path: "/x/rebuild-notes.md",
@@ -12246,8 +12311,15 @@ struct MetricsTests {
                "an extension written either way takes out the kind of file, not a folder called log")
         expect(CommandBarFileSearchSupport.offerable(
             paths: ["/x/a.md", "/x/a.md", "/x/.hidden", "/x/node_modules/b.js", "/x/c.md"],
-            patterns: ["node_modules"]) == ["/x/a.md", "/x/c.md"],
+            patterns: ["node_modules"],
+            isPackage: { _ in false }) == ["/x/a.md", "/x/c.md"],
                "one path is one row, and what is filtered stays filtered")
+        expect(CommandBarFileSearchSupport.shouldPublishResult(for: "new", currentQuery: "new")
+                && !CommandBarFileSearchSupport.shouldPublishResult(
+                    for: "old", currentQuery: "new")
+                && !CommandBarFileSearchSupport.shouldPublishResult(
+                    for: "old", currentQuery: nil),
+               "a cancelled or superseded asynchronous search never refreshes the visible bar")
         expect(CommandBarFileSearchSupport.decodeList(" a \n\n b \na") == ["a", "b"]
                 && CommandBarFileSearchSupport.encodeList(["a", "", "a", "b"]) == "a\nb",
                "the saved lists never repeat themselves and survive a round trip")
@@ -12261,9 +12333,28 @@ struct MetricsTests {
         expect(Defaults.registeredDefaults[DefaultsKey.commandBarFileScopes] as? String == ""
                 && Defaults.registeredDefaults[DefaultsKey.commandBarFileIgnores] as? String == "",
                "out of the box the bar has been given no folder, so it looks for no files")
-        expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarFileScopes)
+        expect(!SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarFileScopes)
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarFileIgnores),
-               "the folders and the names never to show travel to another Mac")
+               "folder authority stays on one Mac while ignored names remain portable")
+        let fileSearchBackup = SettingsBackupSupport.sanitizedSettings(from: [
+            SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+            SettingsBackupSupport.settingsKey: [
+                DefaultsKey.commandBarFileScopes: "~/Documents",
+                DefaultsKey.commandBarFileIgnores: "*.log",
+            ],
+        ])
+        expect(fileSearchBackup?[DefaultsKey.commandBarFileScopes] == nil
+                && fileSearchBackup?[DefaultsKey.commandBarFileIgnores] as? String == "*.log",
+               "a backup restores ignored names but never grants a folder on another Mac")
+        let invalidFileSearchBackup = SettingsBackupSupport.sanitizedSettings(from: [
+            SettingsBackupSupport.formatVersionKey: SettingsBackupSupport.formatVersion,
+            SettingsBackupSupport.settingsKey: [
+                DefaultsKey.commandBarFileScopes: 42,
+                DefaultsKey.commandBarFileIgnores: false,
+            ],
+        ])
+        expect(invalidFileSearchBackup?.isEmpty == true,
+               "a backup cannot restore non-text file search preferences")
         expect(CommandBarPreferences.rankBias(for: .files) < 0
                 && CommandBarPreferences.rankBias(for: .apps) == 0,
                "a file leads only when it is a plainly better match than a command")
@@ -12273,7 +12364,7 @@ struct MetricsTests {
             "EXAppExtensionAttributes": [
                 "SettingsExtensionAttributes": [
                     "allowsXAppleSystemPreferencesURLScheme": true,
-                    "legacyPrefPaneBundleName": "Appearance.prefPane",
+                    "legacyPrefPaneBundleName": "Legacy.prefPane",
                 ],
             ],
         ]
@@ -12286,14 +12377,14 @@ struct MetricsTests {
         ]) && !CommandBarSystemSettingsSupport.isOpenablePane(info: ["CFBundleName": "Thumbnails"]),
                "a thumbnailer, and a pane with no address, are not rows")
         expect(CommandBarSystemSettingsSupport.legacyPaneName(info: openablePane)
-                == "Appearance.prefPane"
+                == "Legacy.prefPane"
                 && CommandBarSystemSettingsSupport.legacyPaneName(info: ["a": 1]) == nil,
                "the older pane is followed only where the newer one names it")
-        expect(CommandBarSystemSettingsSupport.paneName(localizedDisplayName: "AppleCare & Warranty",
-                                                        displayName: "CoverageSettingPane_macOS",
+        expect(CommandBarSystemSettingsSupport.paneName(localizedDisplayName: "Coverage & Support",
+                                                        displayName: "CoveragePane_Internal",
                                                         bundleName: "Coverage",
                                                         fileName: "CoverageSettings.appex")
-                == "AppleCare & Warranty",
+                == "Coverage & Support",
                "a pane is called what System Settings calls it")
         expect(CommandBarSystemSettingsSupport.paneName(localizedDisplayName: nil,
                                                         displayName: "  ",
@@ -12314,6 +12405,11 @@ struct MetricsTests {
             "a": ["localizableStrings": [["title": "one", "index": "two, three"]]],
         ], limit: 2) == "one two",
                "one pane never contributes more words than the ranking can use")
+        let longPaneTerms = (1...45).map { ["title": "term\($0)", "index": ""] }
+        expect(CommandBarSystemSettingsSupport.keywords(fromSearchTerms: [
+            "Main": ["localizableStrings": longPaneTerms],
+        ]).contains("term45"),
+               "important terms beyond the old forty-word cutoff remain searchable")
         expect(Set(AppLanguage.allCases.map(CommandBarSystemSettingsSupport.resourceFolder)).count
                 == AppLanguage.allCases.count,
                "each language reads its own words, so no two share a folder")
@@ -12400,6 +12496,30 @@ struct MetricsTests {
         expect(CommandBarPreferences.decodePins(CommandBarPreferences.encodePins(["a", "b"])) == ["a", "b"]
                 && CommandBarPreferences.decodePins("a\na\n\nb") == ["a", "b"],
                "pins survive the round trip and never repeat")
+        let positionOffset = CGSize(width: -24.4, height: 80.6)
+        expect(CommandBarPreferences.decodePositionOffset(
+            CommandBarPreferences.encodePositionOffset(positionOffset))
+            == CGSize(width: -24, height: 81),
+               "the command bar position offset survives a rounded round trip")
+        for invalidOffset in ["", "12", "12,", "12,nope", "12,nope,20", "nan,1", "inf,1"] {
+            expect(CommandBarPreferences.decodePositionOffset(invalidOffset) == .zero,
+                   "an invalid command bar position offset is ignored (\(invalidOffset))")
+        }
+        expect(CommandBarPreferences.encodePositionOffset(.zero).isEmpty
+                && CommandBarPreferences.encodePositionOffset(
+                    CGSize(width: CGFloat.infinity, height: 1)).isEmpty,
+               "an empty or non-finite command bar position offset is not stored")
+        let commandBarScreen = CGRect(x: -1440, y: 0, width: 1440, height: 900)
+        let commandBarSize = CGSize(width: 560, height: 380)
+        let upperRight = CommandBarPreferences.clampedPanelOrigin(
+            size: commandBarSize, in: commandBarScreen,
+            offset: CGSize(width: 10_000, height: 10_000))
+        let lowerLeft = CommandBarPreferences.clampedPanelOrigin(
+            size: commandBarSize, in: commandBarScreen,
+            offset: CGSize(width: -10_000, height: -10_000))
+        expect(upperRight == CGPoint(x: -576, y: 504)
+                && lowerLeft == CGPoint(x: -1424, y: 16),
+               "the command bar stays fully inside a screen on both axes")
 
         // MARK: Command bar unit conversion
 
@@ -12510,6 +12630,8 @@ struct MetricsTests {
         expect(Defaults.registeredDefaults[DefaultsKey.commandBarShortcut] as? String
                 == "option:49",
                "the default command bar shortcut is option space, the launcher convention")
+        expect(Defaults.registeredDefaults[DefaultsKey.commandBarPositionOffset] as? String == "",
+               "the command bar position starts at its default spot")
         expect(Defaults.registeredDefaults[DefaultsKey.panelUtilityCommandBar] as? Bool == true,
                "the command bar panel row ships visible like its siblings")
         expect(GlobalShortcutRole.commandBar.requiredEnableKeys == [DefaultsKey.commandBarShortcutEnabled]
@@ -12527,7 +12649,8 @@ struct MetricsTests {
                "what the person runs most never travels in a backup")
         expect(SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarShortcutEnabled)
                 && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarShortcut)
-                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarLinks),
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarLinks)
+                && SettingsBackupSupport.exportKeys().contains(DefaultsKey.commandBarPositionOffset),
                "the command bar settings travel in backups")
         // MARK: Screen recorder wiring
 
@@ -13371,7 +13494,7 @@ struct MetricsTests {
         for language in AppLanguage.allCases {
             let commandBarValues = Mirror(reflecting: FeatureStrings.commandBar(language)).children
                 .compactMap { $0.value as? String }
-            expect(commandBarValues.count == 143 && commandBarValues.allSatisfy { !$0.isEmpty },
+            expect(commandBarValues.count == 146 && commandBarValues.allSatisfy { !$0.isEmpty },
                    "every command bar string is set for \(language.rawValue)")
             expect(commandBarValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible command bar strings (\(language.rawValue))")
@@ -13449,10 +13572,12 @@ struct MetricsTests {
 
         var deferredShortcut = CommandBarDeferredRowShortcut()
         deferredShortcut.schedule("action.trash", for: firstBarPresentation)
-        expect(deferredShortcut.take(for: secondBarPresentation) == nil
+        expect(deferredShortcut.key(for: secondBarPresentation) == nil
+                && deferredShortcut.key(for: firstBarPresentation) == "action.trash"
+                && deferredShortcut.take(for: secondBarPresentation) == nil
                 && deferredShortcut.take(for: firstBarPresentation) == "action.trash"
                 && deferredShortcut.take(for: firstBarPresentation) == nil,
-               "a prompt shortcut runs once and only on the presentation that requested it")
+               "an async row shortcut waits without being consumed, then runs once on its presentation")
         deferredShortcut.schedule("action.trash", for: firstBarPresentation)
         deferredShortcut.cancel()
         expect(deferredShortcut.take(for: firstBarPresentation) == nil,
@@ -13664,24 +13789,25 @@ struct MetricsTests {
             CommandBarLink(name: "ok", kind: .link, destination: "x"),
         ])).count == 1, "a half-written shortcut never survives a round trip")
         // MARK: The other names macOS knows an app by
-        expect(SpotlightNamesSupport.usableAlternateNames(["iCal", "Calendar.app"],
-                                                          displayName: "Calendar",
-                                                          fileName: "Calendar.app") == ["iCal"],
+        expect(SpotlightNamesSupport.usableAlternateNames(["Legacy Planner", "Planner.app"],
+                                                          displayName: "Planner",
+                                                          fileName: "Planner.app")
+                == ["Legacy Planner"],
                "a real alias is kept and the bundle's own file name is not")
         expect(SpotlightNamesSupport.usableAlternateNames(
-                ["Preferences", "Settings", "System Settings.app", "System Preferences",
-                 "System Settings"],
-                displayName: "System Settings",
-                fileName: "System Settings.app")
-                == ["Preferences", "Settings", "System Preferences"],
+                ["Preferences", "Settings", "Configuration.app", "Previous Settings",
+                 "Configuration"],
+                displayName: "Configuration",
+                fileName: "Configuration.app")
+                == ["Preferences", "Settings", "Previous Settings"],
                "an alias repeating the name under the icon teaches the search nothing")
         expect(SpotlightNamesSupport.usableAlternateNames(["ALTERNATE_NAME_1", "  ", "browser"],
-                                                          displayName: "Safari",
-                                                          fileName: "Safari.app") == ["browser"],
+                                                          displayName: "Navigator",
+                                                          fileName: "Navigator.app") == ["browser"],
                "an untranslated placeholder is not a name anybody types")
-        expect(SpotlightNamesSupport.usableAlternateNames(["Códex", "codex"],
-                                                          displayName: "Chat",
-                                                          fileName: "Chat.app") == ["Códex"],
+        expect(SpotlightNamesSupport.usableAlternateNames(["Café", "cafe"],
+                                                          displayName: "Reader",
+                                                          fileName: "Reader.app") == ["Café"],
                "two aliases that differ only by accent or case are one alias")
 
         expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "notes", kind: .place,
@@ -13689,7 +13815,7 @@ struct MetricsTests {
                 == NSHomeDirectory() + "/Notes",
                "a saved folder can be shown where it lives")
         expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "site", kind: .link,
-                                                              destination: "https://x.com")) == nil,
+                                                              destination: "https://example.invalid")) == nil,
                "a site has no place on the disk to show")
         expect(CommandBarLinks.revealPath(for: CommandBarLink(name: "day", kind: .place,
                                                               destination: "~/Notes/{date}.md")) == nil,

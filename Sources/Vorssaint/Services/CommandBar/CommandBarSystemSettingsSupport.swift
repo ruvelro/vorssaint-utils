@@ -7,6 +7,11 @@ import Foundation
 /// what counts as a pane and what a pane answers to are pinned by tests rather
 /// than rediscovered against whatever macOS is installed.
 enum CommandBarSystemSettingsSupport {
+    /// The largest real pane on current macOS uses 157 distinct terms. Keeping
+    /// all of them preserves searches near the end, such as display resolution,
+    /// while still bounding the normalized index built for every keystroke.
+    static let keywordLimit = 160
+
     /// Whether an extension is one of the panes System Settings shows.
     ///
     /// The folder holds every kind of system extension, most of which are
@@ -22,10 +27,9 @@ enum CommandBarSystemSettingsSupport {
     }
 
     /// What to call a pane. The display name macOS resolves is the one System
-    /// Settings itself shows ("AppleCare & Warranty", not
-    /// "CoverageSettingPane_macOS"); a bundle that declares none falls back to
-    /// its own name, and finally to the file, which is never pretty but is
-    /// never empty either.
+    /// Settings itself shows, rather than an internal bundle name; a bundle
+    /// that declares none falls back to its own name, and finally to the file,
+    /// which is never pretty but is never empty either.
     static func paneName(localizedDisplayName: String?,
                          displayName: String?,
                          bundleName: String?,
@@ -50,7 +54,8 @@ enum CommandBarSystemSettingsSupport {
     /// its only one "Main", Displays ships six. So every top-level group is
     /// read, in name order, which is what makes the words the same on two Macs
     /// running the same macOS.
-    static func keywords(fromSearchTerms terms: [String: Any], limit: Int = 40) -> String {
+    static func keywords(fromSearchTerms terms: [String: Any],
+                         limit: Int = keywordLimit) -> String {
         var seen = Set<String>()
         var words: [String] = []
         for key in terms.keys.sorted() {

@@ -84,6 +84,10 @@ final class CommandBarService: ObservableObject {
     /// numbers, which teaches it without a single pixel of permanent clutter.
     @Published private(set) var commandIsHeld = false
 
+    /// True when the bar was dragged off the spot it opens on by default,
+    /// so Settings can offer the way back.
+    @Published private(set) var hasCustomPosition = false
+
     private let hotkey = QuickToolHotkey(id: 20)
     private var rowHotkeys: [QuickToolHotkey] = []
     private var panel: NSPanel?
@@ -251,10 +255,7 @@ final class CommandBarService: ObservableObject {
                     id, isVisible: self.isVisible) else { return }
             self.prepareHomeForCurrentPresentation()
             self.refreshResults()
-            if let key = self.deferredRowShortcut.take(for: id),
-               let entry = self.entriesByStableKey[key] {
-                self.run(entry)
-            }
+            self.runDeferredRowShortcutIfReady(for: id)
         }
     }
 
@@ -445,6 +446,10 @@ final class CommandBarService: ObservableObject {
     /// closures are rebuilt from current state before the shortcut uses them.
     private func runRow(withStableKey key: String) {
         guard let entry = freshFullEntry(forStableKey: key) else {
+            if CommandBarPreferences.source(ofRowID: key) == .macSettings {
+                show(promptingFor: key)
+                return
+            }
             NSSound.beep()
             return
         }
@@ -637,28 +642,49 @@ final class CommandBarService: ObservableObject {
     /// do on a keystroke and never changes between two of them.
     private var fileScopeCache: [String] = []
     private var fileIgnoreCache: [String] = []
+    private var fileSearchPreferenceSignature: String?
+    private var fileScopeLoadGeneration = 0
 
     private func reloadPreferenceCaches() {
         pinCache = Set(pins)
         shortcutCache = rowShortcuts
+        hasCustomPosition = positionOffset != .zero
         reloadFileSearchCaches()
     }
 
     private func reloadFileSearchCaches() {
-        let saved = CommandBarFileSearchSupport.decodeList(
-            UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileScopes) ?? "")
-        fileIgnoreCache = CommandBarFileSearchSupport.shippedIgnores
-            + CommandBarFileSearchSupport.decodeList(
-                UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileIgnores) ?? "")
-        guard !saved.isEmpty else {
-            fileScopeCache = []
-            return
-        }
+        // A cached answer belongs to the scopes and ignores that produced it.
+        // Changing either invalidates pending and completed searches together.
+        let scopesRaw = UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileScopes) ?? ""
+        let ignoresRaw = UserDefaults.standard.string(forKey: DefaultsKey.commandBarFileIgnores) ?? ""
+        let enabled = isEnabled(.files)
+        let signature = "\(enabled)\0\(scopesRaw)\0\(ignoresRaw)"
+        guard signature != fileSearchPreferenceSignature else { return }
+        fileSearchPreferenceSignature = signature
+        fileScopeLoadGeneration &+= 1
+        let loadGeneration = fileScopeLoadGeneration
+        fileSearch.reset()
+        fileScopeCache = []
+        fileIgnoreCache = enabled
+            ? CommandBarFileSearchSupport.shippedIgnores
+                + CommandBarFileSearchSupport.decodeList(ignoresRaw)
+            : []
+        let saved = CommandBarFileSearchSupport.decodeList(scopesRaw)
+        guard enabled, !saved.isEmpty else { return }
         let home = NSHomeDirectory()
-        let children = (try? FileManager.default.contentsOfDirectory(atPath: home)) ?? []
-        fileScopeCache = CommandBarFileSearchSupport.resolvedScopes(saved,
-                                                                    homeDirectory: home,
-                                                                    homeChildren: children)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let children = (try? FileManager.default.contentsOfDirectory(atPath: home)) ?? []
+            let scopes = CommandBarFileSearchSupport.resolvedScopes(
+                saved,
+                homeDirectory: home,
+                homeChildren: children,
+                isSearchableDirectory: CommandBarFileSearch.isSearchableDirectory)
+            DispatchQueue.main.async {
+                guard let self, self.fileScopeLoadGeneration == loadGeneration else { return }
+                self.fileScopeCache = scopes
+                if self.isVisible { self.refreshResults() }
+            }
+        }
     }
 
     func isPinned(_ entry: CommandBarEntry) -> Bool {
@@ -924,7 +950,7 @@ final class CommandBarService: ObservableObject {
             rows.append(contentsOf: selectionEntries)
         }
 
-        let offerable = (catalog + appEntries + windowEntries).filter {
+        let offerable = (catalog + appEntries + macSettingsEntries + windowEntries).filter {
             !hidden.contains($0.stableKey) && allowed($0)
         }
         // On the empty bar there is no ranking to respect, so what the person
@@ -1857,7 +1883,9 @@ final class CommandBarService: ObservableObject {
     /// switch is honoured here rather than only in the ranking, so a source
     /// nobody wants costs no scan at all.
     private func loadMacSettingsIfNeeded(for id: UUID) {
-        guard isEnabled(.macSettings), !macSettingsLoading,
+        let pendingShortcut = deferredRowShortcut.key(for: id)
+            .map { CommandBarPreferences.source(ofRowID: $0) == .macSettings } == true
+        guard (isEnabled(.macSettings) || pendingShortcut), !macSettingsLoading,
               macSettingsLanguage != L10n.shared.language
         else { return }
         macSettingsLoading = true
@@ -1874,9 +1902,22 @@ final class CommandBarService: ObservableObject {
                 guard self.presentationLifecycle.acceptsSharedCacheCompletion(
                     startedBy: id, currentID: self.presentationID,
                     isVisible: self.isVisible) else { return }
-                self.refreshResults()
+                if !self.runDeferredRowShortcutIfReady(for: id) { self.refreshResults() }
             }
         }
+    }
+
+    /// A row whose provider loads in the background keeps its shortcut until
+    /// that provider has indexed the row. Closing or opening a newer bar still
+    /// cancels it through the presentation id.
+    @discardableResult
+    private func runDeferredRowShortcutIfReady(for id: UUID) -> Bool {
+        guard let key = deferredRowShortcut.key(for: id),
+              let entry = entriesByStableKey[key]
+        else { return false }
+        _ = deferredRowShortcut.take(for: id)
+        run(entry)
+        return true
     }
 
     private static func spotlightApplicationPaths() -> [String] {
@@ -2121,22 +2162,63 @@ final class CommandBarService: ObservableObject {
     /// Centered, a bit above the middle of the screen the pointer is on:
     /// where the eye already is, and where the system's own search field
     /// puts itself. Anchored by the top edge so the list can grow and shrink
-    /// below a field that never moves.
-    private func position(_ panel: NSPanel) {
+    /// below a field that never moves. Wherever the person dragged the bar
+    /// away from that spot is added on, so the choice survives the close.
+    private func position(_ panel: NSPanel, animated: Bool = false) {
         panel.contentViewController?.view.layoutSubtreeIfNeeded()
         let size = panel.contentViewController?.view.fittingSize ?? NSSize(width: 560, height: 380)
         // Decided once, here: moving the pointer to another display while
         // typing must not clamp the panel against a screen it is not on.
         let screen = NSScreen.pointerVisibleFrame
         panelScreen = screen
-        let x = screen.midX - size.width / 2
-        let top = screen.minY + screen.height * 0.72
-        panel.setFrame(NSRect(x: max(screen.minX + 16, min(x, screen.maxX - size.width - 16)),
-                              y: max(screen.minY + 16, top - size.height),
-                              width: size.width,
-                              height: size.height),
+        let offset = positionOffset
+        let origin = CommandBarPreferences.clampedPanelOrigin(
+            size: size, in: screen, offset: offset)
+        panel.setFrame(NSRect(origin: origin, size: size),
                        display: true,
-                       animate: false)
+                       animate: animated)
+    }
+
+    /// How far the person dragged the bar from the spot it would otherwise
+    /// open on.
+    private var positionOffset: CGSize {
+        CommandBarPreferences.decodePositionOffset(
+            UserDefaults.standard.string(forKey: DefaultsKey.commandBarPositionOffset) ?? "")
+    }
+
+    // MARK: - Moving the bar
+
+    /// Clamps and saves only after the person's drag has ended. Programmatic
+    /// positioning and content-driven resizing never rewrite this preference.
+    func finishPanelDrag() {
+        guard let panel else { return }
+        let screen = panel.screen?.visibleFrame ?? panelScreen ?? NSScreen.pointerVisibleFrame
+        panelScreen = screen
+        let draggedOffset = CGSize(
+            width: panel.frame.midX - screen.midX,
+            height: panel.frame.maxY - (screen.minY + screen.height * 0.72))
+        let origin = CommandBarPreferences.clampedPanelOrigin(
+            size: panel.frame.size, in: screen, offset: draggedOffset)
+        if panel.frame.origin != origin { panel.setFrameOrigin(origin) }
+        let offset = CGSize(width: panel.frame.midX - screen.midX,
+                            height: panel.frame.maxY - (screen.minY + screen.height * 0.72))
+        let encoded = CommandBarPreferences.encodePositionOffset(offset)
+        if encoded.isEmpty {
+            UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
+        } else {
+            UserDefaults.standard.set(encoded, forKey: DefaultsKey.commandBarPositionOffset)
+        }
+        hasCustomPosition = !encoded.isEmpty
+    }
+
+    /// The way back: a double-click on the mark, or the button in Settings,
+    /// returns the bar to the spot it opens on by default, with the same
+    /// short slide it took on the way there.
+    func resetPanelPosition() {
+        UserDefaults.standard.removeObject(forKey: DefaultsKey.commandBarPositionOffset)
+        hasCustomPosition = false
+        guard let panel, panel.isVisible else { return }
+        position(panel, animated: true)
     }
 
     // MARK: - Monitors

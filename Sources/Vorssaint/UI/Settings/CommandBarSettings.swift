@@ -18,6 +18,7 @@ struct CommandBarSettings: View {
     @AppStorage(DefaultsKey.commandBarFileIgnores) private var fileIgnoresRaw = ""
     @State private var editing: CommandBarLink?
     @State private var ignoreDraft = ""
+    @State private var showsFileOptions = false
 
     private var text: CommandBarFeatureStrings { FeatureStrings.commandBar(l10n.language) }
     /// The snippet library already says "save", "delete" and "name" in every
@@ -41,6 +42,15 @@ struct CommandBarSettings: View {
                 } label: {
                     Label(text.openButton, systemImage: "command")
                 }
+                Button {
+                    CommandBarService.shared.resetPanelPosition()
+                } label: {
+                    Label(text.resetPositionButton, systemImage: "arrow.uturn.backward")
+                }
+                .disabled(!service.hasCustomPosition)
+                Text(text.positionCaption)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text(text.settingsCaption)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -121,33 +131,35 @@ struct CommandBarSettings: View {
                 } label: {
                     Label(text.filesAddFolder, systemImage: "plus")
                 }
-                Divider()
-                Text(text.filesIgnoreCaption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                ForEach(fileIgnores, id: \.self) { pattern in
-                    HStack(spacing: 8) {
-                        Image(systemName: "eye.slash")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 16)
-                        Text(pattern)
-                            .font(.system(size: 12))
-                            .lineLimit(1)
-                        Spacer()
-                        Button(text.removeButton) { removeFileIgnore(pattern) }
-                            .buttonStyle(.bordered)
-                            .controlSize(.mini)
+                DisclosureGroup(FeatureStrings.recorder(l10n.language).moreOptions,
+                                isExpanded: $showsFileOptions) {
+                    Text(text.filesIgnoreCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(fileIgnores, id: \.self) { pattern in
+                        HStack(spacing: 8) {
+                            Image(systemName: "eye.slash")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16)
+                            Text(pattern)
+                                .font(.system(size: 12))
+                                .lineLimit(1)
+                            Spacer()
+                            Button(text.removeButton) { removeFileIgnore(pattern) }
+                                .buttonStyle(.bordered)
+                                .controlSize(.mini)
+                        }
                     }
-                }
-                HStack(spacing: 8) {
-                    TextField(text.filesIgnorePlaceholder, text: $ignoreDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { addFileIgnore() }
-                    Button(text.filesIgnoreAdd) { addFileIgnore() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(ignoreDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    HStack(spacing: 8) {
+                        TextField(text.filesIgnorePlaceholder, text: $ignoreDraft)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { addFileIgnore() }
+                        Button(text.filesIgnoreAdd) { addFileIgnore() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .disabled(ignoreDraft.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
             } header: {
                 Text(text.filesTitle)

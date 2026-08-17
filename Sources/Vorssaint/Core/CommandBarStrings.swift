@@ -52,7 +52,6 @@ struct CommandBarFeatureStrings {
     let actionRename: String
     let actionHide: String
     let actionForget: String
-    let actionRevealInFinder: String
     let aliasPlaceholder: String
     let aliasTakenFormat: String
     let sourcesTitle: String
@@ -63,15 +62,6 @@ struct CommandBarFeatureStrings {
     let sourceWindows: String
     let sourceQuitApps: String
     let sourceSettingsPages: String
-    let sourceMacSettings: String
-    let sourceFiles: String
-    let filesTitle: String
-    let filesCaption: String
-    let filesEmpty: String
-    let filesAddFolder: String
-    let filesIgnoreCaption: String
-    let filesIgnorePlaceholder: String
-    let filesIgnoreAdd: String
     let sourceSnippets: String
     let sourceClipboard: String
     let sourceEmoji: String
@@ -150,6 +140,19 @@ struct CommandBarFeatureStrings {
     let scriptRunFailed: String
     let scriptSearchHint: String
     let linkAddButton: String
+    let positionCaption: String
+    let resetPositionButton: String
+    let dragHint: String
+    let actionRevealInFinder: String
+    let sourceMacSettings: String
+    let sourceFiles: String
+    let filesTitle: String
+    let filesCaption: String
+    let filesEmpty: String
+    let filesAddFolder: String
+    let filesIgnoreCaption: String
+    let filesIgnorePlaceholder: String
+    let filesIgnoreAdd: String
 }
 
 extension FeatureStrings {
@@ -219,7 +222,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Change the name it answers to",
         actionHide: "Never show this",
         actionForget: "Forget how often I use this",
-        actionRevealInFinder: "Show in Finder",
         aliasPlaceholder: "The name you call it",
         aliasTakenFormat: "%@ already answers to that",
         sourcesTitle: "What the bar searches",
@@ -230,15 +232,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Open windows",
         sourceQuitApps: "Quit an app",
         sourceSettingsPages: "Settings pages",
-        sourceMacSettings: "System Settings panes",
-        sourceFiles: "Files",
-        filesTitle: "Search your files",
-        filesCaption: "Name the folders to look in and the bar finds files by name as you type. Nothing is indexed and no permission is asked for: it uses the Mac's own search and offers only what you can already see in Finder.",
-        filesEmpty: "No folders yet, so the bar looks for no files.",
-        filesAddFolder: "Add a folder",
-        filesIgnoreCaption: "Names never worth showing: a whole folder or file name, or an extension written as *.log.",
-        filesIgnorePlaceholder: "A folder or file name",
-        filesIgnoreAdd: "Add",
         sourceSnippets: "Snippets",
         sourceClipboard: "Clipboard history",
         sourceEmoji: "Emoji",
@@ -316,7 +309,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Choose an executable file. Type its name followed by what you want to send. It runs when you pause and shows the result here.",
         scriptRunFailed: "Couldn’t run this file",
         scriptSearchHint: "Type what to send after the name",
-        linkAddButton: "Add shortcut")
+        linkAddButton: "Add shortcut",
+        positionCaption: "Drag the mark at the left of the field to put the bar anywhere on the screen; double-click the mark to put it back where it started.",
+        resetPositionButton: "Put the bar back where it started",
+        dragHint: "Drag to move · Double-click to put it back",
+        actionRevealInFinder: "Show in Finder",
+        sourceMacSettings: "System Settings panes",
+        sourceFiles: "Files",
+        filesTitle: "Search your files",
+        filesCaption: "Name the folders to look in and the bar finds files by name as you type. Nothing is indexed and no permission is asked for: it uses the Mac's own search and offers only what you can already see in Finder.",
+        filesEmpty: "No folders yet, so the bar looks for no files.",
+        filesAddFolder: "Add a folder",
+        filesIgnoreCaption: "Names never worth showing: a whole folder or file name, or an extension written as *.log.",
+        filesIgnorePlaceholder: "A folder or file name",
+        filesIgnoreAdd: "Add")
 
     static let ptBR = CommandBarFeatureStrings(
         pageTitle: "Barra de comando",
@@ -364,7 +370,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Trocar o nome que ele atende",
         actionHide: "Nunca mostrar isto",
         actionForget: "Esquecer o quanto eu uso isto",
-        actionRevealInFinder: "Mostrar no Finder",
         aliasPlaceholder: "O nome que você usa",
         aliasTakenFormat: "%@ já atende por esse nome",
         sourcesTitle: "O que a barra procura",
@@ -375,15 +380,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Janelas abertas",
         sourceQuitApps: "Encerrar um app",
         sourceSettingsPages: "Páginas dos Ajustes",
-        sourceMacSettings: "Painéis dos Ajustes do Sistema",
-        sourceFiles: "Arquivos",
-        filesTitle: "Buscar seus arquivos",
-        filesCaption: "Escolha as pastas onde procurar e a barra encontra arquivos pelo nome enquanto você digita. Nada é indexado e nenhuma permissão é pedida: ela usa a busca do próprio Mac e mostra apenas o que você já vê no Finder.",
-        filesEmpty: "Nenhuma pasta ainda, então a barra não procura arquivos.",
-        filesAddFolder: "Adicionar pasta",
-        filesIgnoreCaption: "Nomes que nunca vale a pena mostrar: uma pasta ou um arquivo inteiro, ou uma extensão escrita como *.log.",
-        filesIgnorePlaceholder: "Nome de pasta ou arquivo",
-        filesIgnoreAdd: "Adicionar",
         sourceSnippets: "Snippets",
         sourceClipboard: "Histórico da área de transferência",
         sourceEmoji: "Emoji",
@@ -461,7 +457,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Escolha um arquivo executável. Digite o nome seguido do que deseja enviar. Ele roda quando você para e mostra o resultado aqui.",
         scriptRunFailed: "Não foi possível executar este arquivo",
         scriptSearchHint: "Digite o que enviar depois do nome",
-        linkAddButton: "Adicionar atalho")
+        linkAddButton: "Adicionar atalho",
+        positionCaption: "Arraste a marca à esquerda do campo para colocar a barra em qualquer lugar da tela; clique duas vezes nela para voltar ao começo.",
+        resetPositionButton: "Colocar a barra onde ela começou",
+        dragHint: "Arraste para mover · Clique duplo para voltar",
+        actionRevealInFinder: "Mostrar no Finder",
+        sourceMacSettings: "Painéis dos Ajustes do Sistema",
+        sourceFiles: "Arquivos",
+        filesTitle: "Buscar seus arquivos",
+        filesCaption: "Escolha as pastas onde procurar e a barra encontra arquivos pelo nome enquanto você digita. Nada é indexado e nenhuma permissão é pedida: ela usa a busca do próprio Mac e mostra apenas o que você já vê no Finder.",
+        filesEmpty: "Nenhuma pasta ainda, então a barra não procura arquivos.",
+        filesAddFolder: "Adicionar pasta",
+        filesIgnoreCaption: "Nomes que nunca vale a pena mostrar: uma pasta ou um arquivo inteiro, ou uma extensão escrita como *.log.",
+        filesIgnorePlaceholder: "Nome de pasta ou arquivo",
+        filesIgnoreAdd: "Adicionar")
 
     static let tr = CommandBarFeatureStrings(
         pageTitle: "Komut çubuğu",
@@ -509,7 +518,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Yanıt verdiği adı değiştir",
         actionHide: "Bunu hiç gösterme",
         actionForget: "Bunu ne sıklıkla kullandığımı unut",
-        actionRevealInFinder: "Finder'da göster",
         aliasPlaceholder: "Ona verdiğin ad",
         aliasTakenFormat: "%@ zaten bu ada yanıt veriyor",
         sourcesTitle: "Çubuğun aradıkları",
@@ -520,15 +528,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Açık pencereler",
         sourceQuitApps: "Bir uygulamayı kapat",
         sourceSettingsPages: "Ayarlar sayfaları",
-        sourceMacSettings: "Sistem Ayarları bölmeleri",
-        sourceFiles: "Dosyalar",
-        filesTitle: "Dosyalarında ara",
-        filesCaption: "Aranacak klasörleri seçin; çubuk siz yazarken dosyaları adıyla bulur. Hiçbir şey dizinlenmez ve izin istenmez: Mac'in kendi aramasını kullanır ve yalnızca Finder'da zaten görebildiklerinizi gösterir.",
-        filesEmpty: "Henüz klasör yok, bu yüzden çubuk dosya aramaz.",
-        filesAddFolder: "Klasör ekle",
-        filesIgnoreCaption: "Asla gösterilmeye değmeyen adlar: tam bir klasör veya dosya adı ya da *.log gibi yazılmış bir uzantı.",
-        filesIgnorePlaceholder: "Klasör veya dosya adı",
-        filesIgnoreAdd: "Ekle",
         sourceSnippets: "Parçacıklar",
         sourceClipboard: "Pano geçmişi",
         sourceEmoji: "Emoji",
@@ -606,7 +605,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Çalıştırılabilir bir dosya seçin. Adını ve ardından göndermek istediğiniz metni yazın. Durduğunuzda çalışır ve sonucu burada gösterir.",
         scriptRunFailed: "Bu dosya çalıştırılamadı",
         scriptSearchHint: "Addan sonra göndermek istediğinizi yazın",
-        linkAddButton: "Kısayol ekle")
+        linkAddButton: "Kısayol ekle",
+        positionCaption: "Alanı ekranın istediğiniz yerine taşımak için soldaki işareti sürükleyin; geri koymak için işarete çift tıklayın.",
+        resetPositionButton: "Çubuğu başladığı yere koy",
+        dragHint: "Taşımak için sürükleyin · Geri koymak için çift tıklayın",
+        actionRevealInFinder: "Finder'da göster",
+        sourceMacSettings: "Sistem Ayarları bölmeleri",
+        sourceFiles: "Dosyalar",
+        filesTitle: "Dosyalarında ara",
+        filesCaption: "Aranacak klasörleri seçin; çubuk siz yazarken dosyaları adıyla bulur. Hiçbir şey dizinlenmez ve izin istenmez: Mac'in kendi aramasını kullanır ve yalnızca Finder'da zaten görebildiklerinizi gösterir.",
+        filesEmpty: "Henüz klasör yok, bu yüzden çubuk dosya aramaz.",
+        filesAddFolder: "Klasör ekle",
+        filesIgnoreCaption: "Asla gösterilmeye değmeyen adlar: tam bir klasör veya dosya adı ya da *.log gibi yazılmış bir uzantı.",
+        filesIgnorePlaceholder: "Klasör veya dosya adı",
+        filesIgnoreAdd: "Ekle")
 
     static let ru = CommandBarFeatureStrings(
         pageTitle: "Командная панель",
@@ -654,7 +666,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Изменить имя, на которое откликается",
         actionHide: "Никогда не показывать",
         actionForget: "Забыть, как часто я это использую",
-        actionRevealInFinder: "Показать в Finder",
         aliasPlaceholder: "Имя, которым вы это зовёте",
         aliasTakenFormat: "На это имя уже откликается %@",
         sourcesTitle: "Что ищет панель",
@@ -665,15 +676,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Открытые окна",
         sourceQuitApps: "Завершить приложение",
         sourceSettingsPages: "Страницы настроек",
-        sourceMacSettings: "Разделы Системных настроек",
-        sourceFiles: "Файлы",
-        filesTitle: "Поиск по вашим файлам",
-        filesCaption: "Укажите папки для поиска, и строка будет находить файлы по имени по мере ввода. Ничего не индексируется и не запрашивается ни одно разрешение: используется поиск самого Mac, и показывается только то, что вы и так видите в Finder.",
-        filesEmpty: "Папок пока нет, поэтому файлы не ищутся.",
-        filesAddFolder: "Добавить папку",
-        filesIgnoreCaption: "Имена, которые никогда не стоит показывать: целая папка или имя файла либо расширение вида *.log.",
-        filesIgnorePlaceholder: "Имя папки или файла",
-        filesIgnoreAdd: "Добавить",
         sourceSnippets: "Сниппеты",
         sourceClipboard: "История буфера обмена",
         sourceEmoji: "Эмодзи",
@@ -751,7 +753,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Выберите исполняемый файл. Введите имя и затем то, что хотите передать. После паузы файл запустится и покажет результат здесь.",
         scriptRunFailed: "Не удалось запустить этот файл",
         scriptSearchHint: "После имени введите то, что нужно передать",
-        linkAddButton: "Добавить ярлык")
+        linkAddButton: "Добавить ярлык",
+        positionCaption: "Перетащите значок слева от поля, чтобы поставить панель в любое место экрана; двойной щелчок по значку возвращает её назад.",
+        resetPositionButton: "Вернуть панель на прежнее место",
+        dragHint: "Перетащите, чтобы сдвинуть · Двойной щелчок, чтобы вернуть",
+        actionRevealInFinder: "Показать в Finder",
+        sourceMacSettings: "Разделы Системных настроек",
+        sourceFiles: "Файлы",
+        filesTitle: "Поиск по вашим файлам",
+        filesCaption: "Укажите папки для поиска, и строка будет находить файлы по имени по мере ввода. Ничего не индексируется и не запрашивается ни одно разрешение: используется поиск самого Mac, и показывается только то, что вы и так видите в Finder.",
+        filesEmpty: "Папок пока нет, поэтому файлы не ищутся.",
+        filesAddFolder: "Добавить папку",
+        filesIgnoreCaption: "Имена, которые никогда не стоит показывать: целая папка или имя файла либо расширение вида *.log.",
+        filesIgnorePlaceholder: "Имя папки или файла",
+        filesIgnoreAdd: "Добавить")
 
     static let es = CommandBarFeatureStrings(
         pageTitle: "Barra de comandos",
@@ -799,7 +814,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Cambiar el nombre al que responde",
         actionHide: "No mostrar nunca esto",
         actionForget: "Olvidar cuánto uso esto",
-        actionRevealInFinder: "Mostrar en el Finder",
         aliasPlaceholder: "El nombre con el que lo llamas",
         aliasTakenFormat: "%@ ya responde a ese nombre",
         sourcesTitle: "Lo que busca la barra",
@@ -810,15 +824,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Ventanas abiertas",
         sourceQuitApps: "Salir de una app",
         sourceSettingsPages: "Páginas de Ajustes",
-        sourceMacSettings: "Paneles de Ajustes del Sistema",
-        sourceFiles: "Archivos",
-        filesTitle: "Buscar tus archivos",
-        filesCaption: "Elige las carpetas donde buscar y la barra encuentra archivos por su nombre mientras escribes. No se indexa nada ni se pide ningún permiso: usa la búsqueda del propio Mac y solo ofrece lo que ya ves en el Finder.",
-        filesEmpty: "Aún no hay carpetas, así que la barra no busca archivos.",
-        filesAddFolder: "Añadir una carpeta",
-        filesIgnoreCaption: "Nombres que nunca merece la pena mostrar: una carpeta o un archivo entero, o una extensión escrita como *.log.",
-        filesIgnorePlaceholder: "Nombre de carpeta o archivo",
-        filesIgnoreAdd: "Añadir",
         sourceSnippets: "Fragmentos",
         sourceClipboard: "Historial del portapapeles",
         sourceEmoji: "Emoji",
@@ -896,7 +901,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Elige un archivo ejecutable. Escribe su nombre seguido de lo que quieras enviar. Se ejecuta al hacer una pausa y muestra el resultado aquí.",
         scriptRunFailed: "No se pudo ejecutar este archivo",
         scriptSearchHint: "Escribe lo que quieras enviar después del nombre",
-        linkAddButton: "Añadir atajo")
+        linkAddButton: "Añadir atajo",
+        positionCaption: "Arrastra la marca a la izquierda del campo para poner la barra en cualquier lugar de la pantalla; doble clic en la marca para volver al principio.",
+        resetPositionButton: "Volver a poner la barra donde empezó",
+        dragHint: "Arrastra para mover · Doble clic para volver",
+        actionRevealInFinder: "Mostrar en el Finder",
+        sourceMacSettings: "Paneles de Ajustes del Sistema",
+        sourceFiles: "Archivos",
+        filesTitle: "Buscar tus archivos",
+        filesCaption: "Elige las carpetas donde buscar y la barra encuentra archivos por su nombre mientras escribes. No se indexa nada ni se pide ningún permiso: usa la búsqueda del propio Mac y solo ofrece lo que ya ves en el Finder.",
+        filesEmpty: "Aún no hay carpetas, así que la barra no busca archivos.",
+        filesAddFolder: "Añadir una carpeta",
+        filesIgnoreCaption: "Nombres que nunca merece la pena mostrar: una carpeta o un archivo entero, o una extensión escrita como *.log.",
+        filesIgnorePlaceholder: "Nombre de carpeta o archivo",
+        filesIgnoreAdd: "Añadir")
 
     static let de = CommandBarFeatureStrings(
         pageTitle: "Befehlsleiste",
@@ -944,7 +962,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Namen ändern, auf den es hört",
         actionHide: "Nie anzeigen",
         actionForget: "Vergessen, wie oft ich das nutze",
-        actionRevealInFinder: "Im Finder zeigen",
         aliasPlaceholder: "Der Name, den du benutzt",
         aliasTakenFormat: "%@ hört bereits auf diesen Namen",
         sourcesTitle: "Was die Leiste durchsucht",
@@ -955,15 +972,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Offene Fenster",
         sourceQuitApps: "Eine App beenden",
         sourceSettingsPages: "Einstellungsseiten",
-        sourceMacSettings: "Bereiche der Systemeinstellungen",
-        sourceFiles: "Dateien",
-        filesTitle: "Deine Dateien durchsuchen",
-        filesCaption: "Wähle die Ordner zum Durchsuchen, und die Leiste findet Dateien beim Tippen am Namen. Nichts wird indiziert und keine Berechtigung wird verlangt: Sie nutzt die Suche des Mac und zeigt nur, was im Finder ohnehin zu sehen ist.",
-        filesEmpty: "Noch keine Ordner, also sucht die Leiste keine Dateien.",
-        filesAddFolder: "Ordner hinzufügen",
-        filesIgnoreCaption: "Namen, die nie gezeigt werden sollen: ein ganzer Ordner- oder Dateiname oder eine Endung wie *.log.",
-        filesIgnorePlaceholder: "Ordner- oder Dateiname",
-        filesIgnoreAdd: "Hinzufügen",
         sourceSnippets: "Textbausteine",
         sourceClipboard: "Zwischenablage-Verlauf",
         sourceEmoji: "Emoji",
@@ -1041,7 +1049,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Wählen Sie eine ausführbare Datei. Geben Sie den Namen und danach den gewünschten Text ein. Nach einer Pause wird das Ergebnis hier angezeigt.",
         scriptRunFailed: "Diese Datei konnte nicht ausgeführt werden",
         scriptSearchHint: "Geben Sie nach dem Namen ein, was gesendet werden soll",
-        linkAddButton: "Kurzbefehl hinzufügen")
+        linkAddButton: "Kurzbefehl hinzufügen",
+        positionCaption: "Ziehe das Zeichen links vom Feld, um die Leiste überall auf dem Bildschirm zu platzieren; Doppelklick aufs Zeichen stellt alles zurück.",
+        resetPositionButton: "Leiste an den Anfangsort zurücksetzen",
+        dragHint: "Ziehen zum Verschieben · Doppelklick stellt zurück",
+        actionRevealInFinder: "Im Finder zeigen",
+        sourceMacSettings: "Bereiche der Systemeinstellungen",
+        sourceFiles: "Dateien",
+        filesTitle: "Deine Dateien durchsuchen",
+        filesCaption: "Wähle die Ordner zum Durchsuchen, und die Leiste findet Dateien beim Tippen am Namen. Nichts wird indiziert und keine Berechtigung wird verlangt: Sie nutzt die Suche des Mac und zeigt nur, was im Finder ohnehin zu sehen ist.",
+        filesEmpty: "Noch keine Ordner, also sucht die Leiste keine Dateien.",
+        filesAddFolder: "Ordner hinzufügen",
+        filesIgnoreCaption: "Namen, die nie gezeigt werden sollen: ein ganzer Ordner- oder Dateiname oder eine Endung wie *.log.",
+        filesIgnorePlaceholder: "Ordner- oder Dateiname",
+        filesIgnoreAdd: "Hinzufügen")
 
     static let fr = CommandBarFeatureStrings(
         pageTitle: "Barre de commande",
@@ -1089,7 +1110,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Changer le nom auquel il répond",
         actionHide: "Ne jamais montrer ceci",
         actionForget: "Oublier à quel point je l'utilise",
-        actionRevealInFinder: "Afficher dans le Finder",
         aliasPlaceholder: "Le nom que vous employez",
         aliasTakenFormat: "%@ répond déjà à ce nom",
         sourcesTitle: "Ce que la barre cherche",
@@ -1100,15 +1120,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Fenêtres ouvertes",
         sourceQuitApps: "Quitter une app",
         sourceSettingsPages: "Pages des Réglages",
-        sourceMacSettings: "Volets des Réglages Système",
-        sourceFiles: "Fichiers",
-        filesTitle: "Rechercher vos fichiers",
-        filesCaption: "Choisissez les dossiers à explorer et la barre trouve les fichiers par leur nom à mesure que vous tapez. Rien n'est indexé et aucune autorisation n'est demandée : elle utilise la recherche du Mac et ne propose que ce que vous voyez déjà dans le Finder.",
-        filesEmpty: "Aucun dossier pour l'instant, la barre ne cherche donc aucun fichier.",
-        filesAddFolder: "Ajouter un dossier",
-        filesIgnoreCaption: "Noms à ne jamais montrer : un dossier ou un fichier entier, ou une extension écrite ainsi : *.log.",
-        filesIgnorePlaceholder: "Nom de dossier ou de fichier",
-        filesIgnoreAdd: "Ajouter",
         sourceSnippets: "Extraits",
         sourceClipboard: "Historique du presse-papiers",
         sourceEmoji: "Émoji",
@@ -1186,7 +1197,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Choisissez un fichier exécutable. Saisissez son nom suivi du texte à envoyer. Après une pause, le résultat s’affiche ici.",
         scriptRunFailed: "Impossible d’exécuter ce fichier",
         scriptSearchHint: "Saisissez ce qui sera envoyé après le nom",
-        linkAddButton: "Ajouter un raccourci")
+        linkAddButton: "Ajouter un raccourci",
+        positionCaption: "Faites glisser la marque à gauche du champ pour placer la barre où vous voulez à l'écran ; double-cliquez sur la marque pour la remettre à sa place de départ.",
+        resetPositionButton: "Remettre la barre à sa place de départ",
+        dragHint: "Glisser pour déplacer · Double-clic pour remettre",
+        actionRevealInFinder: "Afficher dans le Finder",
+        sourceMacSettings: "Volets des Réglages Système",
+        sourceFiles: "Fichiers",
+        filesTitle: "Rechercher vos fichiers",
+        filesCaption: "Choisissez les dossiers à explorer et la barre trouve les fichiers par leur nom à mesure que vous tapez. Rien n'est indexé et aucune autorisation n'est demandée : elle utilise la recherche du Mac et ne propose que ce que vous voyez déjà dans le Finder.",
+        filesEmpty: "Aucun dossier pour l'instant, la barre ne cherche donc aucun fichier.",
+        filesAddFolder: "Ajouter un dossier",
+        filesIgnoreCaption: "Noms à ne jamais montrer : un dossier ou un fichier entier, ou une extension écrite ainsi : *.log.",
+        filesIgnorePlaceholder: "Nom de dossier ou de fichier",
+        filesIgnoreAdd: "Ajouter")
 
     static let it = CommandBarFeatureStrings(
         pageTitle: "Barra dei comandi",
@@ -1234,7 +1258,6 @@ extension CommandBarFeatureStrings {
         actionRename: "Cambia il nome a cui risponde",
         actionHide: "Non mostrare mai questo",
         actionForget: "Dimentica quanto lo uso",
-        actionRevealInFinder: "Mostra nel Finder",
         aliasPlaceholder: "Il nome con cui lo chiami",
         aliasTakenFormat: "%@ risponde già a questo nome",
         sourcesTitle: "Cosa cerca la barra",
@@ -1245,15 +1268,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "Finestre aperte",
         sourceQuitApps: "Esci da un'app",
         sourceSettingsPages: "Pagine delle Impostazioni",
-        sourceMacSettings: "Pannelli di Impostazioni di Sistema",
-        sourceFiles: "File",
-        filesTitle: "Cerca nei tuoi file",
-        filesCaption: "Scegli le cartelle in cui cercare e la barra trova i file per nome mentre scrivi. Nulla viene indicizzato e non serve alcun permesso: usa la ricerca del Mac e mostra solo ciò che vedi già nel Finder.",
-        filesEmpty: "Ancora nessuna cartella, quindi la barra non cerca file.",
-        filesAddFolder: "Aggiungi una cartella",
-        filesIgnoreCaption: "Nomi che non vale mai la pena mostrare: una cartella o un file intero, o un'estensione scritta come *.log.",
-        filesIgnorePlaceholder: "Nome di cartella o file",
-        filesIgnoreAdd: "Aggiungi",
         sourceSnippets: "Snippet",
         sourceClipboard: "Cronologia degli appunti",
         sourceEmoji: "Emoji",
@@ -1331,7 +1345,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "Scegli un file eseguibile. Digita il nome seguito dal testo da inviare. Dopo una pausa, il risultato appare qui.",
         scriptRunFailed: "Impossibile eseguire questo file",
         scriptSearchHint: "Digita cosa inviare dopo il nome",
-        linkAddButton: "Aggiungi scorciatoia")
+        linkAddButton: "Aggiungi scorciatoia",
+        positionCaption: "Trascina il segno a sinistra del campo per mettere la barra in qualsiasi punto dello schermo; doppio clic sul segno per rimetterla com'era.",
+        resetPositionButton: "Rimetti la barra dov'era",
+        dragHint: "Trascina per spostare · Doppio clic per rimettere",
+        actionRevealInFinder: "Mostra nel Finder",
+        sourceMacSettings: "Pannelli di Impostazioni di Sistema",
+        sourceFiles: "File",
+        filesTitle: "Cerca nei tuoi file",
+        filesCaption: "Scegli le cartelle in cui cercare e la barra trova i file per nome mentre scrivi. Nulla viene indicizzato e non serve alcun permesso: usa la ricerca del Mac e mostra solo ciò che vedi già nel Finder.",
+        filesEmpty: "Ancora nessuna cartella, quindi la barra non cerca file.",
+        filesAddFolder: "Aggiungi una cartella",
+        filesIgnoreCaption: "Nomi che non vale mai la pena mostrare: una cartella o un file intero, o un'estensione scritta come *.log.",
+        filesIgnorePlaceholder: "Nome di cartella o file",
+        filesIgnoreAdd: "Aggiungi")
 
     static let ja = CommandBarFeatureStrings(
         pageTitle: "コマンドバー",
@@ -1379,7 +1406,6 @@ extension CommandBarFeatureStrings {
         actionRename: "反応する名前を変更",
         actionHide: "これは表示しない",
         actionForget: "使用頻度を忘れる",
-        actionRevealInFinder: "Finder で表示",
         aliasPlaceholder: "あなたが呼んでいる名前",
         aliasTakenFormat: "%@ がすでにその名前です",
         sourcesTitle: "バーが探すもの",
@@ -1390,15 +1416,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "開いているウインドウ",
         sourceQuitApps: "アプリを終了",
         sourceSettingsPages: "設定ページ",
-        sourceMacSettings: "システム設定のパネル",
-        sourceFiles: "ファイル",
-        filesTitle: "ファイルを検索",
-        filesCaption: "探すフォルダを選ぶと、入力に合わせて名前でファイルを見つけます。索引は作らず、権限も求めません。Mac 自身の検索を使い、Finder ですでに見えるものだけを出します。",
-        filesEmpty: "フォルダがまだないので、ファイルは探しません。",
-        filesAddFolder: "フォルダを追加",
-        filesIgnoreCaption: "決して表示しない名前。フォルダやファイルの名前そのもの、または *.log のような拡張子。",
-        filesIgnorePlaceholder: "フォルダまたはファイルの名前",
-        filesIgnoreAdd: "追加",
         sourceSnippets: "スニペット",
         sourceClipboard: "クリップボードの履歴",
         sourceEmoji: "絵文字",
@@ -1476,7 +1493,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "実行可能なファイルを選びます。名前に続けて渡したい内容を入力すると、入力を止めた後に結果がここへ表示されます。",
         scriptRunFailed: "このファイルを実行できませんでした",
         scriptSearchHint: "名前の後に渡したい内容を入力",
-        linkAddButton: "ショートカットを追加")
+        linkAddButton: "ショートカットを追加",
+        positionCaption: "入力欄の左のマークをドラッグすると、バーを画面の好きな場所に移動できます。マークをダブルクリックすると元の位置に戻ります。",
+        resetPositionButton: "バーを元の位置に戻す",
+        dragHint: "ドラッグで移動 · ダブルクリックで戻す",
+        actionRevealInFinder: "Finder で表示",
+        sourceMacSettings: "システム設定のパネル",
+        sourceFiles: "ファイル",
+        filesTitle: "ファイルを検索",
+        filesCaption: "探すフォルダを選ぶと、入力に合わせて名前でファイルを見つけます。索引は作らず、権限も求めません。Mac 自身の検索を使い、Finder ですでに見えるものだけを出します。",
+        filesEmpty: "フォルダがまだないので、ファイルは探しません。",
+        filesAddFolder: "フォルダを追加",
+        filesIgnoreCaption: "決して表示しない名前。フォルダやファイルの名前そのもの、または *.log のような拡張子。",
+        filesIgnorePlaceholder: "フォルダまたはファイルの名前",
+        filesIgnoreAdd: "追加")
 
     static let ko = CommandBarFeatureStrings(
         pageTitle: "명령 막대",
@@ -1524,7 +1554,6 @@ extension CommandBarFeatureStrings {
         actionRename: "반응할 이름 변경",
         actionHide: "이것은 표시하지 않기",
         actionForget: "얼마나 자주 쓰는지 잊기",
-        actionRevealInFinder: "Finder에서 보기",
         aliasPlaceholder: "당신이 부르는 이름",
         aliasTakenFormat: "%@이(가) 이미 그 이름을 씁니다",
         sourcesTitle: "막대가 찾는 것",
@@ -1535,15 +1564,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "열린 윈도우",
         sourceQuitApps: "앱 종료",
         sourceSettingsPages: "설정 페이지",
-        sourceMacSettings: "시스템 설정 패널",
-        sourceFiles: "파일",
-        filesTitle: "파일 검색",
-        filesCaption: "검색할 폴더를 고르면 입력하는 동안 이름으로 파일을 찾습니다. 색인을 만들지 않고 권한도 요청하지 않습니다. Mac 자체 검색을 사용해 Finder에서 이미 보이는 것만 보여 줍니다.",
-        filesEmpty: "아직 폴더가 없어 파일을 찾지 않습니다.",
-        filesAddFolder: "폴더 추가",
-        filesIgnoreCaption: "절대 보이지 않을 이름. 폴더나 파일 이름 전체, 또는 *.log처럼 쓴 확장자.",
-        filesIgnorePlaceholder: "폴더 또는 파일 이름",
-        filesIgnoreAdd: "추가",
         sourceSnippets: "스니펫",
         sourceClipboard: "클립보드 기록",
         sourceEmoji: "이모티콘",
@@ -1621,7 +1641,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "실행 가능한 파일을 선택하세요. 이름 뒤에 전달할 내용을 입력하면 멈춘 뒤 결과가 여기에 표시됩니다.",
         scriptRunFailed: "이 파일을 실행할 수 없습니다",
         scriptSearchHint: "이름 뒤에 전달할 내용을 입력하세요",
-        linkAddButton: "단축키 추가")
+        linkAddButton: "단축키 추가",
+        positionCaption: "입력란 왼쪽의 표식을 드래그하면 막대를 화면 어디든 옮길 수 있습니다. 표식을 두 번 클릭하면 처음 자리로 돌아갑니다.",
+        resetPositionButton: "막대를 처음 자리로 되돌리기",
+        dragHint: "드래그하여 이동 · 두 번 클릭하여 되돌리기",
+        actionRevealInFinder: "Finder에서 보기",
+        sourceMacSettings: "시스템 설정 패널",
+        sourceFiles: "파일",
+        filesTitle: "파일 검색",
+        filesCaption: "검색할 폴더를 고르면 입력하는 동안 이름으로 파일을 찾습니다. 색인을 만들지 않고 권한도 요청하지 않습니다. Mac 자체 검색을 사용해 Finder에서 이미 보이는 것만 보여 줍니다.",
+        filesEmpty: "아직 폴더가 없어 파일을 찾지 않습니다.",
+        filesAddFolder: "폴더 추가",
+        filesIgnoreCaption: "절대 보이지 않을 이름. 폴더나 파일 이름 전체, 또는 *.log처럼 쓴 확장자.",
+        filesIgnorePlaceholder: "폴더 또는 파일 이름",
+        filesIgnoreAdd: "추가")
 
     static let zhHans = CommandBarFeatureStrings(
         pageTitle: "命令栏",
@@ -1669,7 +1702,6 @@ extension CommandBarFeatureStrings {
         actionRename: "更改它响应的名字",
         actionHide: "从不显示这个",
         actionForget: "忘记我用它的频率",
-        actionRevealInFinder: "在访达中显示",
         aliasPlaceholder: "你称呼它的名字",
         aliasTakenFormat: "%@ 已经使用这个名字",
         sourcesTitle: "命令栏搜索的内容",
@@ -1680,15 +1712,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "打开的窗口",
         sourceQuitApps: "退出 App",
         sourceSettingsPages: "设置页面",
-        sourceMacSettings: "系统设置面板",
-        sourceFiles: "文件",
-        filesTitle: "搜索你的文件",
-        filesCaption: "选择要查找的文件夹，输入时即按名称查找文件。不建立索引，也不申请任何权限：它使用 Mac 自身的搜索，只显示你在访达中已能看到的内容。",
-        filesEmpty: "还没有文件夹，所以不会查找文件。",
-        filesAddFolder: "添加文件夹",
-        filesIgnoreCaption: "永远不显示的名称：完整的文件夹或文件名，或写成 *.log 的扩展名。",
-        filesIgnorePlaceholder: "文件夹或文件名",
-        filesIgnoreAdd: "添加",
         sourceSnippets: "片段",
         sourceClipboard: "剪贴板历史",
         sourceEmoji: "表情符号",
@@ -1766,7 +1789,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "选择一个可执行文件。输入名称，再输入要传递的内容。停止输入后会在这里显示结果。",
         scriptRunFailed: "无法运行此文件",
         scriptSearchHint: "在名称后输入要传递的内容",
-        linkAddButton: "添加快捷方式")
+        linkAddButton: "添加快捷方式",
+        positionCaption: "拖动输入框左侧的标志，可以把命令栏放到屏幕任意位置；双击标志即可恢复到起始位置。",
+        resetPositionButton: "把命令栏放回起始位置",
+        dragHint: "拖动移动 · 双击复原",
+        actionRevealInFinder: "在访达中显示",
+        sourceMacSettings: "系统设置面板",
+        sourceFiles: "文件",
+        filesTitle: "搜索你的文件",
+        filesCaption: "选择要查找的文件夹，输入时即按名称查找文件。不建立索引，也不申请任何权限：它使用 Mac 自身的搜索，只显示你在访达中已能看到的内容。",
+        filesEmpty: "还没有文件夹，所以不会查找文件。",
+        filesAddFolder: "添加文件夹",
+        filesIgnoreCaption: "永远不显示的名称：完整的文件夹或文件名，或写成 *.log 的扩展名。",
+        filesIgnorePlaceholder: "文件夹或文件名",
+        filesIgnoreAdd: "添加")
 
     static let zhTW = CommandBarFeatureStrings(
         pageTitle: "指令列",
@@ -1814,7 +1850,6 @@ extension CommandBarFeatureStrings {
         actionRename: "更改它回應的名稱",
         actionHide: "永不顯示這個",
         actionForget: "忘記我使用它的頻率",
-        actionRevealInFinder: "在 Finder 中顯示",
         aliasPlaceholder: "你稱呼它的名字",
         aliasTakenFormat: "%@ 已經使用這個名稱",
         sourcesTitle: "指令列搜尋的內容",
@@ -1825,15 +1860,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "打開的視窗",
         sourceQuitApps: "結束 App",
         sourceSettingsPages: "設定頁面",
-        sourceMacSettings: "系統設定面板",
-        sourceFiles: "檔案",
-        filesTitle: "搜尋你的檔案",
-        filesCaption: "選擇要尋找的檔案夾，輸入時就會依名稱找出檔案。不建立索引，也不要求任何權限：它使用 Mac 本身的搜尋，只顯示你在 Finder 中已能看到的內容。",
-        filesEmpty: "還沒有檔案夾，所以不會尋找檔案。",
-        filesAddFolder: "加入檔案夾",
-        filesIgnoreCaption: "永遠不顯示的名稱：完整的檔案夾或檔案名稱，或寫成 *.log 的副檔名。",
-        filesIgnorePlaceholder: "檔案夾或檔案名稱",
-        filesIgnoreAdd: "加入",
         sourceSnippets: "片段",
         sourceClipboard: "剪貼板歷史記錄",
         sourceEmoji: "表情符號",
@@ -1911,7 +1937,20 @@ extension CommandBarFeatureStrings {
         scriptHint: "選擇一個可執行檔案。輸入名稱，再輸入要傳送的內容。停止輸入後會在這裡顯示結果。",
         scriptRunFailed: "無法執行此檔案",
         scriptSearchHint: "在名稱後輸入要傳送的內容",
-        linkAddButton: "加入捷徑")
+        linkAddButton: "加入捷徑",
+        positionCaption: "拖曳輸入欄左側的標誌，可以把指令列放到螢幕任何位置；雙按標誌即可回到起始位置。",
+        resetPositionButton: "把指令列放回起始位置",
+        dragHint: "拖曳移動 · 雙按復原",
+        actionRevealInFinder: "在 Finder 中顯示",
+        sourceMacSettings: "系統設定面板",
+        sourceFiles: "檔案",
+        filesTitle: "搜尋你的檔案",
+        filesCaption: "選擇要尋找的檔案夾，輸入時就會依名稱找出檔案。不建立索引，也不要求任何權限：它使用 Mac 本身的搜尋，只顯示你在 Finder 中已能看到的內容。",
+        filesEmpty: "還沒有檔案夾，所以不會尋找檔案。",
+        filesAddFolder: "加入檔案夾",
+        filesIgnoreCaption: "永遠不顯示的名稱：完整的檔案夾或檔案名稱，或寫成 *.log 的副檔名。",
+        filesIgnorePlaceholder: "檔案夾或檔案名稱",
+        filesIgnoreAdd: "加入")
 
     static let zhHK = CommandBarFeatureStrings(
         pageTitle: "指令列",
@@ -1959,7 +1998,6 @@ extension CommandBarFeatureStrings {
         actionRename: "更改它回應的名稱",
         actionHide: "永不顯示這個",
         actionForget: "忘記我使用它的頻率",
-        actionRevealInFinder: "在 Finder 中顯示",
         aliasPlaceholder: "你稱呼它的名字",
         aliasTakenFormat: "%@ 已經使用這個名稱",
         sourcesTitle: "指令列搜尋的內容",
@@ -1970,15 +2008,6 @@ extension CommandBarFeatureStrings {
         sourceWindows: "打開的視窗",
         sourceQuitApps: "結束 App",
         sourceSettingsPages: "設定頁面",
-        sourceMacSettings: "系統設定面板",
-        sourceFiles: "檔案",
-        filesTitle: "搜尋你的檔案",
-        filesCaption: "選擇要尋找的檔案夾，輸入時就會依名稱找出檔案。不建立索引，也不要求任何權限：它使用 Mac 本身的搜尋，只顯示你在 Finder 中已能看到的內容。",
-        filesEmpty: "還沒有檔案夾，所以不會尋找檔案。",
-        filesAddFolder: "加入檔案夾",
-        filesIgnoreCaption: "永遠不顯示的名稱：完整的檔案夾或檔案名稱，或寫成 *.log 的副檔名。",
-        filesIgnorePlaceholder: "檔案夾或檔案名稱",
-        filesIgnoreAdd: "加入",
         sourceSnippets: "片段",
         sourceClipboard: "剪貼板歷史記錄",
         sourceEmoji: "表情符號",
@@ -2056,5 +2085,18 @@ extension CommandBarFeatureStrings {
         scriptHint: "選擇一個可執行檔案。輸入名稱，再輸入要傳送的內容。停止輸入後會在這裡顯示結果。",
         scriptRunFailed: "無法執行此檔案",
         scriptSearchHint: "在名稱後輸入要傳送的內容",
-        linkAddButton: "加入捷徑")
+        linkAddButton: "加入捷徑",
+        positionCaption: "拖曳輸入欄左側嘅標誌，可以將指令列放到螢幕任何位置；雙擊標誌即可回到起始位置。",
+        resetPositionButton: "把指令列放返起始位置",
+        dragHint: "拖曳移動 · 雙擊復原",
+        actionRevealInFinder: "在 Finder 中顯示",
+        sourceMacSettings: "系統設定面板",
+        sourceFiles: "檔案",
+        filesTitle: "搜尋你的檔案",
+        filesCaption: "選擇要尋找的檔案夾，輸入時就會依名稱找出檔案。不建立索引，也不要求任何權限：它使用 Mac 本身的搜尋，只顯示你在 Finder 中已能看到的內容。",
+        filesEmpty: "還沒有檔案夾，所以不會尋找檔案。",
+        filesAddFolder: "加入檔案夾",
+        filesIgnoreCaption: "永遠不顯示的名稱：完整的檔案夾或檔案名稱，或寫成 *.log 的副檔名。",
+        filesIgnorePlaceholder: "檔案夾或檔案名稱",
+        filesIgnoreAdd: "加入")
 }

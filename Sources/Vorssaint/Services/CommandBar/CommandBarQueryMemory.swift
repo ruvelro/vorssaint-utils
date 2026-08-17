@@ -6,9 +6,9 @@ import Foundation
 /// What the bar noticed about this session: which row was chosen after which
 /// few letters, so typing those letters again lands on it.
 ///
-/// Ranking by habit alone cannot answer this. Someone who opens WhatsApp all
-/// day still has to walk past Wallet every time they type "wha", because the
-/// habit is attached to the row and not to what they typed to reach it.
+/// Ranking by habit alone cannot answer this. Someone who opens one app all
+/// day can still walk past it after typing part of its name, because the habit
+/// is attached to the row and not to what they typed to reach it.
 ///
 /// **It is never written down.** The bar promises to forget everything typed
 /// into it, and that promise is worth more than remembering a preference
@@ -30,13 +30,11 @@ struct CommandBarQueryMemory: Equatable {
 
     /// What one remembered choice is worth, at most.
     ///
-    /// Deliberately smaller than the 200 points between a title that CONTAINS
-    /// what was typed and one that STARTS with it. That is the contract: what
-    /// the bar noticed can reorder rows that match equally well, and can never
-    /// lift a worse match over a better one. A memory that could do that would
-    /// make the list feel stuck, which is the classic way learned ranking goes
-    /// wrong.
-    static let maximumBoost = 150
+    /// Deliberately only a tie-breaker. What the bar noticed can reorder rows
+    /// that match equally well, but cannot turn a weaker keyword match into a
+    /// better answer. A memory that could do that would make the list feel
+    /// stuck, which is the classic way learned ranking goes wrong.
+    static let maximumBoost = 3
 
     private struct Pick: Equatable {
         var count: Int
@@ -50,9 +48,9 @@ struct CommandBarQueryMemory: Equatable {
 
     init() {}
 
-    /// Every leading piece of what was typed, so choosing WhatsApp for "wha"
-    /// also answers "w" and "wh". Folded the same way the ranking folds, so
-    /// what is remembered and what is searched agree about accents and case.
+    /// Every leading piece of what was typed, so choosing a row after three
+    /// letters also answers the first one and two. Folded the same way the
+    /// ranking folds, so memory and search agree about accents and case.
     static func prefixes(of query: String) -> [String] {
         let normalized = CommandBarSearch.normalized(query)
         guard !normalized.isEmpty else { return [] }

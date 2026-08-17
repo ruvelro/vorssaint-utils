@@ -76,7 +76,8 @@ enum CommandBarFileSearchSupport {
     /// person cleared into the broadest search the bar can make.
     static func resolvedScopes(_ saved: [String],
                                homeDirectory: String,
-                               homeChildren: [String]) -> [String] {
+                               homeChildren: [String],
+                               isSearchableDirectory: (String) -> Bool) -> [String] {
         let home = standardized(homeDirectory)
         var seen = Set<String>()
         var scopes: [String] = []
@@ -86,11 +87,13 @@ enum CommandBarFileSearchSupport {
             if path == home {
                 for child in homeChildren where child != "Library" && !child.hasPrefix(".") {
                     let expanded = home + "/" + child
-                    if seen.insert(expanded).inserted { scopes.append(expanded) }
+                    if isSearchableDirectory(expanded), seen.insert(expanded).inserted {
+                        scopes.append(expanded)
+                    }
                 }
                 continue
             }
-            if seen.insert(path).inserted { scopes.append(path) }
+            if isSearchableDirectory(path), seen.insert(path).inserted { scopes.append(path) }
         }
         return scopes
     }
@@ -112,23 +115,18 @@ enum CommandBarFileSearchSupport {
 
     // MARK: - What never comes back
 
-    /// Packages whose contents are the app's business and not the person's.
-    /// The package itself is still offered: an app, a Keynote document or an
-    /// Xcode project is a thing people open. What is inside one is not.
-    private static let packageExtensions: Set<String> = [
-        "app", "bundle", "framework", "xcodeproj", "xcworkspace", "photoslibrary",
-        "fcpbundle", "tvlibrary", "aplibrary", "musiclibrary", "logicx", "sparsebundle",
-    ]
-
     /// Whether a path can be offered at all, before any preference is read.
-    /// Structural, so nothing the person configures can bring these back.
-    static func isOfferable(path: String) -> Bool {
-        let components = path.split(separator: "/").map(String.init)
+    /// Package status comes from filesystem metadata rather than a suffix
+    /// list, so a package type this app has never seen is still sealed.
+    static func isOfferable(path: String, isPackage: (String) -> Bool) -> Bool {
+        let standardizedPath = standardized(path)
+        let components = standardizedPath.split(separator: "/").map(String.init)
         guard let last = components.last, !last.hasPrefix(".") else { return false }
+        var ancestor = ""
         for component in components.dropLast() {
             if component.hasPrefix(".") { return false }
-            let ext = (component as NSString).pathExtension.lowercased()
-            if !ext.isEmpty, packageExtensions.contains(ext) { return false }
+            ancestor += "/" + component
+            if isPackage(ancestor) { return false }
         }
         return true
     }
@@ -160,10 +158,22 @@ enum CommandBarFileSearchSupport {
     /// The paths worth showing, in the order they should be ranked in: the
     /// ones Spotlight found, minus what is structurally out and what the
     /// person asked never to see, capped so the list stays a list.
-    static func offerable(paths: [String], patterns: [String]) -> [String] {
+    static func offerable(paths: [String],
+                          patterns: [String],
+                          isPackage: (String) -> Bool) -> [String] {
+        var packageCache: [String: Bool] = [:]
+        func cachedIsPackage(_ path: String) -> Bool {
+            if let cached = packageCache[path] { return cached }
+            let value = isPackage(path)
+            packageCache[path] = value
+            return value
+        }
+
         var seen = Set<String>()
         var result: [String] = []
-        for path in paths where isOfferable(path: path) && !isIgnored(path: path, patterns: patterns) {
+        for path in paths {
+            guard isOfferable(path: path, isPackage: cachedIsPackage),
+                  !isIgnored(path: path, patterns: patterns) else { continue }
             guard seen.insert(path).inserted else { continue }
             result.append(path)
             if result.count >= resultLimit { break }
@@ -192,5 +202,11 @@ enum CommandBarFileSearchSupport {
         let home = standardized(homeDirectory)
         guard !home.isEmpty, path == home || path.hasPrefix(home + "/") else { return path }
         return "~" + path.dropFirst(home.count)
+    }
+
+    /// Only the latest query may refresh the visible bar. Older searches may
+    /// finish and warm their cache, but their late completion stays invisible.
+    static func shouldPublishResult(for query: String, currentQuery: String?) -> Bool {
+        query == currentQuery
     }
 }
