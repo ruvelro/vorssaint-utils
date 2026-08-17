@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 - The radial menu now includes a Now Playing media action with a floating track card and direct app access. Thanks to @ruvelro.
 - The radial menu editor now includes a broader built-in SF Symbol catalog with runtime availability filtering. Thanks to @ruvelro.
 - Sound Mixer now includes an option to hide inactive applications while keeping custom volume and output selections visible. Thanks to @ruvelro.
+- Displays can now show one slider that moves every display at once, keeping the
+  gaps between them.
+- External displays can now follow the built-in screen, moving with it whether
+  its brightness changed by hand or by ambient light.
 - Displays can now control the speakers built into an external monitor, with a
   volume slider and a mute button on the same channel the monitor's own buttons
   use. Monitors with no speakers never show one. The keyboard volume keys can
