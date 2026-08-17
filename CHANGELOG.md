@@ -39,6 +39,9 @@ compatibility with older development tools.
   Thanks to @MaximilianMauroner.
 - The clipboard can now clear itself after a delay, and when the Mac sleeps, the
   display sleeps or the screen locks. Under Clipboard.
+- The Command Bar can now open any of the Mac's own System Settings panes, and
+  finds them by what they hold in your language even where macOS only names them
+  in English. It is its own source, so it can be switched off on its own.
 - The Command Bar can now show an app, a folder or a saved place where it lives,
   with ⌘Return or from the actions key.
 

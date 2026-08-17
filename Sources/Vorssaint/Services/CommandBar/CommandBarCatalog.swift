@@ -776,6 +776,31 @@ enum CommandBarCatalog {
             }
     }
 
+    // MARK: - The Mac's own Settings panes
+
+    /// One row per pane System Settings shows, opened by the address macOS
+    /// gives it. The names come from macOS and are the ones it shows itself;
+    /// the words underneath them are translated, so the pane answers in the
+    /// language the person is typing even where its name does not.
+    static func macSettingsEntries(_ panes: [CommandBarSystemSettings.Pane],
+                                   bar: CommandBarFeatureStrings) -> [CommandBarEntry] {
+        panes.map { pane in
+            CommandBarEntry(
+                id: "macsettings.\(pane.bundleID)",
+                title: pane.name,
+                subtitle: bar.sourceMacSettings,
+                keywords: pane.keywords,
+                icon: .symbol("gearshape.2"),
+                run: { _ in
+                    guard let url = CommandBarSystemSettings.url(for: pane.bundleID) else {
+                        NSSound.beep()
+                        return
+                    }
+                    NSWorkspace.shared.open(url)
+                })
+        }
+    }
+
     // MARK: - Snippets
 
     private static func snippetEntries(_ bar: CommandBarFeatureStrings) -> [CommandBarEntry] {

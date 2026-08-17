@@ -116,6 +116,12 @@ final class CommandBarService: ObservableObject {
     private var windowsLoadedAt: Date?
     private var menuEntries: [CommandBarEntry] = []
     private var emojiEntries: [CommandBarEntry] = []
+    /// The Mac's own Settings panes, scanned once per launch. The language
+    /// they were built in comes with them, because the words they answer to
+    /// are translated and a change of language has to reread them.
+    private var macSettingsEntries: [CommandBarEntry] = []
+    private var macSettingsLanguage: AppLanguage?
+    private var macSettingsLoading = false
     /// Rows that act on what was selected when the bar opened. Read once per
     /// opening and thrown away on close: a selection is a moment, not a state.
     private var selectionEntries: [CommandBarEntry] = []
@@ -187,6 +193,9 @@ final class CommandBarService: ObservableObject {
             quitEntries = []
             menuEntries = []
             emojiEntries = []
+            macSettingsEntries = []
+            macSettingsLanguage = nil
+            CommandBarSystemSettings.clearCache()
             presentationLifecycle.hide()
             menuOwnerPID = nil
             menusLoadedAt = nil
@@ -291,6 +300,7 @@ final class CommandBarService: ObservableObject {
         refreshStorageAnswer(for: id)
         refreshWiFiState(for: id)
         loadAppsIfNeeded(for: id)
+        loadMacSettingsIfNeeded(for: id)
         loadWindowsIfNeeded(for: id)
         loadMenusIfNeeded(for: id)
         loadSelection(for: id)
@@ -471,7 +481,7 @@ final class CommandBarService: ObservableObject {
 
     /// The chip order. Fixed, so the row never reshuffles under a pointer.
     private static let chipOrder: [CommandBarSource] = [
-        .actions, .apps, .clipboard, .windows, .menus, .settingsPages,
+        .actions, .apps, .clipboard, .windows, .menus, .settingsPages, .macSettings,
         .snippets, .emoji, .folders, .links,
     ]
 
@@ -520,8 +530,9 @@ final class CommandBarService: ObservableObject {
     private func categoryHasContent(_ source: CommandBarSource) -> Bool {
         let bar = FeatureStrings.commandBar(L10n.shared.language)
         switch source {
-        case .apps:
-            // Every Mac has applications; the scan only decides when.
+        case .apps, .macSettings:
+            // Every Mac has applications and Settings panes; the scan only
+            // decides when.
             return true
         case .windows:
             return (AppFeature.switcher.isAvailable || AppFeature.windowLayout.isAvailable)
@@ -560,6 +571,7 @@ final class CommandBarService: ObservableObject {
         case .actions:
             rows = catalog.filter { CommandBarPreferences.source(ofRowID: $0.id) == .actions }
         case .apps: rows = appEntries
+        case .macSettings: rows = macSettingsEntries
         case .windows: rows = windowEntries
         case .menus: rows = menuEntries
         case .emoji: rows = emojiEntries
@@ -594,6 +606,7 @@ final class CommandBarService: ObservableObject {
         case .windows: return bar.sourceWindows
         case .quitApps: return bar.sourceQuitApps
         case .settingsPages: return bar.sourceSettingsPages
+        case .macSettings: return bar.sourceMacSettings
         case .snippets: return bar.sourceSnippets
         case .clipboard: return bar.sourceClipboard
         case .emoji: return bar.sourceEmoji
@@ -716,8 +729,8 @@ final class CommandBarService: ObservableObject {
     /// Every row the bar can rank right now, in the order the pool builds
     /// them: what the Mac holds first, what is borrowed after.
     private var indexableEntries: [CommandBarEntry] {
-        selectionEntries + catalog + appEntries + windowEntries + quitEntries
-            + menuEntries + emojiEntries
+        selectionEntries + catalog + appEntries + macSettingsEntries + windowEntries
+            + quitEntries + menuEntries + emojiEntries
     }
 
     private func indexEntries() {
@@ -963,8 +976,8 @@ final class CommandBarService: ObservableObject {
         case .links: return bar.kindLink
         case .snippets: return bar.kindSnippet
         case .folders: return bar.kindFolder
-        case .actions, .apps, .menus, .windows, .quitApps, .settingsPages, .clipboard,
-             .emoji, .calculator, .selection:
+        case .actions, .apps, .menus, .windows, .quitApps, .settingsPages, .macSettings,
+             .clipboard, .emoji, .calculator, .selection:
             return entry.subtitle.isEmpty ? bar.everythingTitle : entry.subtitle
         }
     }
@@ -976,7 +989,7 @@ final class CommandBarService: ObservableObject {
     /// the list. Actions have no cap: they are what the bar is for.
     private static let kindLimits: [(prefix: String, limit: Int)] = [
         ("app.", 5), ("window.", 4), ("quit.", 3), ("menu.", 5), ("emoji.", 6),
-        ("settings.", 4), ("clipboard.", 4), ("snippet.", 4),
+        ("settings.", 4), ("macsettings.", 4), ("clipboard.", 4), ("snippet.", 4),
         // Every switch answers to the same verb, so searching that verb would
         // otherwise fill the list with twenty rows that all read alike.
         ("toggle.", 5),
@@ -1084,7 +1097,7 @@ final class CommandBarService: ObservableObject {
 
         // What is selected comes first, so a tie goes to the thing the person
         // is already looking at.
-        var pool = selectionEntries + catalog + appEntries + windowEntries
+        var pool = selectionEntries + catalog + appEntries + macSettingsEntries + windowEntries
         // Two script names can overlap ("run" and "run report"). Only the
         // longest matching one is eligible; otherwise the shorter row can win
         // a ranking tie and Return runs a different file from the answer shown.
@@ -1783,6 +1796,33 @@ final class CommandBarService: ObservableObject {
                     startedBy: id, currentID: self.presentationID,
                     isVisible: self.isVisible) else { return }
                 self.rebuildRunningEntries()
+                self.refreshResults()
+            }
+        }
+    }
+
+    /// The Mac's own Settings panes, read off the main thread the first time
+    /// the bar opens and reused after: they only change when macOS does. The
+    /// switch is honoured here rather than only in the ranking, so a source
+    /// nobody wants costs no scan at all.
+    private func loadMacSettingsIfNeeded(for id: UUID) {
+        guard isEnabled(.macSettings), !macSettingsLoading,
+              macSettingsLanguage != L10n.shared.language
+        else { return }
+        macSettingsLoading = true
+        let language = L10n.shared.language
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let panes = CommandBarSystemSettings.panes(language: language)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.macSettingsLoading = false
+                self.macSettingsLanguage = language
+                self.macSettingsEntries = CommandBarCatalog.macSettingsEntries(
+                    panes, bar: FeatureStrings.commandBar(language))
+                self.indexEntries()
+                guard self.presentationLifecycle.acceptsSharedCacheCompletion(
+                    startedBy: id, currentID: self.presentationID,
+                    isVisible: self.isVisible) else { return }
                 self.refreshResults()
             }
         }

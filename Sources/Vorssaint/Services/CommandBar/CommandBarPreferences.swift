@@ -13,6 +13,9 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
     case windows
     case quitApps
     case settingsPages
+    /// The Mac's own Settings panes, which are not Vorssaint's and can be
+    /// switched off on their own.
+    case macSettings
     case snippets
     case clipboard
     case emoji
@@ -38,6 +41,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
         case .windows: return "macwindow"
         case .quitApps: return "xmark.circle"
         case .settingsPages: return "gearshape"
+        case .macSettings: return "gearshape.2"
         case .snippets: return "text.append"
         case .clipboard: return "doc.on.clipboard"
         case .emoji: return "face.smiling"
@@ -58,6 +62,7 @@ enum CommandBarSource: String, CaseIterable, Identifiable {
         case .windows: return "window."
         case .quitApps: return "quit."
         case .settingsPages: return "settings."
+        case .macSettings: return "macsettings."
         case .snippets: return "snippet."
         case .clipboard: return "clipboard."
         case .emoji: return "emoji."
@@ -116,8 +121,8 @@ enum CommandBarPreferences {
     static func rankBias(for source: CommandBarSource) -> Int {
         switch source {
         case .menus: return -80
-        case .actions, .apps, .windows, .quitApps, .settingsPages, .snippets, .clipboard,
-             .emoji, .folders, .answers, .calculator, .selection, .links:
+        case .actions, .apps, .windows, .quitApps, .settingsPages, .macSettings, .snippets,
+             .clipboard, .emoji, .folders, .answers, .calculator, .selection, .links:
             return 0
         }
     }
@@ -147,8 +152,8 @@ enum CommandBarPreferences {
     static func acceptsAlias(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
         case .menus, .windows, .clipboard, .selection: return false
-        case .actions, .apps, .quitApps, .settingsPages, .snippets, .emoji, .folders,
-             .answers, .calculator, .links:
+        case .actions, .apps, .quitApps, .settingsPages, .macSettings, .snippets, .emoji,
+             .folders, .answers, .calculator, .links:
             return true
         }
     }
@@ -215,8 +220,8 @@ enum CommandBarPreferences {
     static func acceptsPin(rowID: String) -> Bool {
         switch source(ofRowID: rowID) {
         case .menus, .quitApps, .clipboard, .emoji, .selection: return false
-        case .actions, .apps, .windows, .settingsPages, .snippets, .folders, .links,
-             .answers, .calculator:
+        case .actions, .apps, .windows, .settingsPages, .macSettings, .snippets, .folders,
+             .links, .answers, .calculator:
             return true
         }
     }

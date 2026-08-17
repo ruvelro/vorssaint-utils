@@ -319,6 +319,7 @@ struct CommandBarSettings: View {
         case .windows: return text.sourceWindows
         case .quitApps: return text.sourceQuitApps
         case .settingsPages: return text.sourceSettingsPages
+        case .macSettings: return text.sourceMacSettings
         case .snippets: return text.sourceSnippets
         case .clipboard: return text.sourceClipboard
         case .emoji: return text.sourceEmoji

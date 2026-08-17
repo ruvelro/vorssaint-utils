@@ -12140,7 +12140,7 @@ struct MetricsTests {
         // MARK: Command bar, what the person controls
 
         expect(CommandBarSource.allCases.map(\.rawValue) == [
-            "actions", "apps", "menus", "windows", "quitApps", "settingsPages",
+            "actions", "apps", "menus", "windows", "quitApps", "settingsPages", "macSettings",
             "snippets", "clipboard", "emoji", "folders", "answers", "calculator",
             "selection", "links",
         ], "source ids are stable (they persist inside the disabled list)")
@@ -12202,9 +12202,62 @@ struct MetricsTests {
                 && crowdedPrefix.boost(query: "x", id: "row.4") > 0,
                "one prefix remembers a few rows, and the one picked least drops out")
 
+        // MARK: The Mac's own Settings panes
+        let openablePane: [String: Any] = [
+            "EXAppExtensionAttributes": [
+                "SettingsExtensionAttributes": [
+                    "allowsXAppleSystemPreferencesURLScheme": true,
+                    "legacyPrefPaneBundleName": "Appearance.prefPane",
+                ],
+            ],
+        ]
+        expect(CommandBarSystemSettingsSupport.isOpenablePane(info: openablePane),
+               "a pane that answers to the system settings address is one the bar can open")
+        expect(!CommandBarSystemSettingsSupport.isOpenablePane(info: [
+            "EXAppExtensionAttributes": [
+                "SettingsExtensionAttributes": ["allowsXAppleSystemPreferencesURLScheme": false],
+            ],
+        ]) && !CommandBarSystemSettingsSupport.isOpenablePane(info: ["CFBundleName": "Thumbnails"]),
+               "a thumbnailer, and a pane with no address, are not rows")
+        expect(CommandBarSystemSettingsSupport.legacyPaneName(info: openablePane)
+                == "Appearance.prefPane"
+                && CommandBarSystemSettingsSupport.legacyPaneName(info: ["a": 1]) == nil,
+               "the older pane is followed only where the newer one names it")
+        expect(CommandBarSystemSettingsSupport.paneName(localizedDisplayName: "AppleCare & Warranty",
+                                                        displayName: "CoverageSettingPane_macOS",
+                                                        bundleName: "Coverage",
+                                                        fileName: "CoverageSettings.appex")
+                == "AppleCare & Warranty",
+               "a pane is called what System Settings calls it")
+        expect(CommandBarSystemSettingsSupport.paneName(localizedDisplayName: nil,
+                                                        displayName: "  ",
+                                                        bundleName: nil,
+                                                        fileName: "VPN.appex") == "VPN",
+               "a pane that declares no name at all still gets one")
+        // Every pane names its own groups, so all of them are read, in a fixed
+        // order: one Mac and the next must produce the same words.
+        expect(CommandBarSystemSettingsSupport.keywords(fromSearchTerms: [
+            "bSection": ["localizableStrings": [["title": "Brillo", "index": "aclarar, atenuar"]]],
+            "aSection": ["localizableStrings": [["title": "Alinear", "index": "espejo,  , Alinear"]]],
+        ]) == "Alinear espejo Brillo aclarar atenuar",
+               "the words a pane answers to are read from every group and never repeat")
+        expect(CommandBarSystemSettingsSupport.keywords(fromSearchTerms: ["Main": "not a group"])
+                .isEmpty,
+               "a search index in a shape nobody recognizes is no words, not a crash")
+        expect(CommandBarSystemSettingsSupport.keywords(fromSearchTerms: [
+            "a": ["localizableStrings": [["title": "one", "index": "two, three"]]],
+        ], limit: 2) == "one two",
+               "one pane never contributes more words than the ranking can use")
+        expect(Set(AppLanguage.allCases.map(CommandBarSystemSettingsSupport.resourceFolder)).count
+                == AppLanguage.allCases.count,
+               "each language reads its own words, so no two share a folder")
+
         expect(CommandBarPreferences.source(ofRowID: "app.x") == .apps
                 && CommandBarPreferences.source(ofRowID: "menu.1.Bold") == .menus
                 && CommandBarPreferences.source(ofRowID: "folder./tmp") == .folders
+                && CommandBarPreferences.source(ofRowID: "macsettings.com.apple.Sound-Settings.extension")
+                    == .macSettings
+                && CommandBarPreferences.source(ofRowID: "settings.general") == .settingsPages
                 && CommandBarPreferences.source(ofRowID: "action.screenshot") == .actions
                 && CommandBarPreferences.source(ofRowID: "action.recentCaptures") == .actions
                 && CommandBarPreferences.emojiBrowserRowID == "emoji.browse"
@@ -13252,7 +13305,7 @@ struct MetricsTests {
         for language in AppLanguage.allCases {
             let commandBarValues = Mirror(reflecting: FeatureStrings.commandBar(language)).children
                 .compactMap { $0.value as? String }
-            expect(commandBarValues.count == 134 && commandBarValues.allSatisfy { !$0.isEmpty },
+            expect(commandBarValues.count == 135 && commandBarValues.allSatisfy { !$0.isEmpty },
                    "every command bar string is set for \(language.rawValue)")
             expect(commandBarValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible command bar strings (\(language.rawValue))")
