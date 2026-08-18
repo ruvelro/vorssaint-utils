@@ -8558,14 +8558,14 @@ struct MetricsTests {
 
         expect(AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 14)
                 && AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 15)
-                && AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 26),
-               "menu bar organizer stays available on macOS 14/15/26")
-        expect(!AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 27)
-                && !AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 28),
-               "menu bar organizer is blocked on macOS 27 and later")
-        expect(!FeatureVisibilitySupport.isPageVisible(.menuBarOrganizer) {
+                && AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 26)
+                && AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 27),
+               "menu bar organizer enables the experimental macOS 27 backend")
+        expect(!AppFeature.isSupported(.menuBarOrganizer, onOperatingSystemMajorVersion: 28),
+               "unvalidated future menu bar backends remain blocked")
+        expect(FeatureVisibilitySupport.isPageVisible(.menuBarOrganizer) {
             AppFeature.isSupported($0, onOperatingSystemMajorVersion: 27)
-        }, "unsupported organizer settings stay out of navigation on macOS 27")
+        }, "experimental organizer settings remain available on macOS 27")
         expect(AppFeature.isSupported(.switcher, onOperatingSystemMajorVersion: 27)
                 && AppFeature.isSupported(.fanControl, onOperatingSystemMajorVersion: 27),
                "the macOS 27 gate only affects the menu bar organizer")
@@ -8893,6 +8893,44 @@ struct MetricsTests {
                 && !MenuBarOrganizerSupport.shouldUseSecondaryBar(
                     mode: .menuBar, hiddenWidth: 900, availableWidth: 100, hasNotch: true),
                "automatic presentation handles overflow and notches while explicit mode wins")
+        expect(MenuBarOrganizerSupport.backend(onOperatingSystemMajorVersion: 26) == .windowServer
+                && MenuBarOrganizerSupport.backend(onOperatingSystemMajorVersion: 27) == .accessibility
+                && MenuBarOrganizerSupport.canHide(on: .windowServer)
+                && !MenuBarOrganizerSupport.canHide(on: .accessibility),
+               "macOS 27 selects a non-hiding AX backend without changing the legacy backend")
+        let syntheticID = MenuBarOrganizerSupport.syntheticWindowID(
+            bundleIdentifier: "com.example.status",
+            title: "status-item",
+            occurrence: 0)
+        expect(syntheticID == MenuBarOrganizerSupport.syntheticWindowID(
+                    bundleIdentifier: "com.example.status",
+                    title: "status-item",
+                    occurrence: 0)
+                && syntheticID & 0x8000_0000 != 0,
+               "AX-only items receive deterministic high-range synthetic window IDs")
+        expect(MenuBarOrganizerSupport.axIdentityTitle(
+                    identifier: "stable-id",
+                    accessibilityDescription: "description",
+                    title: "title",
+                    fallbackIndex: 2) == ("stable-id", true)
+                && MenuBarOrganizerSupport.axIdentityTitle(
+                    identifier: nil,
+                    accessibilityDescription: " ",
+                    title: nil,
+                    fallbackIndex: 2) == ("Item-2", false),
+               "AX identity prefers durable metadata and marks anonymous slots provisional")
+        expect(MenuBarOrganizerSupport.isAXMenuBarItemFrame(
+                    CGRect(x: 10, y: 0, width: 20, height: 24),
+                    displayBounds: [CGRect(x: 0, y: 0, width: 200, height: 100)])
+                && !MenuBarOrganizerSupport.isAXMenuBarItemFrame(
+                    CGRect(x: 10, y: 0, width: 20, height: 80),
+                    displayBounds: [CGRect(x: 0, y: 0, width: 200, height: 100)])
+                && MenuBarOrganizerSupport.isDuplicateMenuBarAgentRevend(
+                    frame: CGRect(x: 10.5, y: 0.5, width: 20, height: 24),
+                    directFrames: [CGRect(x: 10, y: 0, width: 20, height: 24)])
+                && MenuBarOrganizerSupport.isOrganizerControlIdentity(
+                    "Vorssaint.MenuBarOrganizer.hidden"),
+               "AX inventory rejects popovers and de-duplicates MenuBarAgent re-vends")
 
         func menuBarRecord(_ windowID: CGWindowID,
                            ownerPID: pid_t = 1,
@@ -9013,6 +9051,8 @@ struct MetricsTests {
                 bundleIdentifier: "com.apple.controlcenter", title: "Clock")
                 && MenuBarOrganizerSupport.isSystemImmovable(
                     bundleIdentifier: "com.apple.controlcenter", title: "Item-14")
+                && MenuBarOrganizerSupport.isSystemImmovable(
+                    bundleIdentifier: "com.apple.MenuBarAgent", title: "Wi-Fi")
                 && !MenuBarOrganizerSupport.isSystemImmovable(
                     bundleIdentifier: "com.example.app", title: "Clock"),
                "protected system items are not offered to automatic movement")
@@ -9259,6 +9299,7 @@ struct MetricsTests {
             expect(menuBarOrganizerValues.allSatisfy { !$0.contains("—") },
                    "no em-dash in menu bar organizer strings (\(language.rawValue))")
             expect(FeatureStrings.menuBarOrganizer(language).unsupportedSystem.contains("27")
+                    && FeatureStrings.menuBarOrganizer(language).experimentalSystem.contains("27")
                     && FeatureStrings.menuBarOrganizer(language).unresolvedCountFormat.contains("%d")
                     && FeatureStrings.menuBarOrganizer(language).conflictFormat.contains("%@"),
                    "organizer compatibility and formats stay explicit (\(language.rawValue))")

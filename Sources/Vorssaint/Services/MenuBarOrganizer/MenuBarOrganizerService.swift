@@ -14,6 +14,8 @@ final class MenuBarOrganizerService: ObservableObject {
     @Published private(set) var capabilities = MenuBarOrganizerCapabilities(
         canEnumerate: false,
         canMove: AXIsProcessTrusted(),
+        canHide: MenuBarOrganizerSupport.canHide(
+            on: MenuBarOrganizerSupport.backend()),
         hasPrivateWindowList: false,
         unresolvedItemCount: 0)
     @Published private(set) var isRunning = false
@@ -47,9 +49,8 @@ final class MenuBarOrganizerService: ObservableObject {
     private init() {}
 
     func syncWithPreferences() {
-        // Never touch the WindowServer probes on systems the feature does not
-        // support yet: macOS 27 crashes on enable, so even defaults carried
-        // over from an older OS must stay inert.
+        // Never touch a backend on unvalidated future systems. macOS 27 is
+        // routed to the AX provider before any WindowServer probe is made.
         guard AppFeature.menuBarOrganizer.isSupportedOnCurrentSystem else {
             stop()
             return
@@ -70,6 +71,7 @@ final class MenuBarOrganizerService: ObservableObject {
             capabilities = MenuBarOrganizerCapabilities(
                 canEnumerate: capabilities.canEnumerate,
                 canMove: false,
+                canHide: capabilities.canHide,
                 hasPrivateWindowList: capabilities.hasPrivateWindowList,
                 unresolvedItemCount: capabilities.unresolvedItemCount)
             return
@@ -131,7 +133,7 @@ final class MenuBarOrganizerService: ObservableObject {
     }
 
     func toggleHiddenSection() {
-        guard isRunning else { return }
+        guard isRunning, capabilities.canHide else { return }
         if hiddenSectionShown || secondaryPanel?.isVisible == true {
             hideAll()
         } else {
@@ -141,6 +143,7 @@ final class MenuBarOrganizerService: ObservableObject {
 
     func toggleAlwaysHiddenSection() {
         guard isRunning,
+              capabilities.canHide,
               UserDefaults.standard.bool(
                 forKey: DefaultsKey.menuBarOrganizerAlwaysHiddenEnabled)
         else { return }
@@ -165,6 +168,13 @@ final class MenuBarOrganizerService: ObservableObject {
 
     func hideAll() {
         secondaryPanel?.close()
+        guard capabilities.canHide else {
+            hiddenSectionShown = true
+            alwaysHiddenSectionShown = true
+            applyDividerState()
+            refresh()
+            return
+        }
         hiddenSectionShown = false
         alwaysHiddenSectionShown = false
         applyDividerState()
@@ -247,8 +257,10 @@ final class MenuBarOrganizerService: ObservableObject {
 
         let setupComplete = UserDefaults.standard.bool(
             forKey: DefaultsKey.menuBarOrganizerSetupComplete)
-        hiddenSectionShown = !setupComplete
-        alwaysHiddenSectionShown = !setupComplete
+        let supportsHiding = MenuBarOrganizerSupport.canHide(
+            on: MenuBarOrganizerSupport.backend())
+        hiddenSectionShown = supportsHiding ? !setupComplete : true
+        alwaysHiddenSectionShown = supportsHiding ? !setupComplete : true
         installObservers()
         scheduleRefreshTimer()
     }
@@ -298,6 +310,8 @@ final class MenuBarOrganizerService: ObservableObject {
             capabilities = MenuBarOrganizerCapabilities(
                 canEnumerate: false,
                 canMove: AXIsProcessTrusted(),
+                canHide: MenuBarOrganizerSupport.canHide(
+                    on: MenuBarOrganizerSupport.backend()),
                 hasPrivateWindowList: false,
                 unresolvedItemCount: 0)
         }
@@ -330,6 +344,15 @@ final class MenuBarOrganizerService: ObservableObject {
                 forKey: DefaultsKey.menuBarOrganizerShowDividers)
         let length = MenuBarOrganizerSupport.collapsedLength(
             screenWidths: NSScreen.screens.map(\.frame.width))
+        if !MenuBarOrganizerSupport.canHide(on: MenuBarOrganizerSupport.backend()) {
+            hiddenDivider?.setCollapsed(false,
+                                        markerVisible: true,
+                                        collapsedLength: length)
+            alwaysHiddenDivider?.setCollapsed(false,
+                                              markerVisible: true,
+                                              collapsedLength: length)
+            return
+        }
         hiddenDivider?.setCollapsed(
             !hiddenSectionShown && editingCount == 0,
             markerVisible: markers,
@@ -385,11 +408,6 @@ final class MenuBarOrganizerService: ObservableObject {
             operationMessage = moveErrorMessage(.provisionalIdentity)
             return
         }
-        let movingWindowID = original.windowID
-        let targetWindowID = targetID.flatMap { id in
-            items.first(where: { $0.id == id })?.windowID
-        }
-
         let orderedBefore = MenuBarOrganizerSupport.orderedItems(items, in: original.section)
         let rightNeighbor = orderedBefore
             .drop(while: { $0.id != original.id })
@@ -404,13 +422,13 @@ final class MenuBarOrganizerService: ObservableObject {
         var lastError: MenuBarItemMoveError = .verificationFailed
         for attempt in 0..<2 {
             _ = await refreshNow()
-            guard let current = items.first(where: { $0.windowID == movingWindowID }) else {
+            guard let current = items.first(where: { $0.id == itemID }) else {
                 lastError = .itemUnavailable
                 break
             }
             guard let destination = destination(
                 for: section,
-                targetWindowID: targetWindowID,
+                targetID: targetID,
                 referenceFrame: current.frame)
             else {
                 lastError = .itemUnavailable
@@ -422,8 +440,8 @@ final class MenuBarOrganizerService: ObservableObject {
                                      placeAfter: destination.placeAfter)
                 try? await Task.sleep(for: .milliseconds(120 + attempt * 80))
                 _ = await refreshNow()
-                if moveWasVerified(windowID: movingWindowID,
-                                   targetWindowID: targetWindowID,
+                if moveWasVerified(itemID: itemID,
+                                   targetID: targetID,
                                    section: section) {
                     canUndo = undoRecord != nil
                     return
@@ -447,10 +465,10 @@ final class MenuBarOrganizerService: ObservableObject {
     }
 
     private func destination(for section: MenuBarOrganizerSection,
-                             targetWindowID: CGWindowID?,
+                             targetID: MenuBarItemIdentity?,
                              referenceFrame: CGRect) -> (frame: CGRect, placeAfter: Bool)? {
-        if let targetWindowID,
-           let target = items.first(where: { $0.windowID == targetWindowID }) {
+        if let targetID,
+           let target = items.first(where: { $0.id == targetID }) {
             return (target.frame, false)
         }
         func quartzFrame(_ frame: CGRect, placeAfter: Bool) -> (CGRect, Bool) {
@@ -470,14 +488,14 @@ final class MenuBarOrganizerService: ObservableObject {
         }
     }
 
-    private func moveWasVerified(windowID: CGWindowID,
-                                 targetWindowID: CGWindowID?,
+    private func moveWasVerified(itemID: MenuBarItemIdentity,
+                                 targetID: MenuBarItemIdentity?,
                                  section: MenuBarOrganizerSection) -> Bool {
-        guard let current = items.first(where: { $0.windowID == windowID }),
+        guard let current = items.first(where: { $0.id == itemID }),
               current.section == section
         else { return false }
-        guard let targetWindowID else { return true }
-        guard let target = items.first(where: { $0.windowID == targetWindowID }) else {
+        guard let targetID else { return true }
+        guard let target = items.first(where: { $0.id == targetID }) else {
             return false
         }
         return current.frame.maxX <= target.frame.minX + 3

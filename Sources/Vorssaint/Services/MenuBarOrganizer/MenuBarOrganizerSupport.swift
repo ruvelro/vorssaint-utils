@@ -27,6 +27,11 @@ enum MenuBarItemIdentityState: String, Codable {
     case provisional
 }
 
+enum MenuBarOrganizerBackend: Equatable {
+    case windowServer
+    case accessibility
+}
+
 struct MenuBarItemIdentity: Hashable, Codable {
     let bundleIdentifier: String
     let title: String
@@ -76,6 +81,7 @@ struct ManagedMenuBarItem: Identifiable {
     let isMovable: Bool
     let isProtected: Bool
     let image: NSImage?
+    let backend: MenuBarOrganizerBackend
 
     var displayName: String {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -102,6 +108,7 @@ struct MenuBarOrganizerWindowRecord: Equatable {
 struct MenuBarOrganizerCapabilities: Equatable {
     let canEnumerate: Bool
     let canMove: Bool
+    let canHide: Bool
     let hasPrivateWindowList: Bool
     let unresolvedItemCount: Int
 
@@ -119,6 +126,67 @@ struct MenuBarItemSnapshot {
 enum MenuBarOrganizerSupport {
     static let controlCenterBundleIdentifier = "com.apple.controlcenter"
     static let systemUIServerBundleIdentifier = "com.apple.systemuiserver"
+    static let menuBarAgentBundleIdentifier = "com.apple.MenuBarAgent"
+    static let organizerControlIdentifierPrefix = "Vorssaint.MenuBarOrganizer."
+
+    static func backend(onOperatingSystemMajorVersion major: Int =
+        ProcessInfo.processInfo.operatingSystemVersion.majorVersion) -> MenuBarOrganizerBackend {
+        major >= 27 ? .accessibility : .windowServer
+    }
+
+    static var usesExperimentalAccessibilityBackend: Bool {
+        backend() == .accessibility
+    }
+
+    static func canHide(on backend: MenuBarOrganizerBackend) -> Bool {
+        backend == .windowServer
+    }
+
+    /// macOS 27 status items are no longer independent windows. Keep the rest
+    /// of the organizer pipeline stable with a deterministic, namespaced ID.
+    /// The high bit keeps these IDs away from ordinary WindowServer IDs.
+    static func syntheticWindowID(bundleIdentifier: String,
+                                  title: String,
+                                  occurrence: Int) -> CGWindowID {
+        let key = "\(bundleIdentifier)\u{0}\(title)\u{0}\(occurrence)"
+        var hash: UInt32 = 0x811C_9DC5
+        for byte in key.utf8 {
+            hash ^= UInt32(byte)
+            hash = hash &* 0x0100_0193
+        }
+        return CGWindowID(0x8000_0000 | (hash & 0x7FFF_FFFF))
+    }
+
+    static func axIdentityTitle(identifier: String?,
+                                accessibilityDescription: String?,
+                                title: String?,
+                                fallbackIndex: Int) -> (title: String, stable: Bool) {
+        for candidate in [identifier, accessibilityDescription, title] {
+            let normalized = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !normalized.isEmpty { return (normalized, true) }
+        }
+        return ("Item-\(fallbackIndex)", false)
+    }
+
+    static func isAXMenuBarItemFrame(_ frame: CGRect,
+                                     displayBounds: [CGRect]) -> Bool {
+        guard frame.width > 0, frame.height > 0, frame.height <= 40 else { return false }
+        return displayBounds.isEmpty || displayBounds.contains {
+            frame.midX >= $0.minX && frame.midX <= $0.maxX
+                && frame.midY >= $0.minY && frame.midY <= $0.maxY
+        }
+    }
+
+    static func isDuplicateMenuBarAgentRevend(frame: CGRect,
+                                               directFrames: [CGRect]) -> Bool {
+        directFrames.contains {
+            abs($0.minX - frame.minX) <= 1 && abs($0.minY - frame.minY) <= 1
+        }
+    }
+
+    static func isOrganizerControlIdentity(_ title: String) -> Bool {
+        title.hasPrefix(organizerControlIdentifierPrefix)
+    }
 
     static func collapsedLength(screenWidths: [CGFloat]) -> CGFloat {
         let widest = screenWidths.max() ?? 2_048
@@ -253,6 +321,12 @@ enum MenuBarOrganizerSupport {
 
     static func isSystemImmovable(bundleIdentifier: String, title: String) -> Bool {
         let normalized = title.lowercased()
+        if bundleIdentifier == menuBarAgentBundleIdentifier {
+            // The first experimental backend deliberately leaves native items
+            // anchored. Their ordering and visibility semantics are still
+            // changing across macOS 27 previews.
+            return true
+        }
         if bundleIdentifier == controlCenterBundleIdentifier {
             return normalized.contains("clock")
                 || normalized.contains("siri")

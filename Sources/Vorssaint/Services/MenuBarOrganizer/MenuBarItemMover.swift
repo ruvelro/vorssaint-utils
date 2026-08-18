@@ -31,11 +31,15 @@ final class MenuBarItemMover {
             throw MenuBarItemMoveError.itemNotMovable
         }
         guard !isMoving else { throw MenuBarItemMoveError.busy }
-        let targetPID = MenuBarOrganizerSupport.eventTargetPID(
-            ownerPID: item.ownerPID,
-            ownerBundleIdentifier: item.ownerBundleIdentifier,
-            sourcePID: item.sourcePID)
-        let relevantPIDs = Set([targetPID, item.sourcePID].compactMap { $0 })
+        // MenuBarAgent owns one composited surface on macOS 27. Addressing the
+        // publishing app PID does not reach an individual item there; let the
+        // system hit-test the globally posted Command-drag by AX coordinates.
+        let targetPID: pid_t? = item.backend == .accessibility ? nil
+            : MenuBarOrganizerSupport.eventTargetPID(
+                ownerPID: item.ownerPID,
+                ownerBundleIdentifier: item.ownerBundleIdentifier,
+                sourcePID: item.sourcePID)
+        let relevantPIDs = Set([item.ownerPID, item.sourcePID].compactMap { $0 })
         guard !Self.hasOpenMenu(for: relevantPIDs) else {
             throw MenuBarItemMoveError.menuOpen
         }
@@ -56,6 +60,11 @@ final class MenuBarItemMover {
 
         let targetX = placeAfter ? destinationFrame.maxX + 2 : destinationFrame.minX - 2
         let end = CGPoint(x: targetX, y: destinationFrame.midY)
+        let screenFrames = NSScreen.screens.map(\.frame)
+        guard screenFrames.contains(where: { $0.contains(
+            CGPoint(x: item.frame.midX, y: item.frame.midY)) }),
+              screenFrames.contains(where: { $0.contains(end) })
+        else { throw MenuBarItemMoveError.itemNotMovable }
         try await postCommandDrag(
             from: CGPoint(x: item.frame.midX, y: item.frame.midY),
             to: end,
@@ -101,7 +110,7 @@ final class MenuBarItemMover {
 
     private func postCommandDrag(from start: CGPoint,
                                  to end: CGPoint,
-                                 targetPID: pid_t) async throws {
+                                 targetPID: pid_t?) async throws {
         guard let source = CGEventSource(stateID: .hidSystemState),
               let down = CGEvent(mouseEventSource: source,
                                  mouseType: .leftMouseDown,
@@ -122,9 +131,9 @@ final class MenuBarItemMover {
 
         CGWarpMouseCursorPosition(start)
         post(down, targetPID: targetPID)
-        try await Task.sleep(for: .milliseconds(18))
-        for step in 1...10 {
-            let fraction = CGFloat(step) / 10
+        try await Task.sleep(for: .milliseconds(60))
+        for step in 1...24 {
+            let fraction = CGFloat(step) / 24
             let point = CGPoint(x: start.x + (end.x - start.x) * fraction,
                                 y: start.y + (end.y - start.y) * fraction)
             guard let drag = CGEvent(mouseEventSource: source,
@@ -134,9 +143,10 @@ final class MenuBarItemMover {
             else { throw MenuBarItemMoveError.eventCreationFailed }
             drag.flags = .maskCommand
             post(drag, targetPID: targetPID)
-            try await Task.sleep(for: .milliseconds(8))
+            try await Task.sleep(for: .milliseconds(16))
         }
         post(up, targetPID: targetPID)
+        try await Task.sleep(for: .milliseconds(40))
     }
 
     private func post(_ event: CGEvent, targetPID: pid_t?) {
