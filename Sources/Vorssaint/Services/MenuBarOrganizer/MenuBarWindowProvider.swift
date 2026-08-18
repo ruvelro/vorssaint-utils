@@ -14,12 +14,18 @@ final class MenuBarWindowProvider {
 
     private let bridge = MenuBarWindowServerBridge.shared
     private let resolver = MenuBarItemSourceResolver()
+    private let accessibilityProvider = MenuBarAccessibilityProvider()
     private let queue = DispatchQueue(label: "com.vorssaint.menu-bar-enumeration",
                                       qos: .utility)
 
     func snapshot(hiddenDividerMidX: CGFloat?,
                   alwaysHiddenDividerMidX: CGFloat?,
                   excludedWindowIDs: Set<CGWindowID>) async -> MenuBarItemSnapshot {
+        if MenuBarOrganizerSupport.backend() == .accessibility {
+            return await accessibilityProvider.snapshot(
+                hiddenDividerMidX: hiddenDividerMidX,
+                alwaysHiddenDividerMidX: alwaysHiddenDividerMidX)
+        }
         let enumeration = await enumerate()
         let records = enumeration.records.filter { !excludedWindowIDs.contains($0.windowID) }
         let sources = await resolver.resolve(records: records)
@@ -62,7 +68,8 @@ final class MenuBarWindowProvider {
                     identityState: resolved.state,
                     isMovable: movable,
                     isProtected: protected,
-                    image: icon)
+                    image: icon,
+                    backend: .windowServer)
             }
             .sorted {
                 if $0.frame.minX == $1.frame.minX {
@@ -77,6 +84,7 @@ final class MenuBarWindowProvider {
             capabilities: MenuBarOrganizerCapabilities(
                 canEnumerate: enumeration.succeeded,
                 canMove: AXIsProcessTrusted(),
+                canHide: true,
                 hasPrivateWindowList: enumeration.usedPrivateWindowList,
                 unresolvedItemCount: items.count {
                     $0.identityState == .provisional

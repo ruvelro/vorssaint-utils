@@ -180,10 +180,10 @@ extension AppFeature {
     static func isSupported(_ feature: AppFeature,
                             onOperatingSystemMajorVersion major: Int =
                                 ProcessInfo.processInfo.operatingSystemVersion.majorVersion) -> Bool {
-        // The organizer drives macOS 26 menu-bar hosting internals that are
-        // not proven on macOS 27: enabling it there crashes and nothing moves.
+        // macOS 27 uses the experimental Accessibility/MenuBarAgent backend;
+        // later majors remain gated until their hosting model is validated.
         // Other features keep their pre-existing OS commitments.
-        feature == .menuBarOrganizer ? major <= 26 : true
+        feature == .menuBarOrganizer ? major <= 27 : true
     }
 
     var isSupportedOnCurrentSystem: Bool {

@@ -34,6 +34,13 @@ struct MenuBarOrganizerSettings: View {
             }
 
             if enabled {
+                if MenuBarOrganizerSupport.usesExperimentalAccessibilityBackend {
+                    Section {
+                        Label(text.experimentalSystem,
+                              systemImage: "flask.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
                 conflictSection
                 permissionSection
                 if service.isRunning {
@@ -182,6 +189,7 @@ struct MenuBarOrganizerSettings: View {
         } header: {
             Text(text.behaviorTitle)
         }
+        .disabled(!service.capabilities.canHide)
     }
 
     private var preferenceSignature: String {
