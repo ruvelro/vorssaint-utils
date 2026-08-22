@@ -9,24 +9,17 @@ struct QuickToolsSettings: View {
     @ObservedObject private var features = FeatureRuntime.shared
     @ObservedObject private var permissions = Permissions.shared
     @ObservedObject private var micMute = MicMuteService.shared
-    @ObservedObject private var ocr = ScreenTextService.shared
-    @ObservedObject private var colorSampler = ColorSamplerService.shared
     @ObservedObject private var launcher = QuickLauncherService.shared
     @ObservedObject private var cameraPreview = CameraPreviewService.shared
     @ObservedObject private var scratchpad = ScratchpadService.shared
     @ObservedObject private var brightness = BrightnessService.shared
     @AppStorage(DefaultsKey.quickLauncherShortcutEnabled) private var launcherShortcutEnabled = true
-    @AppStorage(DefaultsKey.screenOCRShortcutEnabled) private var ocrShortcutEnabled = false
-    @AppStorage(DefaultsKey.screenOCRDetectQRCodes) private var ocrDetectQRCodes = true
-    @AppStorage(DefaultsKey.colorPickerShortcutEnabled) private var colorShortcutEnabled = false
     @AppStorage(DefaultsKey.micMuteShortcutEnabled) private var micShortcutEnabled = false
     @AppStorage(DefaultsKey.cameraPreviewShortcutEnabled) private var cameraShortcutEnabled = false
     @AppStorage(DefaultsKey.scratchpadShortcutEnabled) private var scratchpadShortcutEnabled = false
     @AppStorage(DefaultsKey.scratchpadRetention) private var scratchpadRetention = ScratchpadRetention.never.rawValue
     @AppStorage(DefaultsKey.scratchpadCloseOnClickOutside) private var scratchpadCloseOnClickOutside = true
     @AppStorage(DefaultsKey.scratchpadBackgroundOpacity) private var scratchpadBackgroundOpacity = 0.0
-    @AppStorage(DefaultsKey.colorPickerFormat) private var colorFormat = "hex"
-    @AppStorage(DefaultsKey.colorPickerBareHex) private var colorBareHex = false
     @AppStorage(DefaultsKey.micMuteMenuBarIndicator) private var micMenuBarIndicator = false
 
     var body: some View {
@@ -60,6 +53,7 @@ struct QuickToolsSettings: View {
                 } header: {
                     Text(l10n.s.launcherName)
                 }
+                .settingsSectionAnchor(.quickLauncher)
             }
 
             if AppFeature.quickToggles.isAvailable {
@@ -87,79 +81,8 @@ struct QuickToolsSettings: View {
                 } header: {
                     Text(FeatureStrings.quickToggles(l10n.language).pageTitle)
                 }
+                .settingsSectionAnchor(.quickToggles)
                 .onAppear { brightness.refreshKeyboardLight() }
-            }
-
-            if AppFeature.screenOCR.isAvailable {
-                Section {
-                    Button {
-                        ScreenTextService.shared.capture()
-                    } label: {
-                        Label(l10n.s.ocrName, systemImage: "text.viewfinder")
-                    }
-                    Text(l10n.s.ocrCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Toggle(l10n.s.ocrQRToggle, isOn: $ocrDetectQRCodes)
-                    Text(l10n.s.ocrQRCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Toggle(l10n.s.quickToolShortcutToggle, isOn: $ocrShortcutEnabled)
-                        .onChange(of: ocrShortcutEnabled) { _, _ in
-                            ScreenTextService.shared.syncWithPreferences()
-                        }
-                    ShortcutPreferenceRow(role: .screenOCR,
-                                          isEnabled: ocrShortcutEnabled) {
-                        ScreenTextService.shared.syncWithPreferences()
-                    }
-                    if ocrShortcutEnabled, ocr.shortcutRegistrationFailed {
-                        Text(l10n.s.shortcutUnavailable)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                    if !permissions.screenRecording {
-                        PermissionRow(kind: .screenRecording)
-                    }
-                } header: {
-                    Text(l10n.s.ocrName)
-                }
-            }
-
-            if AppFeature.colorPicker.isAvailable {
-                Section {
-                    Button {
-                        ColorSamplerService.shared.pick()
-                    } label: {
-                        Label(l10n.s.colorPickerPickNow, systemImage: "eyedropper")
-                    }
-                    Text(l10n.s.colorPickerCaption)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker(l10n.s.colorPickerFormatLabel, selection: $colorFormat) {
-                        ForEach(ColorCopyFormat.allCases) { format in
-                            Text(format.label).tag(format.rawValue)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    if colorFormat == ColorCopyFormat.hex.rawValue {
-                        Toggle(l10n.s.colorPickerBareHexToggle, isOn: $colorBareHex)
-                    }
-                    Toggle(l10n.s.quickToolShortcutToggle, isOn: $colorShortcutEnabled)
-                        .onChange(of: colorShortcutEnabled) { _, _ in
-                            ColorSamplerService.shared.syncWithPreferences()
-                        }
-                    ShortcutPreferenceRow(role: .colorPicker,
-                                          isEnabled: colorShortcutEnabled) {
-                        ColorSamplerService.shared.syncWithPreferences()
-                    }
-                    if colorShortcutEnabled, colorSampler.shortcutRegistrationFailed {
-                        Text(l10n.s.shortcutUnavailable)
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                } header: {
-                    Text(l10n.s.colorPickerName)
-                }
             }
 
             if AppFeature.micMute.isAvailable {
@@ -198,6 +121,7 @@ struct QuickToolsSettings: View {
                 } header: {
                     Text(l10n.s.micMuteName)
                 }
+                .settingsSectionAnchor(.micMute)
             }
 
             if AppFeature.cameraPreview.isAvailable {
@@ -230,6 +154,7 @@ struct QuickToolsSettings: View {
                 } header: {
                     Text(FeatureStrings.cameraPreview(l10n.language).pageTitle)
                 }
+                .settingsSectionAnchor(.cameraPreview)
             }
 
             if AppFeature.scratchpad.isAvailable {
@@ -291,6 +216,7 @@ struct QuickToolsSettings: View {
                 } header: {
                     Text(FeatureStrings.scratchpad(l10n.language).pageTitle)
                 }
+                .settingsSectionAnchor(.scratchpad)
             }
         }
         .formStyle(.grouped)

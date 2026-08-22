@@ -4,6 +4,207 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [3.3.3-beta.2] - 2026-08-22
+
+### Added
+- The radial menu editor now includes a broader built-in SF Symbol catalog with runtime availability filtering. Thanks to @ruvelro.
+- Sound Mixer now includes an option to hide inactive applications while keeping custom volume and output selections visible. Thanks to @ruvelro.
+
+### Changed
+- Embedded utilities in the Quick Launcher now provide distinct Back and Close buttons. Thanks to @ruvelro.
+
+### Fixed
+- Beta releases now automatically turn on the beta update channel on first launch, ensuring seamless delivery of subsequent beta updates.
+
+## [3.3.3-beta.1] - 2026-08-22
+
+### Summary
+Vorssaint 3.3.3-beta.1 introduces the opt-in beta release channel and in-app feedback diagnostics alongside full manual and temperature-based Fan Control, directional pointer window layout, an opt-in Kill Process tool and native input-source switching for the Super key and drag-to-place Dock previews. It keeps grouped and windowless App Switcher labels clear, splits App Switcher rows evenly when they wrap, makes Scratchpad controls easier to click, keeps fixed page footers from repeating in scrolling screenshots, restores reliable trimming from the start of a recording, makes administrator approval for updates originate from Vorssaint, keeps messaging app cleanup in Cleaner hidden until you turn it on, keeps Separate metrics in Settings instead of the menu bar panel, lets you open Music yourself while the media-key blocker is on, and shows compressed memory and cached files in the System panel.
+
+### Added
+- Window Layout now offers an opt-in Shortcut + pointer layout mode that places the active window toward
+  any of eight directions with a native glass-ring HUD. Thanks to @Bald-M.
+- The Super key can now use a quick press to switch between enabled input sources
+  while a press-and-hold toggles Caps Lock. Thanks to @BenjaminD2023.
+- Dock Preview thumbnails can now be dragged to move windows freely or snap them
+  to screen regions. Thanks to @PathGao.
+- Clean URL now removes the tracking parameters that YouTube, X, Instagram, Spotify,
+  Reddit, TikTok, Bilibili and Xiaohongshu add to their own share links, while leaving
+  the same parameter names alone on every other site. Thanks to @PathGao.
+- An opt-in Kill Process feature searches running processes to force quit, restart or terminate
+  process trees from Settings and the Command Bar. It ships uninstalled. Thanks to @naveenkrdy.
+- The System panel now shows compressed memory and cached files next to swap.
+- Middle-clicking a window card in the App Switcher now closes that window directly.
+- Settings now lets you opt in to receive beta and pre-release updates alongside stable versions.
+
+### Changed
+- The App Switcher now splits windows evenly across rows when they wrap, so a
+  leftover pair no longer stretches the panel to a full first row. Thanks to @kzenmatthias.
+- Separate metrics into their own items now lives only in Settings › Monitor,
+  not in the menu bar panel.
+- Fan Control now offers System, continuous Manual control from 0% to 100% and
+  editable temperature curves with multiple SoC, CPU and GPU rules. It also shows
+  current and target RPM for every fan.
+- The Cleaner's messaging app downloads tools stay hidden until you turn them on
+  in Cleaner. Setups that already use that cleanup keep it.
+
+- Clicking a Dock icon now only restores the windows that Click Dock icon to minimize
+  put away. Windows minimized any other way keep the Dock's own restore. Thanks to @PathGao.
+
+- A Dock Preview now opens after 200 ms of rest on an icon instead of 400 ms, and
+  Settings carries that wait as an adjustable Open delay. Handing an open preview to
+  the next icon takes 100 ms instead of 250 ms. Thanks to @PathGao.
+
+### Fixed
+- Super key input-source switching no longer waits on Accessibility marked text
+  or a pause after every tap, so a language change takes effect before the next
+  keystroke. Thanks to @BenjaminD2023.
+- Scrolling screenshots now keep fixed page footers once at the end instead of
+  repeating them after every scroll.
+- Settings now lists Dock Preview and Dock click as separate named sections, and
+  opening Dock click from the Features hub lands on its own controls rather than on
+  the Dock Preview block. Thanks to @PathGao.
+- Scratchpad tabs and the pin, close, new pad and pad actions buttons now respond
+  across their whole area. Thanks to @AB-boi and @PathGao.
+- Dock Preview cards no longer draw the app icon on every thumbnail or repeat the
+  window title over it, leaving the thumbnail more of the card, and a card now
+  badges a window that lives on another desktop. Thanks to @PathGao.
+- Fan Control now prepares stopped fans before taking manual control and keeps a
+  failed attempt visible instead of silently returning to Automatic.
+- The Clean URL settings fields now take a click anywhere across their row. Their
+  hint used to render as a row label beside a short strip of field, so clicking the
+  words did nothing. The parameter list also gained a Save button and shows the
+  names as the cleaner reads them, instead of applying each keystroke as it is
+  typed. Thanks to @PathGao.
+- The grouped simple App Switcher now keeps every window title fully visible and lets
+  the window shortcut reach each window, even when showing one entry per app.
+- Windowless apps no longer repeat or misplace their name in the App Switcher's Small
+  size. Thanks to @Yahddyyp.
+- Clicking the Dock icon of a background app to restore its minimized windows now
+  brings that app forward, instead of leaving its windows behind whichever app was
+  already in front. Thanks to @PathGao.
+- The recording editor now trims reliably from the beginning of a video when
+  dragging the left handle. Thanks to @lmilojevicc.
+- Screen recorder, Copy text from screen and Color picker can each take a shortcut
+  of their own again, opening screen capture already on that mode. Their Settings
+  rows no longer record a combination that does nothing. Thanks to @wiidede and
+  @PathGao.
+- App Switcher window preview warm-up no longer crashes right after startup when
+  the system returns duplicate window identifiers. Thanks to @james-rose.
+- Clipboard history, its copied images, shelf files, recordings and temporary share
+  records are now stored so only your own account can read them. Folders an earlier
+  version left readable by other accounts on the Mac are corrected on the next
+  write. Thanks to @ThomasWaldmann.
+- Administrator approval for updates now originates from Vorssaint instead of a
+  system script. Thanks to @dbhorst.
+- Stopping Music from opening on its own no longer blocks opening it from the
+  Dock, Spotlight or Applications. Media keys still cannot launch it.
+- The recording editor now reads composition duration directly without background
+  queries. Thanks to @Bald-M.
+
+## [3.3.2] - 2026-08-20
+
+### Summary
+Vorssaint 3.3.2 brings one place for screen capture, batch image conversion,
+local Command Bar scripts, recent captures, imported video editing, formatted
+Scratchpad previews, swap use and window focus that follows the pointer. It also
+opens a new Discord community, cuts background energy use and improves
+scrolling screenshots, Clipboard, Shelf, Switcher, window controls, audio, displays,
+Fan Control, Settings and app maintenance.
+
+### Added
+- An optional Focus follows mouse feature brings the window under the pointer to
+  the front after an adjustable pause. It ships uninstalled. Thanks to @Bald-M.
+- One screen capture shortcut now opens a floating palette for screenshots,
+  recordings, screen text and colors, with sound controls and each mode's settings
+  kept nearby.
+- Media now converts images in batches with resizing, watermarks, renaming and
+  reusable profiles. Thanks to @ruvelro.
+- Saved Command Bar shortcuts can now run local scripts and show their results as
+  you type. Thanks to @tenbux.
+- Screenshot and screen recording now open recent captures from the panel, their
+  editors and the Command Bar. Thanks to @lmilojevicc.
+- Media can now open any video in the recording editor to trim, cut and crop it
+  before export.
+- Scratchpad can now preview Markdown formatting while every note remains editable
+  plain text.
+- Command Bar can now search chosen folders, open system settings, reveal saved
+  items and assign a direct shortcut to Emoji. Thanks to @ruvelro and
+  @MaximilianMauroner.
+- The clipboard can now clear itself after a delay, and when the Mac sleeps, the
+  display sleeps or the screen locks.
+- The quick panel and Radial Menu can now control recording, and the Radial Menu
+  can open maintenance tools directly.
+- The System panel now shows swap memory in use below the memory reading.
+  Thanks to @veniaminMedanov.
+- A new Discord community brings help, shared workflows, bug reports, feedback,
+  early previews and release news together while the community takes shape.
+
+### Changed
+- Monitor settings no longer leave system sensors sampling after the window closes.
+  Hidden metric histories and temporary overlays now release work and memory when
+  they are no longer visible.
+- Clipboard history now opens as a compact palette with uncluttered rows and a
+  preview on demand for reading or editing the full item.
+- Command Bar now learns result choices for the current session, finds alternate
+  and localized app names, supports Control P and Control N, moves by dragging and
+  formats feet more naturally. Thanks to @ruvelro, @tingke, @theafox and @tenbux.
+- Recording can now pause and resume without gaps, keep an area guide visible and
+  start without automatic zooms. Copied screenshots now also work as image files.
+  Thanks to @monfxx and @lmilojevicc.
+- Shelf now supports range selection, opens from a screen edge, groups compatible
+  drops and shows clearer details. Thanks to @cimu233 and @tenbux.
+- App Updates now searches more places and offers source controls, while installed
+  feature rows lead directly to the relevant Settings controls. Thanks to @ruvelro,
+  @PathGao and @dorlugasigal.
+- App removal now recognizes when managed apps belong to a package manager. Thanks to
+  @MineraleYT.
+- Settings now better separates Clipboard controls, explains Full Disk Access and
+  keeps inactive or list controls clearer. Thanks to @PathGao.
+- The simple App Switcher now cycles individual windows, marks other desktops and
+  keeps hidden apps visible. Super key combinations are now customizable.
+  Thanks to @AB-boi.
+- Menu bar icons now match surrounding items, Volume Mixer accepts exact percentages
+  and source builds support older development tools. Thanks to @bambidotexe,
+  @KSI-cell and @Bald-M.
+
+### Fixed
+- Scrolling screenshots now keep moving content aligned without repeating fixed
+  page areas.
+- Display controls now keep extra brightness steady, restore the internal display
+  after the last external one disconnects and stop retrying unsupported brightness
+  checks after wake. Thanks to @stevenyang406, @mayaanhafeez and @danilo-alm.
+- Light taps with three fingers no longer trigger a middle click while typing.
+- Window tools now center windows with a fixed size, cancel stale placements and handle
+  duplicate running processes without quitting the app.
+- Capture now supports drawing a fresh crop, preserves translucent window content and
+  animates the recording countdown smoothly. Thanks to @lmilojevicc.
+- Clipboard keeps large documents, while Shelf refreshes pile counts and controls as
+  soon as another item is added. Thanks to @tenbux.
+- Command Bar now opens immediately, finds apps outside standard folders and can
+  search for keyboard light controls. Screen text recognition now follows the interface
+  language. Thanks to @MaximilianMauroner and @PathGao.
+- Switcher now survives wake, restores minimized windows, keeps selection aligned,
+  reaches Settings, closes windows on other desktops, switches between full screen
+  instances across desktops and retains full screen video windows. Its labels now
+  follow the saved shortcut without crashing while typing. Thanks to @liuxxxu,
+  @AB-boi, @danpalmer and @eioz.
+- Quit on close now covers separate guest app windows. Thanks to @danno71.
+- Dock Preview focus no longer overwhelms its controls, and Super key works when
+  Caps Lock is disabled without leaving it on after a mapping repair.
+- Audio boost now smooths loud peaks and Volume Mixer restores sound after a failed
+  adjustment. Network, power and accessory battery readings now avoid stale or missing
+  values. Thanks to @AB-boi and @subhamayd2.
+- Scratchpad resizing, Cleaning Mode display changes and Back and Forward mouse buttons
+  now remain stable and responsive. Thanks to @AB-boi, @Polovinkin, @originalspec and
+  @jbleuzen.
+- App Updates no longer matches store updates to the wrong app, and stale package
+  details clear after removal. Thanks to @PathGao and @MineraleYT.
+- Setup alignment, configuration from the command line, menu panel focus and initial Fan
+  Control approval now behave correctly. Thanks to @danpalmer and @CALLmeDOMIN.
+- Fan Control now keeps maximum cooling engaged when the system could reclaim
+  automatic mode between control writes. Thanks to @augustoFranke.
+
 ## [3.3.1] - 2026-08-09
 
 ### Summary

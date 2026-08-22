@@ -157,15 +157,15 @@ enum AppUpdatesSupport {
     static func packageUpdates(outdated: [HomebrewPackageUpdate],
                                installed: [HomebrewCaskRecord],
                                ignoredTokens: Set<String> = [],
-                               bundleVersion: (String) -> (name: String, version: String, path: String)?)
+                               apps: [InstalledApp])
         -> [Item] {
         let recordsByToken = Dictionary(installed.map { ($0.token, $0) }, uniquingKeysWith: { first, _ in first })
         return outdated.compactMap { update -> Item? in
             guard update.kind == .cask, !update.isPinned else { return nil }
             guard !ignoredTokens.contains(update.name) else { return nil }
             guard !isUncomparable(update.currentVersion) else { return nil }
-            let record = recordsByToken[update.name]
-            guard let bundle = candidateBundleNames(for: record).lazy.compactMap(bundleVersion).first else {
+            guard let record = recordsByToken[update.name],
+                  let bundle = packageBundle(for: record, apps: apps) else {
                 return nil
             }
             let installedVersion = bundle.version
@@ -182,13 +182,39 @@ enum AppUpdatesSupport {
         }
     }
 
+    static func packageBundle(for record: HomebrewCaskRecord,
+                              apps: [InstalledApp],
+                              homeDirectory: String = NSHomeDirectory()) -> InstalledApp? {
+        if !record.appPaths.isEmpty {
+            let managedPaths = Set(record.appPaths.map {
+                URL(fileURLWithPath: $0).standardizedFileURL.path
+            })
+            let exact = apps.filter {
+                managedPaths.contains(URL(fileURLWithPath: $0.path).standardizedFileURL.path)
+            }
+            return exact.count == 1 ? exact[0] : nil
+        }
+        let names = Set(candidateBundleNames(for: record))
+        let standardDirectories = Set([
+            URL(fileURLWithPath: "/Applications", isDirectory: true).standardizedFileURL.path,
+            URL(fileURLWithPath: homeDirectory, isDirectory: true)
+                .appendingPathComponent("Applications", isDirectory: true)
+                .standardizedFileURL.path,
+        ])
+        let candidates = apps.filter {
+            let url = URL(fileURLWithPath: $0.path).standardizedFileURL
+            return names.contains(url.lastPathComponent)
+                && standardDirectories.contains(url.deletingLastPathComponent().path)
+        }
+        return candidates.count == 1 ? candidates[0] : nil
+    }
+
     /// App bundles a package might have put in place. Some packages install
     /// through an installer instead of dropping a bundle, so they declare no
     /// app at all; for those the catalog name is tried as a bundle name.
     /// A name that matches nothing is left out because there is no installed
     /// app to update.
-    private static func candidateBundleNames(for record: HomebrewCaskRecord?) -> [String] {
-        guard let record else { return [] }
+    private static func candidateBundleNames(for record: HomebrewCaskRecord) -> [String] {
         guard record.appFileNames.isEmpty else { return record.appFileNames }
         return record.displayName.isEmpty ? [] : ["\(record.displayName).app"]
     }
@@ -231,6 +257,10 @@ enum AppUpdatesSupport {
               let results = root["results"] as? [[String: Any]] else { return [:] }
         var entries: [String: StoreEntry] = [:]
         for result in results {
+            // A bundle-ID lookup can ignore `entity` and return another
+            // platform's listing. Its version and minimum OS then describe
+            // a different binary, so only accept records identified as Mac.
+            guard result["kind"] as? String == "mac-software" else { continue }
             guard let bundleID = result["bundleId"] as? String,
                   let version = result["version"] as? String,
                   !version.isEmpty else { continue }
@@ -279,6 +309,16 @@ enum AppUpdatesSupport {
 
     static func hasStoreSelection(in items: [Item], selection: Set<String>) -> Bool {
         items.contains { selection.contains($0.id) && $0.source == .appStore }
+    }
+
+    /// The page a store hand-off can land on. With one store row ticked that is
+    /// its product page, the same place the row's own button goes; the store
+    /// shows one product at a time, so several rows have no such page and the
+    /// hand-off falls back to the updates page.
+    static func singleStorePage(in items: [Item], selection: Set<String>) -> String? {
+        let store = items.filter { selection.contains($0.id) && $0.source == .appStore }
+        guard store.count == 1 else { return nil }
+        return store[0].storePage
     }
 
     /// Selection kept honest against a list that just changed: rows that are

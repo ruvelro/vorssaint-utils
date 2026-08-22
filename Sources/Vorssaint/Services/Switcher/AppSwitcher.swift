@@ -3,6 +3,7 @@
 
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import Combine
 import CoreGraphics
 import SwiftUI
@@ -15,13 +16,26 @@ private struct SwitcherSourceContext {
     let isFullscreen: Bool
 }
 
+/// A shortcut press already owned by the switcher while the window list is
+/// being assembled. The tap thread can cancel or add repeated navigation
+/// without ever waiting for the main thread or Accessibility.
+private struct SwitcherPendingSessionStart {
+    let generation: UInt64
+    let shortcut: GlobalShortcut
+    let scope: SwitcherSessionScope
+    let reversed: Bool
+    var additionalNavigation = 0
+    var commitWhenReady = false
+}
+
 /// The window switcher: a global event tap takes over the configured shortcut,
 /// and while its modifiers are held a non-activating panel cycles through real
-/// windows. Releasing commits, W closes the highlighted window, and Q quits
-/// its app. When the optional pin-search preference is enabled, S pins the
-/// search field open (so typing no longer needs the modifier held). Esc and a
-/// click outside cancel. The panel joins every Space and
-/// fullscreen app, so the switcher is available wherever the user is.
+/// windows. Releasing commits, middle-clicking a card or pressing W closes the
+/// highlighted window, and Q quits its app. When the optional pin-search
+/// preference is enabled, S pins the search field open (so typing no longer
+/// needs the modifier held). Esc and a click outside cancel. The panel joins
+/// every Space and fullscreen app, so the switcher is available wherever the
+/// user is.
 final class AppSwitcher: ObservableObject {
     static let shared = AppSwitcher()
 
@@ -70,6 +84,10 @@ final class AppSwitcher: ObservableObject {
     private var tapThread: Thread?
     private var shouldStopTapThread = false
     private var pendingStartAfterStop = false
+    /// Alive only while the Switcher's tap needs layout labels off main.
+    private var keyboardLayoutObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
+    private var wakeRetry: DispatchWorkItem?
 
     /// The little state the tap thread needs to route an event without
     /// touching the main thread; mutated only under `routeLock`.
@@ -78,6 +96,9 @@ final class AppSwitcher: ObservableObject {
     private var routeShortcut = GlobalShortcut.switcherDefault
     private var routeWindowShortcut = GlobalShortcut.switcherWindowDefault
     private var routeCapturing = false
+    private var routeCanStartSession = false
+    private var routePendingSessionStart: SwitcherPendingSessionStart?
+    private var sessionStartGeneration: UInt64 = 0
 
     /// The panel appears only after this delay, like the system switcher: a
     /// quick ⌘Tab flick switches with no UI at all, which is what makes rapid
@@ -103,6 +124,7 @@ final class AppSwitcher: ObservableObject {
     /// gone. Releasing the shortcut skips them, so they are never raised on
     /// the way out.
     private var closingItemIDs: Set<String> = []
+    private var commitPendingForClose = false
 
     // Virtual key codes handled during a session.
     private enum KeyCode {
@@ -133,7 +155,11 @@ final class AppSwitcher: ObservableObject {
         }
         let enabled = AppFeature.switcher.isAvailable
             && UserDefaults.standard.bool(forKey: DefaultsKey.switcherEnabled)
-        if enabled, Permissions.shared.accessibility {
+        let canStartSession = enabled && Permissions.shared.accessibility
+        routeLock.withLock { routeCanStartSession = canStartSession }
+        if canStartSession {
+            startObservingKeyboardLayout()
+            startObservingWake()
             installTap()
             // Build the panel and its SwiftUI tree now: the first hosting-view
             // render costs hundreds of milliseconds, far too slow to pay on
@@ -146,6 +172,8 @@ final class AppSwitcher: ObservableObject {
                 WindowPreviewProvider.shared.startWarming()
             }
         } else {
+            stopObservingKeyboardLayout()
+            stopObservingWake()
             removeTap()
             WindowPreviewProvider.shared.stopWarming()
         }
@@ -154,7 +182,11 @@ final class AppSwitcher: ObservableObject {
     /// Force-stops the tap regardless of the preference. Used before the app
     /// resets its own permissions, so a revoked Accessibility grant can never
     /// leave a live tap behind.
-    func suspend() { removeTap() }
+    func suspend() {
+        stopObservingWake()
+        routeLock.withLock { routeCanStartSession = false }
+        removeTap()
+    }
 
     /// While a shortcut field is listening, every key has to reach it, even
     /// the switcher's own combination. This is a flag the routing reads, not a
@@ -163,10 +195,74 @@ final class AppSwitcher: ObservableObject {
     /// Main thread only, like every other write to the routing state.
     func setCapturingShortcut(_ capturing: Bool) {
         if capturing, sessionActive { cancelSession() }
-        routeLock.withLock { routeCapturing = capturing }
+        routeLock.withLock {
+            routeCapturing = capturing
+            if capturing {
+                routePendingSessionStart = nil
+            }
+        }
     }
 
     // MARK: - Event tap
+
+    private func startObservingKeyboardLayout() {
+        GlobalShortcut.refreshLayoutLabels()
+        guard keyboardLayoutObserver == nil else { return }
+        keyboardLayoutObserver = DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String),
+            object: nil,
+            queue: .main
+        ) { _ in GlobalShortcut.refreshLayoutLabels() }
+    }
+
+    private func stopObservingKeyboardLayout() {
+        if let keyboardLayoutObserver {
+            DistributedNotificationCenter.default().removeObserver(keyboardLayoutObserver)
+        }
+        keyboardLayoutObserver = nil
+    }
+
+    private func startObservingWake() {
+        guard wakeObserver == nil else { return }
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in self?.recoverTapAfterWake() }
+    }
+
+    private func stopObservingWake() {
+        if let wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(wakeObserver)
+        }
+        wakeObserver = nil
+        wakeRetry?.cancel()
+        wakeRetry = nil
+    }
+
+    private func recoverTapAfterWake() {
+        recoverTapIfNeeded()
+        wakeRetry?.cancel()
+        // Input services can settle after the workspace wake itself. Recheck
+        // once so a tap disabled during that window never stays silent.
+        let retry = DispatchWorkItem { [weak self] in self?.recoverTapIfNeeded() }
+        wakeRetry = retry
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: retry)
+    }
+
+    private func recoverTapIfNeeded() {
+        guard AppFeature.switcher.isAvailable,
+              UserDefaults.standard.bool(forKey: DefaultsKey.switcherEnabled),
+              Permissions.shared.accessibility else { return }
+        let needsRecovery = lifecycleLock.withLock {
+            guard !shouldStopTapThread else { return false }
+            guard let tap else { return true }
+            return !CFMachPortIsValid(tap) || !CGEvent.tapIsEnabled(tap: tap)
+        }
+        guard needsRecovery else { return }
+        removeTap()
+        installTap()
+    }
 
     private func installTap() {
         // Thread creation and the tapThread assignment share one critical
@@ -192,6 +288,7 @@ final class AppSwitcher: ObservableObject {
 
     private func removeTap() {
         if sessionActive { cancelSession() }
+        routeLock.withLock { routePendingSessionStart = nil }
         let snapshot = lifecycleLock.withLock {
             () -> (runLoop: CFRunLoop?, tap: CFMachPort?, threadExists: Bool) in
             shouldStopTapThread = true
@@ -230,6 +327,7 @@ final class AppSwitcher: ObservableObject {
                 | CGEventMask(1 << CGEventType.leftMouseDown.rawValue)
                 | CGEventMask(1 << CGEventType.rightMouseDown.rawValue)
                 | CGEventMask(1 << CGEventType.otherMouseDown.rawValue)
+                | CGEventMask(1 << CGEventType.otherMouseUp.rawValue)
             guard let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
@@ -291,6 +389,7 @@ final class AppSwitcher: ObservableObject {
             // Never resurrect a tap that removeTap is already tearing down.
             let currentTap = lifecycleLock.withLock { shouldStopTapThread ? nil : tap }
             if let currentTap { CGEvent.tapEnable(tap: currentTap, enable: true) }
+            routeLock.withLock { routePendingSessionStart = nil }
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.sessionActive else { return }
                 self.cancelSession()
@@ -298,25 +397,136 @@ final class AppSwitcher: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        let (active, shortcut, windowShortcut, capturing) = routeLock.withLock {
-            (routeSessionActive, routeShortcut, routeWindowShortcut, routeCapturing)
+        let (active, shortcut, windowShortcut, capturing, canStartSession, hasPendingStart) = routeLock.withLock {
+            (routeSessionActive, routeShortcut, routeWindowShortcut, routeCapturing,
+             routeCanStartSession, routePendingSessionStart != nil)
         }
         // A shortcut field in Settings has the keyboard: hand every key
         // straight through so the user can record this feature's own
         // combination instead of opening the switcher with it.
         if capturing { return Unmanaged.passUnretained(event) }
         if !active {
+            guard canStartSession else { return Unmanaged.passUnretained(event) }
+            if type == .flagsChanged {
+                let stillInactive = routeLock.withLock { () -> Bool in
+                    guard !routeSessionActive else { return false }
+                    if var pending = routePendingSessionStart,
+                       !pending.shortcut.requiredModifiersHeld(in: event.flags) {
+                        // A quick flick still commits once enumeration finishes,
+                        // but can never flash a panel after the key was released.
+                        pending.commitWhenReady = true
+                        routePendingSessionStart = pending
+                    }
+                    return true
+                }
+                if stillInactive { return Unmanaged.passUnretained(event) }
+                var verdict: Unmanaged<CGEvent>?
+                DispatchQueue.main.sync {
+                    verdict = self.handle(type: type, event: event)
+                }
+                return verdict
+            }
+            if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown || type == .otherMouseUp {
+                let stillInactive = routeLock.withLock { () -> Bool in
+                    guard !routeSessionActive else { return false }
+                    routePendingSessionStart = nil
+                    return true
+                }
+                if stillInactive { return Unmanaged.passUnretained(event) }
+                var verdict: Unmanaged<CGEvent>?
+                DispatchQueue.main.sync {
+                    verdict = self.handle(type: type, event: event)
+                }
+                return verdict
+            }
             guard type == .keyDown else { return Unmanaged.passUnretained(event) }
             let matchesApps = shortcut.matches(event: event, allowingExtraShift: true)
             let matchesWindows = !matchesApps
                 && (windowShortcut.matches(event: event, allowingExtraShift: true)
                     || windowShortcut.matchesByCharacter(event: event))
-            guard matchesApps || matchesWindows else { return Unmanaged.passUnretained(event) }
-            // Live check at the one point that starts AX work: with the grant
-            // revoked, the session lookups would hang and freeze input. The
-            // TCC round-trip is an IPC, so it runs once per shortcut press,
-            // never once per key.
-            guard AXIsProcessTrusted() else { return Unmanaged.passUnretained(event) }
+            let matchesShortcut = matchesApps || matchesWindows
+            guard matchesShortcut || hasPendingStart else {
+                return Unmanaged.passUnretained(event)
+            }
+            let pendingKeyDecision = routeLock.withLock { () -> SwitcherPendingKeyDecision in
+                let decision = SwitcherSupport.pendingKeyDecision(
+                    sessionIsActive: routeSessionActive,
+                    hasPendingStart: routePendingSessionStart != nil,
+                    commitWhenReady: routePendingSessionStart?.commitWhenReady ?? false,
+                    matchesShortcut: matchesShortcut
+                )
+                if decision == .cancelAndSwallow {
+                    routePendingSessionStart = nil
+                }
+                return decision
+            }
+            switch pendingKeyDecision {
+            case .swallow, .cancelAndSwallow:
+                return nil
+            case .handleActiveSession:
+                break
+            case .routeShortcut:
+                guard matchesShortcut else { return Unmanaged.passUnretained(event) }
+
+                let requestedShortcut = matchesWindows ? windowShortcut : shortcut
+                let requestedScope: SwitcherSessionScope = matchesWindows ? .frontmostApp : .allApps
+                let reversed: Bool
+                if matchesWindows {
+                    let positional = windowShortcut.matches(event: event, allowingExtraShift: true)
+                    reversed = SwitcherSupport.windowNavigationDelta(
+                        positionalMatch: positional,
+                        shiftIsNavigationModifier: windowShortcut.shiftIsNavigationModifier,
+                        shiftHeld: event.flags.contains(.maskShift)
+                    ) < 0
+                } else {
+                    reversed = shortcut.shiftIsNavigationModifier && event.flags.contains(.maskShift)
+                }
+
+                var generationToSchedule: UInt64?
+                let claimedWhileInactive = routeLock.withLock { () -> Bool in
+                    guard !routeSessionActive else { return false }
+                    if var pending = routePendingSessionStart {
+                        if pending.commitWhenReady {
+                            sessionStartGeneration &+= 1
+                            let generation = sessionStartGeneration
+                            routePendingSessionStart = SwitcherPendingSessionStart(
+                                generation: generation,
+                                shortcut: requestedShortcut,
+                                scope: requestedScope,
+                                reversed: reversed
+                            )
+                            generationToSchedule = generation
+                            return true
+                        }
+                        if pending.scope == requestedScope {
+                            let next = pending.additionalNavigation + (reversed ? -1 : 1)
+                            pending.additionalNavigation = max(-64, min(64, next))
+                            routePendingSessionStart = pending
+                        }
+                        return true
+                    }
+                    sessionStartGeneration &+= 1
+                    let generation = sessionStartGeneration
+                    routePendingSessionStart = SwitcherPendingSessionStart(
+                        generation: generation,
+                        shortcut: requestedShortcut,
+                        scope: requestedScope,
+                        reversed: reversed
+                    )
+                    generationToSchedule = generation
+                    return true
+                }
+                if claimedWhileInactive {
+                    if let generationToSchedule {
+                        // The active tap returns before the main queue performs
+                        // any TCC, window-server or Accessibility work.
+                        DispatchQueue.main.async { [weak self] in
+                            self?.beginPendingSession(generation: generationToSchedule)
+                        }
+                    }
+                    return nil
+                }
+            }
         }
 
         var verdict: Unmanaged<CGEvent>?
@@ -351,7 +561,31 @@ final class AppSwitcher: ObservableObject {
             }
             return Unmanaged.passUnretained(event)
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            if type == .otherMouseDown,
+               let panel,
+               SwitcherSupport.isMiddleClickInsidePanel(
+                   eventType: type,
+                   buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber),
+                   panelIsVisible: panel.isVisible,
+                   panelFrame: panel.frame,
+                   location: NSEvent.mouseLocation
+               ) {
+                closeSelectedWindow()
+                return nil
+            }
             dismissForClickOutsidePanel()
+            return Unmanaged.passUnretained(event)
+        case .otherMouseUp:
+            if let panel,
+               SwitcherSupport.shouldSwallowMiddleMouseUp(
+                   eventType: type,
+                   buttonNumber: event.getIntegerValueField(.mouseEventButtonNumber),
+                   panelIsVisible: panel.isVisible,
+                   panelFrame: panel.frame,
+                   location: NSEvent.mouseLocation
+               ) {
+                return nil
+            }
             return Unmanaged.passUnretained(event)
         default:
             return Unmanaged.passUnretained(event)
@@ -362,47 +596,10 @@ final class AppSwitcher: ObservableObject {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        guard sessionActive else {
-            // The same cached shortcuts route() matched, so the two threads can
-            // never disagree about one press; syncWithPreferences refreshes them
-            // on every settings change.
-            let (appsShortcut, windowShortcut) = routeLock.withLock {
-                (routeShortcut, routeWindowShortcut)
-            }
-            let isAppsShortcut = appsShortcut.matches(event: event, allowingExtraShift: true)
-            let windowShortcutMatchesPosition = windowShortcut.matches(event: event,
-                                                                        allowingExtraShift: true)
-            let isWindowShortcut = !isAppsShortcut
-                && (windowShortcutMatchesPosition
-                    || windowShortcut.matchesByCharacter(event: event))
-            guard isAppsShortcut || isWindowShortcut else {
-                return Unmanaged.passUnretained(event)
-            }
-
-            // Repeats route's live check: this block can also be reached with
-            // a press that was in flight while a session ended on this queue.
-            guard AXIsProcessTrusted() else { return Unmanaged.passUnretained(event) }
-            // The press may equally have been in flight while the feature was
-            // switched off; never open a session the dying tap cannot drive.
-            let tapAlive = lifecycleLock.withLock { tap != nil && !shouldStopTapThread }
-            guard tapAlive else { return Unmanaged.passUnretained(event) }
-            if isWindowShortcut {
-                let reversed = SwitcherSupport.windowNavigationDelta(
-                    positionalMatch: windowShortcutMatchesPosition,
-                    shiftIsNavigationModifier: windowShortcut.shiftIsNavigationModifier,
-                    shiftHeld: flags.contains(.maskShift)
-                ) < 0
-                beginSession(reversed: reversed, shortcut: windowShortcut, scope: .frontmostApp)
-            } else {
-                let reversed = appsShortcut.shiftIsNavigationModifier && flags.contains(.maskShift)
-                beginSession(reversed: reversed, shortcut: appsShortcut, scope: .allApps)
-            }
-            // The shortcut belongs to the switcher while the feature is on, so
-            // the press is always consumed. With every window closed there is
-            // nothing to switch to and nothing appears at all, instead of the
-            // system switcher taking the press back.
-            return nil
-        }
+        // Initial presses are claimed directly on the tap thread and queued
+        // asynchronously. Reaching main after that session ended is only a
+        // race with teardown; the already-claimed key must stay swallowed.
+        guard sessionActive else { return nil }
 
         let (appsShortcut, windowShortcut) = routeLock.withLock {
             (routeShortcut, routeWindowShortcut)
@@ -501,24 +698,57 @@ final class AppSwitcher: ObservableObject {
 
     // MARK: - Session lifecycle
 
-    /// Opens a session for the current windows. Does nothing when there is
-    /// nothing to switch to; the caller consumes the press either way.
-    @discardableResult
-    private func beginSession(reversed: Bool,
-                              shortcut: GlobalShortcut,
-                              scope: SwitcherSessionScope = .allApps) -> Bool {
-        guard let reportedFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
-        else { return false }
-        let allWindows = WindowEnumerator.listWindows()
+    /// Runs only after the tap callback has returned. Window enumeration may
+    /// wait on bounded AX calls, while modifier-up turns the pending result
+    /// into a no-panel commit without waiting for this work to finish.
+    private func beginPendingSession(generation: UInt64) {
+        guard routeLock.withLock({
+            SwitcherSupport.isCurrentSessionStart(
+                generation: generation,
+                pendingGeneration: routePendingSessionStart?.generation
+            )
+        }) else { return }
+        guard Permissions.shared.accessibility,
+              AXIsProcessTrusted(),
+              lifecycleLock.withLock({ tap != nil && !shouldStopTapThread }),
+              let reportedFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        else {
+            discardPendingSessionStart(generation: generation)
+            return
+        }
+
+        guard let requested = routeLock.withLock({ () -> SwitcherPendingSessionStart? in
+            guard SwitcherSupport.isCurrentSessionStart(
+                generation: generation,
+                pendingGeneration: routePendingSessionStart?.generation
+            ) else { return nil }
+            return routePendingSessionStart
+        }) else { return }
+        let allApps = requested.scope == .allApps
+        let mergeWindowsByApp = UserDefaults.standard.bool(forKey: DefaultsKey.switcherMergeTabs)
+        let allWindows = WindowEnumerator.listWindows(
+            groupByApp: allApps && mergeWindowsByApp,
+            preservingGroupedWindows: SwitcherSupport.preservesGroupedWindowsDuringEnumeration(
+                allApps: allApps,
+                mergeWindowsByApp: mergeWindowsByApp,
+                simpleMode: simpleModeEnabled
+            )
+        )
         let windows: [SwitcherItem]
-        switch scope {
+        switch requested.scope {
         case .allApps:
-            guard !allWindows.isEmpty else { return false }
+            guard !allWindows.isEmpty else {
+                discardPendingSessionStart(generation: generation)
+                return
+            }
             windows = allWindows
         case .frontmostApp:
             let scoped = SwitcherSupport.frontmostAppWindows(allItems: allWindows,
                                                              frontmostPID: reportedFrontPID)
-            guard !scoped.isEmpty else { return false }
+            guard !scoped.isEmpty else {
+                discardPendingSessionStart(generation: generation)
+                return
+            }
             windows = scoped
         }
         let focusedSourceWindowID = focusedWindowID(for: reportedFrontPID)
@@ -533,6 +763,16 @@ final class AppSwitcher: ObservableObject {
                                                        items: windows)
 
         let list = orderedForSession(windows, currentID: source?.id)
+        guard let pending = routeLock.withLock({ () -> SwitcherPendingSessionStart? in
+            guard SwitcherSupport.isCurrentSessionStart(
+                generation: generation,
+                pendingGeneration: routePendingSessionStart?.generation
+            ) else { return nil }
+            let pending = routePendingSessionStart
+            routePendingSessionStart = nil
+            routeSessionActive = true
+            return pending
+        }) else { return }
         sessionItems = list
         totalWindowCount = list.count
         searchQuery = ""
@@ -561,21 +801,29 @@ final class AppSwitcher: ObservableObject {
         // other window — the toggle target, which may be another window of the
         // same app. Shift starts from the far end. With no on-screen window
         // the session opens on the first entry from another app.
-        selectedIndex = scope == .frontmostApp
+        selectedIndex = pending.scope == .frontmostApp
             ? SwitcherSupport.initialWindowScopedSelectionIndex(itemCount: list.count,
                                                                 hasForegroundItem: source != nil,
-                                                                reversed: reversed)
+                                                                reversed: pending.reversed)
             : initialSelectionIndex(in: list,
-                                    reversed: reversed,
+                                    reversed: pending.reversed,
                                     hasForegroundItem: source != nil,
                                     frontmostPID: SwitcherSupport.appPID(forFrontmost: reportedFrontPID,
                                                                          items: list))
-        sessionActive = true
-        sessionShortcut = shortcut
-        sessionScope = scope
-        shiftBackNavigationHeld = reversed && shortcut.shiftIsNavigationModifier
+        sessionShortcut = pending.shortcut
+        sessionScope = pending.scope
+        shiftBackNavigationHeld = pending.reversed && pending.shortcut.shiftIsNavigationModifier
 
-        if capturesPreviews {
+        if pending.additionalNavigation != 0 {
+            let delta = pending.additionalNavigation < 0 ? -1 : 1
+            for _ in 0..<abs(pending.additionalNavigation) {
+                advanceSelection(by: delta)
+            }
+        }
+
+        if pending.commitWhenReady {
+            commitSession()
+        } else if capturesPreviews {
             WindowPreviewProvider.shared.refreshPreviews(for: list, maxPixelSize: 640 * PreviewSizing.scale) { [weak self] windowID, image in
                 guard let self,
                       self.sessionActive,
@@ -583,8 +831,19 @@ final class AppSwitcher: ObservableObject {
                 self.previews[windowID] = image
             }
         }
-        scheduleShowPanel()
-        return true
+        if !pending.commitWhenReady {
+            scheduleShowPanel()
+        }
+    }
+
+    private func discardPendingSessionStart(generation: UInt64) {
+        routeLock.withLock {
+            guard SwitcherSupport.isCurrentSessionStart(
+                generation: generation,
+                pendingGeneration: routePendingSessionStart?.generation
+            ) else { return }
+            routePendingSessionStart = nil
+        }
     }
 
     private func handleShiftBackNavigation(flags: CGEventFlags) -> Bool {
@@ -616,7 +875,10 @@ final class AppSwitcher: ObservableObject {
                                        hasForegroundItem: Bool,
                                        frontmostPID: pid_t) -> Int {
         guard !items.isEmpty else { return 0 }
-        guard usesIconRowLayout else {
+        guard SwitcherSupport.usesAppGroupsForMainShortcut(
+            iconRowLayout: usesIconRowLayout,
+            windowRow: usesWindowRow
+        ) else {
             return SwitcherSupport.initialSelectionPosition(pids: items.map(\.pid),
                                                             hasForegroundEntry: hasForegroundItem,
                                                             frontmostPID: frontmostPID,
@@ -731,24 +993,32 @@ final class AppSwitcher: ObservableObject {
         guard sessionActive,
               windows.contains(where: { $0.id == item.id }),
               !closingItemIDs.contains(item.id),
-              let windowID = item.windowID,
-              WindowActivator.closeWindow(windowID: windowID,
-                                           appPID: item.pid,
-                                           windowOwnerPID: item.windowOwnerPID)
+              let windowID = item.windowID
         else { return }
 
         closingItemIDs.insert(item.id)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
-            self?.finishClosingWindow(itemID: item.id,
-                                      windowID: windowID,
-                                      pid: item.pid,
-                                      attempt: 0)
+        WindowActivator.closeWindowIncludingHiddenState(item) { [weak self] didClose in
+            guard let self else { return }
+            guard didClose else {
+                self.closingItemIDs.remove(item.id)
+                self.resumePendingCommitAfterClose()
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { [weak self] in
+                self?.finishClosingWindow(itemID: item.id,
+                                          windowID: windowID,
+                                          pid: item.pid,
+                                          attempt: 0)
+            }
         }
     }
 
     private func advanceSelection(by delta: Int, wrapping: Bool = true) {
         guard !windows.isEmpty else { return }
-        if usesIconRowLayout, sessionScope == .allApps {
+        if SwitcherSupport.usesAppGroupsForMainShortcut(
+            iconRowLayout: usesIconRowLayout,
+            windowRow: usesWindowRow
+        ), sessionScope == .allApps {
             advanceAppSelection(by: delta, wrapping: wrapping)
             return
         }
@@ -790,6 +1060,8 @@ final class AppSwitcher: ObservableObject {
               app.bundleIdentifier != Defaults.finderBundleIdentifier else { return }
         app.terminate()
 
+        let removedIDs = Set(sessionItems.lazy.filter { $0.pid == pid }.map(\.id))
+        closingItemIDs.subtract(removedIDs)
         let removedBeforeSelection = windows[..<selectedIndex].filter { $0.pid == pid }.count
         sessionItems.removeAll { $0.pid == pid }
         totalWindowCount = sessionItems.count
@@ -805,17 +1077,21 @@ final class AppSwitcher: ObservableObject {
             selectedIndex = 0
             recomputeLayouts(for: windows)
             resizePanel()
+            resumePendingCommitAfterClose()
             return
         }
         selectedIndex = min(max(0, selectedIndex - removedBeforeSelection), windows.count - 1)
         recomputeLayouts(for: windows)
         resizePanel()
+        resumePendingCommitAfterClose()
     }
 
     private func finishClosingWindow(itemID: String, windowID: CGWindowID, pid: pid_t, attempt: Int) {
-        guard sessionActive,
-              windows.contains(where: { $0.id == itemID })
-        else { return }
+        guard sessionActive else { return }
+        guard sessionItems.contains(where: { $0.id == itemID }) else {
+            finishTrackingClose(itemID: itemID)
+            return
+        }
 
         let refreshed = WindowEnumerator.listWindows(for: pid, maximumCount: 64)
         guard !refreshed.contains(where: { $0.windowID == windowID }) else {
@@ -823,6 +1099,7 @@ final class AppSwitcher: ObservableObject {
             // normal entry again and the release may raise it.
             guard attempt < 2 else {
                 closingItemIDs.remove(itemID)
+                resumePendingCommitAfterClose()
                 return
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
@@ -841,7 +1118,22 @@ final class AppSwitcher: ObservableObject {
         let state = SwitcherSupport.closeState(afterRemoving: itemID,
                                                itemIDs: windows.map(\.id),
                                                selectedIndex: selectedIndex)
-        guard state.didRemove else { return }
+        guard state.didRemove else {
+            sessionItems.removeAll { $0.id == itemID }
+            totalWindowCount = sessionItems.count
+            previews.removeValue(forKey: windowID)
+            closingItemIDs.remove(itemID)
+            if sessionSourceContext?.itemID == itemID {
+                sessionStartWindowID = nil
+            }
+            guard !sessionItems.isEmpty else {
+                endSession()
+                return
+            }
+            applySearchFilter(preferredItemID: selectedItemID)
+            resumePendingCommitAfterClose()
+            return
+        }
 
         sessionItems.removeAll { $0.id == itemID }
         totalWindowCount = sessionItems.count
@@ -861,6 +1153,7 @@ final class AppSwitcher: ObservableObject {
                 selectedIndex = 0
                 recomputeLayouts(for: windows)
                 resizePanel()
+                resumePendingCommitAfterClose()
             }
             return
         }
@@ -868,6 +1161,12 @@ final class AppSwitcher: ObservableObject {
         selectedIndex = state.selectedIndex
         recomputeLayouts(for: windows)
         resizePanel()
+        resumePendingCommitAfterClose()
+    }
+
+    private func finishTrackingClose(itemID: String) {
+        closingItemIDs.remove(itemID)
+        resumePendingCommitAfterClose()
     }
 
     /// Row jump (↑/↓): moves without wrapping so the selection stays put at
@@ -890,6 +1189,10 @@ final class AppSwitcher: ObservableObject {
     /// Activates the current selection. Also used by the panel on click.
     func commitSession() {
         guard sessionActive else { return }
+        guard closingItemIDs.isEmpty else {
+            commitPendingForClose = true
+            return
+        }
         // A window that was just closed is still listed for a moment; letting
         // go right after must land on what takes its place, never on it.
         let selection = SwitcherSupport.commitTargetID(itemIDs: windows.map(\.id),
@@ -907,6 +1210,12 @@ final class AppSwitcher: ObservableObject {
                                      sourceWindowID: source?.isFullscreen == true ? nil : source?.windowID,
                                      sourceWindowOwnerPID: source?.windowOwnerPID)
         }
+    }
+
+    private func resumePendingCommitAfterClose() {
+        guard commitPendingForClose, closingItemIDs.isEmpty, sessionActive else { return }
+        commitPendingForClose = false
+        commitSession()
     }
 
     private func cancelSession() {
@@ -937,6 +1246,7 @@ final class AppSwitcher: ObservableObject {
         sessionScope = .allApps
         shiftBackNavigationHeld = false
         closingItemIDs = []
+        commitPendingForClose = false
     }
 
     // MARK: - Panel
@@ -991,7 +1301,9 @@ final class AppSwitcher: ObservableObject {
 
     private var currentPanelSize: CGSize {
         usesIconRowLayout
-            ? (simpleModeEnabled ? iconRowLayout.simplePanelSize : iconRowLayout.panelSize)
+            ? (simpleModeEnabled
+                ? (usesWindowRow ? iconRowLayout.simpleWindowPanelSize : iconRowLayout.simplePanelSize)
+                : iconRowLayout.panelSize)
             : grid.panelSize
     }
 
@@ -1001,6 +1313,13 @@ final class AppSwitcher: ObservableObject {
 
     private var simpleModeEnabled: Bool {
         UserDefaults.standard.bool(forKey: DefaultsKey.switcherSimpleMode)
+    }
+
+    private var usesWindowRow: Bool {
+        SwitcherSupport.usesWindowRow(
+            simpleMode: simpleModeEnabled,
+            mergeWindowsByApp: UserDefaults.standard.bool(forKey: DefaultsKey.switcherMergeTabs)
+        )
     }
 
     private var searchPinEnabled: Bool {
@@ -1025,10 +1344,12 @@ final class AppSwitcher: ObservableObject {
         grid = SwitcherGrid.compute(count: max(items.count, 1), on: screen)
         let appGroups = SwitcherSupport.appGroups(items: items)
         iconRowLayout = SwitcherIconRowLayout.compute(
-            appCount: appGroups.count,
-            selectedWindowCount: selectedAppWindowCount(in: items),
+            appCount: usesWindowRow ? items.count : appGroups.count,
+            selectedWindowCount: usesWindowRow ? 1 : selectedAppWindowCount(in: items),
             screenVisibleFrame: screen.visibleFrame,
-            showsShortcutHints: showsShortcutHints
+            showsShortcutHints: showsShortcutHints,
+            tileWidth: usesWindowRow ? SwitcherIconRowLayout.windowTileWidth
+                                     : SwitcherIconRowLayout.appTileWidth
         )
     }
 
@@ -1036,10 +1357,12 @@ final class AppSwitcher: ObservableObject {
         guard !windows.isEmpty else { return }
         let appGroups = SwitcherSupport.appGroups(items: windows)
         iconRowLayout = SwitcherIconRowLayout.compute(
-            appCount: appGroups.count,
-            selectedWindowCount: selectedAppWindowCount(in: windows),
+            appCount: usesWindowRow ? windows.count : appGroups.count,
+            selectedWindowCount: usesWindowRow ? 1 : selectedAppWindowCount(in: windows),
             screenVisibleFrame: NSScreen.pointerVisibleFrame,
-            showsShortcutHints: showsShortcutHints
+            showsShortcutHints: showsShortcutHints,
+            tileWidth: usesWindowRow ? SwitcherIconRowLayout.windowTileWidth
+                                     : SwitcherIconRowLayout.appTileWidth
         )
     }
 
@@ -1100,7 +1423,7 @@ struct SwitcherGrid: Equatable {
         let usableHeight = screen.visibleFrame.height * 0.85
 
         let maxColumns = max(1, Int((usableWidth - padding * 2 + spacing) / (cardWidth + spacing)))
-        let columns = min(count, maxColumns)
+        let columns = SwitcherSupport.gridColumnCount(itemCount: count, maxColumns: maxColumns)
         let rows = Int(ceil(Double(count) / Double(columns)))
 
         let maxRows = max(1, Int((usableHeight - padding * 2 + spacing) / (cardHeight + spacing)))
