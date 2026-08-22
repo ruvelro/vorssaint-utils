@@ -17,6 +17,7 @@ final class ScratchpadService: ObservableObject {
 
     @Published private(set) var shortcutRegistrationFailed = false
     @Published private(set) var isPinned = false
+    @Published private(set) var isPreviewing = false
     @Published private(set) var pads: [ScratchpadPad] = []
     @Published private(set) var selectedPadID: UUID?
     @Published var text = "" {
@@ -87,6 +88,7 @@ final class ScratchpadService: ObservableObject {
             focusText()
             return
         }
+        isPreviewing = false
         isPinned = !closesOnClickOutside
         loadApplyingRetention()
         let panel = ensurePanel()
@@ -111,6 +113,7 @@ final class ScratchpadService: ObservableObject {
         removeMonitors()
         panel?.orderOut(nil)
         isPinned = false
+        isPreviewing = false
         modalInteractionActive = false
     }
 
@@ -119,12 +122,7 @@ final class ScratchpadService: ObservableObject {
     /// The former single-buffer file is read once and removed only after the
     /// replacement document has been written and read back successfully.
     private static var legacyStoreURL: URL? {
-        guard let base = FileManager.default.urls(for: .applicationSupportDirectory,
-                                                  in: .userDomainMask).first,
-              let bundleID = Bundle.main.bundleIdentifier else { return nil }
-        return base
-            .appendingPathComponent(bundleID, isDirectory: true)
-            .appendingPathComponent("Scratchpad.txt")
+        PrivateFileStore.containerURL?.appendingPathComponent("Scratchpad.txt")
     }
 
     private func loadApplyingRetention() {
@@ -204,6 +202,7 @@ final class ScratchpadService: ObservableObject {
         isReplacingText = true
         text = selectedText
         isReplacingText = false
+        if text.isEmpty { isPreviewing = false }
         if focus { focusText() }
     }
 
@@ -282,7 +281,21 @@ final class ScratchpadService: ObservableObject {
         } else {
             text = ""
         }
+        if isPreviewing {
+            isPreviewing = false
+            focusText()
+        }
         flushSave()
+    }
+
+    func togglePreview() {
+        guard !text.isEmpty else { return }
+        isPreviewing.toggle()
+        if isPreviewing {
+            panel?.makeFirstResponder(nil)
+        } else {
+            focusText()
+        }
     }
 
     func togglePin() {
