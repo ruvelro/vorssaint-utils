@@ -530,8 +530,14 @@ final class BrightnessService: ObservableObject {
         let delta = clamped - combinedBrightness
         if combinedBrightness != clamped { combinedBrightness = clamped }
         guard delta != 0 else { return }
+        // The handle reseats to the displays' average, so its own travel is
+        // shorter than the farthest display's distance to an end. Landing on
+        // an end therefore means the end itself for every display, or the
+        // documented flattening could never finish.
+        let endpoint: Double? = clamped == 0 || clamped == 1 ? clamped : nil
         for display in adjustableDisplays {
-            let level = BrightnessSupport.steppedLevel(display.brightness, delta: delta)
+            let level = endpoint
+                ?? BrightnessSupport.steppedLevel(display.brightness, delta: delta)
             setBrightness(level, for: display.id)
             // This slider already moved the externals itself. Letting the
             // follower read the panel's new level as news would move them a
@@ -609,10 +615,16 @@ final class BrightnessService: ObservableObject {
         guard CGDisplayIsAsleep(builtIn.id) == 0,
               read(builtIn.id, &level) == 0, level >= 0, level <= 1 else { return }
         let current = Double(level)
-        defer { lastSyncedBuiltIn = current }
-        guard let previous = lastSyncedBuiltIn else { return }
+        guard let previous = lastSyncedBuiltIn else {
+            lastSyncedBuiltIn = current
+            return
+        }
         let delta = current - previous
+        // The baseline only advances when the externals actually move: a slow
+        // ambient drift of half the threshold per tick must accumulate until
+        // it qualifies, not be forgotten every two seconds.
         guard abs(delta) >= Self.syncThreshold else { return }
+        lastSyncedBuiltIn = current
         if let index = displays.firstIndex(where: { $0.id == builtIn.id }) {
             displays[index].brightness = current
         }
@@ -664,8 +676,10 @@ final class BrightnessService: ObservableObject {
                 guard display.isActive, display.audio != nil else { return nil }
                 return (display.id, display.name)
             }
+            let connected = displays.count { $0.isActive && !$0.isBuiltIn }
             target = BrightnessSupport.displayForAudioOutput(deviceName: output.name,
-                                                             candidates: candidates)
+                                                             candidates: candidates,
+                                                             connectedDisplayCount: connected)
         }
         stateLock.lock()
         let changed = audioKeyTarget != target
@@ -1664,6 +1678,10 @@ final class BrightnessService: ObservableObject {
         // Sampled once, so every monitor in one scan is treated alike even if
         // the preference is toggled while the scan is running.
         let probesAudio = wantsMonitorVolume
+        // Audio routes for monitors whose HDR mode moved luminance to
+        // software dimming; keyed by display index for the software pass.
+        var hdrAudio: [Int: (service: CFTypeRef, pathKey: String?,
+                             route: AudioRoute?, state: BrightnessDisplay.Audio?)] = [:]
         if !ddcCandidates.isEmpty, BrightnessBridge.ddcAvailable {
             let services = Self.externalServices()
             var scores: [(displayIndex: Int, serviceOrdinal: Int, score: Int)] = []
@@ -1684,12 +1702,12 @@ final class BrightnessService: ObservableObject {
                 // A monitor in HDR mode owns its own luminance: it takes DDC
                 // brightness writes, acknowledges them and quietly drops
                 // them, so a slider driven that way looks connected and does
-                // nothing. Leaving it out of this pass is what hands it to
-                // gamma dimming below, which keeps its slider working for as
-                // long as HDR is on.
-                if built[candidate.index].hdrEnabled == true {
+                // nothing. Its luminance is handed to gamma dimming below,
+                // but the channel itself stays healthy and still carries the
+                // audio commands, so the speakers keep working under HDR.
+                let hdrOwnsLuminance = built[candidate.index].hdrEnabled == true
+                if hdrOwnsLuminance {
                     Self.log.log("display \(built[candidate.index].id) is in HDR mode; dimming in software")
-                    continue
                 }
                 guard let ordinal = assignment[candidate.index],
                       let matched = services.first(where: { $0.identity.ordinal == ordinal }) else {
@@ -1724,6 +1742,13 @@ final class BrightnessService: ObservableObject {
                     let audio = probesAudio
                         ? probeAudio(for: id, service: matched.service, pathKey: pathKey)
                         : nil
+                    if hdrOwnsLuminance {
+                        hdrAudio[candidate.index] = (service: matched.service,
+                                                     pathKey: pathKey,
+                                                     route: audio?.route,
+                                                     state: audio?.state)
+                        break
+                    }
                     built[candidate.index] = BrightnessDisplay(
                         id: id, name: built[candidate.index].name, isBuiltIn: false,
                         method: .ddc, isActive: true,
@@ -1741,6 +1766,9 @@ final class BrightnessService: ObservableObject {
                     softwareIndices.remove(candidate.index)
                 case .writeOnly:
                     rememberWriteOnlyDDCPath(pathKey)
+                    // Write-only under HDR would be a slider that looks alive
+                    // while the monitor drops the writes: stay on software.
+                    if hdrOwnsLuminance { break }
                     // Reads fail on some monitors whose writes still work:
                     // keep the slider, seeded from this session's last value.
                     stateLock.lock()
@@ -1792,11 +1820,15 @@ final class BrightnessService: ObservableObject {
                     value = floored
                 }
             }
+            let audio = hdrAudio[index]
             built[index] = BrightnessDisplay(
                 id: id, name: built[index].name, isBuiltIn: false,
                 method: .software, isActive: true, brightness: value, readable: true,
+                audio: audio?.state,
                 hdrEnabled: built[index].hdrEnabled)
-            newRoutes[id] = Route(method: .software, service: nil, maximum: 100)
+            newRoutes[id] = Route(method: .software, service: audio?.service,
+                                  maximum: 100, ddcPathKey: audio?.pathKey,
+                                  audio: audio?.route)
             if value < 0.999 { _ = applySoftwareDim(id, value: value) }
         }
         var resolved: [BrightnessDisplay] = []
@@ -2106,8 +2138,13 @@ final class BrightnessService: ObservableObject {
             pathKey: pathKey,
             rememberedPaths: rememberedPaths(DefaultsKey.displayAudioSilentPaths)) else { return nil }
         guard case let .replied(current, maximum) = ddcProbe(BrightnessSupport.audioVolumeCode,
-                                                             for: id, service: service),
-              let volume = BrightnessSupport.audioReply(current: current, maximum: maximum) else {
+                                                             for: id, service: service) else {
+            // A transport failure is not an answer: a monitor that was waking
+            // or dropped one command must stay probeable on the next scan.
+            Self.log.log("ddc audio probe display \(id): channel unavailable")
+            return nil
+        }
+        guard let volume = BrightnessSupport.audioReply(current: current, maximum: maximum) else {
             rememberPath(pathKey, key: DefaultsKey.displayAudioSilentPaths, remembered: true)
             Self.log.log("ddc audio probe display \(id): no speakers")
             return nil

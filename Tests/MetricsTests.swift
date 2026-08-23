@@ -10759,19 +10759,31 @@ struct MetricsTests {
 
         let speakerDisplays: [(id: UInt32, name: String)] = [(1, "Dell U2720Q"), (2, "LG HDR 4K")]
         expect(BrightnessSupport.displayForAudioOutput(deviceName: "Anything at all",
-                                                       candidates: [(7, "Dell U2720Q")]) == 7,
-               "one monitor with speakers is the whole answer")
+                                                       candidates: [(7, "Dell U2720Q")],
+                                                       connectedDisplayCount: 1) == 7,
+               "the only connected monitor with speakers is the whole answer")
+        expect(BrightnessSupport.displayForAudioOutput(deviceName: "LG TV",
+                                                       candidates: [(7, "Dell U2720Q")],
+                                                       connectedDisplayCount: 2) == nil
+                && BrightnessSupport.displayForAudioOutput(deviceName: "Dell U2720Q",
+                                                           candidates: [(7, "Dell U2720Q")],
+                                                           connectedDisplayCount: 2) == 7,
+               "with more display outputs around, even a sole speaker candidate must match by name")
         expect(BrightnessSupport.displayForAudioOutput(deviceName: "LG HDR 4K",
-                                                       candidates: speakerDisplays) == 2,
+                                                       candidates: speakerDisplays,
+                                                       connectedDisplayCount: 2) == 2,
                "an exact name match picks the monitor the sound leaves through")
         expect(BrightnessSupport.displayForAudioOutput(deviceName: "DELL U2720Q",
-                                                       candidates: speakerDisplays) == 1,
+                                                       candidates: speakerDisplays,
+                                                       connectedDisplayCount: 2) == 1,
                "the name match ignores case")
         expect(BrightnessSupport.displayForAudioOutput(deviceName: "Studio Speakers",
-                                                       candidates: speakerDisplays) == nil,
+                                                       candidates: speakerDisplays,
+                                                       connectedDisplayCount: 2) == nil,
                "an unrelated output name never guesses a monitor")
         expect(BrightnessSupport.displayForAudioOutput(deviceName: "Dell U2720Q",
-                                                       candidates: []) == nil,
+                                                       candidates: [],
+                                                       connectedDisplayCount: 1) == nil,
                "no monitor with speakers means nothing to route to")
 
         let volumeUp = BrightnessSupport.volumeKeyEvent(subtype: 8, data1: 0x000A00 | 0x1)

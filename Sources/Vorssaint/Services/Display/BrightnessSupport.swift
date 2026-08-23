@@ -473,14 +473,17 @@ enum BrightnessSupport {
             || transportType == kAudioDeviceTransportTypeDisplayPort
     }
 
-    /// Which monitor the sound is coming out of. A single display with
-    /// speakers is the whole answer on almost every desk; beyond that the
-    /// audio device's name is matched against the display names, since macOS
-    /// builds both from the same EDID product name.
+    /// Which monitor the sound is coming out of. A single connected display
+    /// with speakers is the whole answer on almost every desk; with more
+    /// display-cable outputs around, even a sole speaker candidate has to
+    /// match the audio device's name, or the volume keys would drive one
+    /// monitor while the sound leaves through another. macOS builds both
+    /// names from the same EDID product name.
     static func displayForAudioOutput(deviceName: String,
-                                      candidates: [(id: UInt32, name: String)]) -> UInt32? {
-        guard candidates.count != 1 else { return candidates[0].id }
+                                      candidates: [(id: UInt32, name: String)],
+                                      connectedDisplayCount: Int) -> UInt32? {
         guard !candidates.isEmpty else { return nil }
+        if candidates.count == 1, connectedDisplayCount <= 1 { return candidates[0].id }
         let device = deviceName.lowercased()
         guard !device.isEmpty else { return nil }
         if let exact = candidates.first(where: { $0.name.lowercased() == device }) {
