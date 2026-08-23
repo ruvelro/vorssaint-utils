@@ -139,7 +139,14 @@ enum MenuBarOrganizerSupport {
     }
 
     static func canHide(on backend: MenuBarOrganizerBackend) -> Bool {
-        backend == .windowServer
+        switch backend {
+        case .windowServer:
+            return true
+        case .accessibility:
+            // Experimental: hiding on macOS 27 relies on capped divider
+            // lengths and the system overflow chevron absorbing the rest.
+            return true
+        }
     }
 
     /// macOS 27 status items are no longer independent windows. Keep the rest
@@ -171,9 +178,11 @@ enum MenuBarOrganizerSupport {
     static func isAXMenuBarItemFrame(_ frame: CGRect,
                                      displayBounds: [CGRect]) -> Bool {
         guard frame.width > 0, frame.height > 0, frame.height <= 40 else { return false }
+        // Match the menu bar strip of any display by height alone: an item a
+        // collapsed divider pushed past the left edge keeps its off-screen X
+        // but must stay in the inventory as a hidden-section member.
         return displayBounds.isEmpty || displayBounds.contains {
-            frame.midX >= $0.minX && frame.midX <= $0.maxX
-                && frame.midY >= $0.minY && frame.midY <= $0.maxY
+            frame.midY >= $0.minY && frame.midY <= $0.minY + 40
         }
     }
 
@@ -188,9 +197,21 @@ enum MenuBarOrganizerSupport {
         title.hasPrefix(organizerControlIdentifierPrefix)
     }
 
-    static func collapsedLength(screenWidths: [CGFloat]) -> CGFloat {
-        let widest = screenWidths.max() ?? 2_048
-        return min(max(widest * 2, 4_096), 16_384)
+    static func collapsedLength(screenWidths: [CGFloat],
+                                backend: MenuBarOrganizerBackend = .windowServer) -> CGFloat {
+        switch backend {
+        case .windowServer:
+            let widest = screenWidths.max() ?? 2_048
+            return min(max(widest * 2, 4_096), 16_384)
+        case .accessibility:
+            // macOS 27 discards any status item whose length reaches half the
+            // display width instead of clamping it, so the legacy oversized
+            // divider would vanish and hide nothing. Stay well under the
+            // threshold on the narrowest attached screen and let the system
+            // overflow chevron absorb the items the divider displaces.
+            let narrowest = screenWidths.min() ?? 1_440
+            return max(400, (narrowest * 0.45).rounded(.down))
+        }
     }
 
     static func section(itemMidX: CGFloat,

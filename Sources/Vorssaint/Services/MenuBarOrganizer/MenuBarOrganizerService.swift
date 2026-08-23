@@ -168,13 +168,6 @@ final class MenuBarOrganizerService: ObservableObject {
 
     func hideAll() {
         secondaryPanel?.close()
-        guard capabilities.canHide else {
-            hiddenSectionShown = true
-            alwaysHiddenSectionShown = true
-            applyDividerState()
-            refresh()
-            return
-        }
         hiddenSectionShown = false
         alwaysHiddenSectionShown = false
         applyDividerState()
@@ -257,10 +250,8 @@ final class MenuBarOrganizerService: ObservableObject {
 
         let setupComplete = UserDefaults.standard.bool(
             forKey: DefaultsKey.menuBarOrganizerSetupComplete)
-        let supportsHiding = MenuBarOrganizerSupport.canHide(
-            on: MenuBarOrganizerSupport.backend())
-        hiddenSectionShown = supportsHiding ? !setupComplete : true
-        alwaysHiddenSectionShown = supportsHiding ? !setupComplete : true
+        hiddenSectionShown = !setupComplete
+        alwaysHiddenSectionShown = !setupComplete
         installObservers()
         scheduleRefreshTimer()
     }
@@ -343,16 +334,8 @@ final class MenuBarOrganizerService: ObservableObject {
             || UserDefaults.standard.bool(
                 forKey: DefaultsKey.menuBarOrganizerShowDividers)
         let length = MenuBarOrganizerSupport.collapsedLength(
-            screenWidths: NSScreen.screens.map(\.frame.width))
-        if !MenuBarOrganizerSupport.canHide(on: MenuBarOrganizerSupport.backend()) {
-            hiddenDivider?.setCollapsed(false,
-                                        markerVisible: true,
-                                        collapsedLength: length)
-            alwaysHiddenDivider?.setCollapsed(false,
-                                              markerVisible: true,
-                                              collapsedLength: length)
-            return
-        }
+            screenWidths: NSScreen.screens.map(\.frame.width),
+            backend: MenuBarOrganizerSupport.backend())
         hiddenDivider?.setCollapsed(
             !hiddenSectionShown && editingCount == 0,
             markerVisible: markers,

@@ -10080,8 +10080,19 @@ struct MetricsTests {
         expect(MenuBarOrganizerSupport.backend(onOperatingSystemMajorVersion: 26) == .windowServer
                 && MenuBarOrganizerSupport.backend(onOperatingSystemMajorVersion: 27) == .accessibility
                 && MenuBarOrganizerSupport.canHide(on: .windowServer)
-                && !MenuBarOrganizerSupport.canHide(on: .accessibility),
-               "macOS 27 selects a non-hiding AX backend without changing the legacy backend")
+                && MenuBarOrganizerSupport.canHide(on: .accessibility),
+               "macOS 27 selects the AX backend and keeps hiding available on both")
+        expect(MenuBarOrganizerSupport.collapsedLength(
+                    screenWidths: [1_440, 3_000], backend: .accessibility) == 648
+                && MenuBarOrganizerSupport.collapsedLength(
+                    screenWidths: [1_440, 3_000], backend: .accessibility) < 1_440 / 2
+                && MenuBarOrganizerSupport.collapsedLength(
+                    screenWidths: [], backend: .accessibility) == 648
+                && MenuBarOrganizerSupport.collapsedLength(
+                    screenWidths: [600], backend: .accessibility) == 400
+                && MenuBarOrganizerSupport.collapsedLength(
+                    screenWidths: [1_440, 3_000], backend: .windowServer) == 6_000,
+               "the AX backend caps collapsed dividers under the macOS 27 half-width discard threshold")
         let syntheticID = MenuBarOrganizerSupport.syntheticWindowID(
             bundleIdentifier: "com.example.status",
             title: "status-item",
@@ -10106,15 +10117,21 @@ struct MetricsTests {
         expect(MenuBarOrganizerSupport.isAXMenuBarItemFrame(
                     CGRect(x: 10, y: 0, width: 20, height: 24),
                     displayBounds: [CGRect(x: 0, y: 0, width: 200, height: 100)])
+                && MenuBarOrganizerSupport.isAXMenuBarItemFrame(
+                    CGRect(x: -500, y: 0, width: 20, height: 24),
+                    displayBounds: [CGRect(x: 0, y: 0, width: 200, height: 100)])
                 && !MenuBarOrganizerSupport.isAXMenuBarItemFrame(
                     CGRect(x: 10, y: 0, width: 20, height: 80),
+                    displayBounds: [CGRect(x: 0, y: 0, width: 200, height: 100)])
+                && !MenuBarOrganizerSupport.isAXMenuBarItemFrame(
+                    CGRect(x: 10, y: 60, width: 120, height: 30),
                     displayBounds: [CGRect(x: 0, y: 0, width: 200, height: 100)])
                 && MenuBarOrganizerSupport.isDuplicateMenuBarAgentRevend(
                     frame: CGRect(x: 10.5, y: 0.5, width: 20, height: 24),
                     directFrames: [CGRect(x: 10, y: 0, width: 20, height: 24)])
                 && MenuBarOrganizerSupport.isOrganizerControlIdentity(
                     "Vorssaint.MenuBarOrganizer.hidden"),
-               "AX inventory rejects popovers and de-duplicates MenuBarAgent re-vends")
+               "AX inventory keeps displaced off-screen items, rejects popovers and de-duplicates MenuBarAgent re-vends")
 
         func menuBarRecord(_ windowID: CGWindowID,
                            ownerPID: pid_t = 1,

@@ -45,7 +45,7 @@ final class MenuBarAccessibilityProvider {
                 capabilities: MenuBarOrganizerCapabilities(
                     canEnumerate: false,
                     canMove: false,
-                    canHide: false,
+                    canHide: MenuBarOrganizerSupport.canHide(on: .accessibility),
                     hasPrivateWindowList: false,
                     unresolvedItemCount: 0),
                 enumerationSucceeded: false)
@@ -116,7 +116,7 @@ final class MenuBarAccessibilityProvider {
             capabilities: MenuBarOrganizerCapabilities(
                 canEnumerate: true,
                 canMove: true,
-                canHide: false,
+                canHide: MenuBarOrganizerSupport.canHide(on: .accessibility),
                 hasPrivateWindowList: false,
                 unresolvedItemCount: items.count { $0.identityState == .provisional }),
             enumerationSucceeded: true)
