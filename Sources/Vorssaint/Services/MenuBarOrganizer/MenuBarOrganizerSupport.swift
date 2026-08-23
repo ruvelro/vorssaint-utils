@@ -120,6 +120,35 @@ enum MenuBarOrganizerSupport {
     static let controlCenterBundleIdentifier = "com.apple.controlcenter"
     static let systemUIServerBundleIdentifier = "com.apple.systemuiserver"
 
+    /// Whether the pointer rests in the menu bar strip of any screen, in
+    /// Cocoa coordinates as NSEvent.mouseLocation reports them: the top
+    /// `thickness` points of each screen.
+    static func isPointerInMenuBarStrip(_ pointer: CGPoint,
+                                        screenFrames: [CGRect],
+                                        thickness: CGFloat) -> Bool {
+        screenFrames.contains { frame in
+            pointer.x >= frame.minX && pointer.x <= frame.maxX
+                && pointer.y >= frame.maxY - thickness && pointer.y <= frame.maxY
+        }
+    }
+
+    /// One re-hide decision per poll tick. Waiting for the pointer to leave
+    /// the bar keeps the sections from vanishing mid-interaction, the same
+    /// deferral mature menu bar tools apply to their auto-collapse timers.
+    static func shouldAutoRehide(hiddenShown: Bool,
+                                 editing: Bool,
+                                 setupComplete: Bool,
+                                 deadlinePassed: Bool,
+                                 pointerInStrip: Bool) -> Bool {
+        hiddenShown && !editing && setupComplete && deadlinePassed && !pointerInStrip
+    }
+
+    /// Consecutive in-strip poll ticks before hover reveals the hidden
+    /// section: two ticks of the shared quarter-second poll, a half-second
+    /// dwell, long enough that a pointer passing through never triggers it.
+    static let hoverExpandDwellTicks = 2
+    static let pointerPollInterval: TimeInterval = 0.25
+
     static func collapsedLength(screenWidths: [CGFloat]) -> CGFloat {
         let widest = screenWidths.max() ?? 2_048
         return min(max(widest * 2, 4_096), 16_384)

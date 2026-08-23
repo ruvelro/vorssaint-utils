@@ -2,6 +2,7 @@
 // Copyright (C) 2026 Vorssaint
 
 import AppKit
+import Carbon.HIToolbox
 import Combine
 import CoreGraphics
 import Foundation
@@ -21,6 +22,7 @@ final class MenuBarOrganizerService: ObservableObject {
     @Published private(set) var alwaysHiddenSectionShown = true
     @Published private(set) var operationMessage: String?
     @Published private(set) var canUndo = false
+    @Published private(set) var shortcutRegistrationFailed = false
     @Published private(set) var conflictingManagers: [MenuBarManagerDetection.RunningManager] = []
 
     private let provider = MenuBarWindowProvider()
@@ -37,6 +39,12 @@ final class MenuBarOrganizerService: ObservableObject {
     private var preEditingState: (hidden: Bool, always: Bool)?
     private var undoRecord: UndoRecord?
     private var suppressUndo = false
+    private var hotKeyRef: EventHotKeyRef?
+    private var hotKeyHandler: EventHandlerRef?
+    private var registeredShortcut: GlobalShortcut?
+    private var pointerTimer: Timer?
+    private var rehideDeadline: Date?
+    private var hoverDwellTicks = 0
 
     private struct UndoRecord {
         let itemID: MenuBarItemIdentity
@@ -79,6 +87,8 @@ final class MenuBarOrganizerService: ObservableObject {
         syncAlwaysHiddenDivider()
         applyDividerState()
         refresh()
+        syncHotkey()
+        syncPointerTimer()
     }
 
     func stop() {
@@ -165,6 +175,7 @@ final class MenuBarOrganizerService: ObservableObject {
 
     func hideAll() {
         secondaryPanel?.close()
+        rehideDeadline = nil
         hiddenSectionShown = false
         alwaysHiddenSectionShown = false
         applyDividerState()
@@ -258,6 +269,11 @@ final class MenuBarOrganizerService: ObservableObject {
         refreshTask = nil
         refreshTimer?.invalidate()
         refreshTimer = nil
+        unregisterHotkey()
+        pointerTimer?.invalidate()
+        pointerTimer = nil
+        rehideDeadline = nil
+        hoverDwellTicks = 0
         removeObservers()
         secondaryPanel?.close()
         secondaryPanel = nil
@@ -522,9 +538,143 @@ final class MenuBarOrganizerService: ObservableObject {
             hiddenSectionShown = true
             alwaysHiddenSectionShown = true
         }
+        armAutoRehide()
         applyDividerState()
         refresh()
     }
+
+    // MARK: - Toggle shortcut
+
+    /// Lets go of the global key while a shortcut field is listening, so the
+    /// user can record the very combination this feature uses. The next
+    /// `syncWithPreferences` takes it back.
+    func suspendShortcut() { unregisterHotkey() }
+
+    func syncHotkey() {
+        let wanted = isRunning && UserDefaults.standard.bool(
+            forKey: DefaultsKey.menuBarOrganizerShortcutEnabled)
+        guard wanted else {
+            unregisterHotkey()
+            return
+        }
+        let shortcut = GlobalShortcutRole.menuBarOrganizer.savedShortcut
+        if hotKeyRef != nil, registeredShortcut == shortcut { return }
+        unregisterHotkey()
+        if hotKeyHandler == nil {
+            var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                     eventKind: UInt32(kEventHotKeyPressed))
+            InstallEventHandler(GetEventDispatcherTarget(), { _, event, userData -> OSStatus in
+                guard let userData else { return OSStatus(eventNotHandledErr) }
+                var id = EventHotKeyID()
+                if let event {
+                    GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                                      EventParamType(typeEventHotKeyID), nil,
+                                      MemoryLayout<EventHotKeyID>.size, nil, &id)
+                }
+                guard id.signature == 0x564D_424F, id.id == 1
+                else { return OSStatus(eventNotHandledErr) }
+                let service = Unmanaged<MenuBarOrganizerService>.fromOpaque(userData)
+                    .takeUnretainedValue()
+                Task { @MainActor in service.toggleHiddenSection() }
+                return noErr
+            }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &hotKeyHandler)
+        }
+        let id = EventHotKeyID(signature: 0x564D_424F, id: 1) // 'VMBO'
+        var ref: EventHotKeyRef?
+        let status = RegisterEventHotKey(shortcut.carbonKeyCode,
+                                         shortcut.carbonModifiers,
+                                         id,
+                                         GetEventDispatcherTarget(),
+                                         0,
+                                         &ref)
+        if status == noErr, let ref {
+            hotKeyRef = ref
+            registeredShortcut = shortcut
+            shortcutRegistrationFailed = false
+        } else {
+            hotKeyRef = nil
+            registeredShortcut = nil
+            shortcutRegistrationFailed = true
+        }
+    }
+
+    private func unregisterHotkey() {
+        if let hotKeyRef {
+            UnregisterEventHotKey(hotKeyRef)
+        }
+        hotKeyRef = nil
+        registeredShortcut = nil
+        shortcutRegistrationFailed = false
+    }
+
+    // MARK: - Auto rehide and hover
+
+    private func armAutoRehide() {
+        guard UserDefaults.standard.bool(
+            forKey: DefaultsKey.menuBarOrganizerAutoRehideEnabled) else { return }
+        let seconds = Defaults.sanitizedMenuBarOrganizerAutoRehideDelay(
+            UserDefaults.standard.integer(
+                forKey: DefaultsKey.menuBarOrganizerAutoRehideDelay))
+        rehideDeadline = Date().addingTimeInterval(TimeInterval(seconds))
+    }
+
+    func syncPointerTimer() {
+        let wanted = isRunning && (
+            UserDefaults.standard.bool(
+                forKey: DefaultsKey.menuBarOrganizerAutoRehideEnabled)
+                || UserDefaults.standard.bool(
+                    forKey: DefaultsKey.menuBarOrganizerHoverExpandEnabled))
+        guard wanted else {
+            pointerTimer?.invalidate()
+            pointerTimer = nil
+            rehideDeadline = nil
+            hoverDwellTicks = 0
+            return
+        }
+        guard pointerTimer == nil else { return }
+        let timer = Timer(timeInterval: MenuBarOrganizerSupport.pointerPollInterval,
+                          repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pointerTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        pointerTimer = timer
+    }
+
+    private func pointerTick() {
+        guard isRunning else { return }
+        let inStrip = MenuBarOrganizerSupport.isPointerInMenuBarStrip(
+            NSEvent.mouseLocation,
+            screenFrames: NSScreen.screens.map(\.frame),
+            thickness: NSStatusBar.system.thickness + 4)
+        if let deadline = rehideDeadline {
+            if MenuBarOrganizerSupport.shouldAutoRehide(
+                hiddenShown: hiddenSectionShown,
+                editing: editingCount > 0,
+                setupComplete: UserDefaults.standard.bool(
+                    forKey: DefaultsKey.menuBarOrganizerSetupComplete),
+                deadlinePassed: Date() >= deadline,
+                pointerInStrip: inStrip) {
+                hideAll()
+            } else if !hiddenSectionShown {
+                rehideDeadline = nil
+            }
+        }
+        guard UserDefaults.standard.bool(
+                forKey: DefaultsKey.menuBarOrganizerHoverExpandEnabled),
+              !hiddenSectionShown,
+              editingCount == 0,
+              secondaryPanel?.isVisible != true
+        else {
+            hoverDwellTicks = 0
+            return
+        }
+        hoverDwellTicks = inStrip ? hoverDwellTicks + 1 : 0
+        if hoverDwellTicks >= MenuBarOrganizerSupport.hoverExpandDwellTicks {
+            hoverDwellTicks = 0
+            show(.hidden)
+        }
+    }
+
 
     private func scheduleRefreshTimer() {
         refreshTimer?.invalidate()

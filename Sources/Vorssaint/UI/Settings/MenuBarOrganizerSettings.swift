@@ -16,6 +16,11 @@ struct MenuBarOrganizerSettings: View {
     @AppStorage(DefaultsKey.menuBarOrganizerShowDividers) private var showDividers = false
     @AppStorage(DefaultsKey.menuBarOrganizerPresentationMode) private var presentationMode =
         MenuBarOrganizerPresentationMode.automatic.rawValue
+    @AppStorage(DefaultsKey.menuBarOrganizerShortcutEnabled) private var shortcutEnabled = false
+    @AppStorage(DefaultsKey.menuBarOrganizerAutoRehideEnabled) private var autoRehideEnabled = false
+    @AppStorage(DefaultsKey.menuBarOrganizerAutoRehideDelay)
+    private var autoRehideDelay = Defaults.defaultMenuBarOrganizerAutoRehideDelay
+    @AppStorage(DefaultsKey.menuBarOrganizerHoverExpandEnabled) private var hoverExpandEnabled = false
     @State private var editingBegun = false
 
     private var text: MenuBarOrganizerStrings {
@@ -55,6 +60,13 @@ struct MenuBarOrganizerSettings: View {
         .onAppear {
             service.syncWithPreferences()
             updateEditingSession()
+            autoRehideDelay = Defaults.sanitizedMenuBarOrganizerAutoRehideDelay(autoRehideDelay)
+        }
+        // The running poll reads the delay from UserDefaults on every tick,
+        // so a new value takes effect on the next one without a resync.
+        .onChange(of: autoRehideDelay) { _, value in
+            let sanitized = Defaults.sanitizedMenuBarOrganizerAutoRehideDelay(value)
+            if sanitized != value { autoRehideDelay = sanitized }
         }
         .onDisappear {
             endEditingIfNeeded()
@@ -179,13 +191,59 @@ struct MenuBarOrganizerSettings: View {
             Text(text.presentationCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Toggle(text.shortcutToggle, isOn: $shortcutEnabled)
+                .onChange(of: shortcutEnabled) { _, _ in
+                    service.syncHotkey()
+                }
+            ShortcutPreferenceRow(role: .menuBarOrganizer,
+                                  isEnabled: shortcutEnabled,
+                                  additionalConflict: WindowLayoutService.shared.shortcutConflictTitle) {
+                service.syncHotkey()
+            }
+            if shortcutEnabled, service.shortcutRegistrationFailed {
+                Text(l10n.s.shortcutUnavailable)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Text(text.shortcutCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Toggle(text.autoRehideToggle, isOn: $autoRehideEnabled)
+                TextField("", value: $autoRehideDelay, formatter: Self.delayFieldFormatter)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 60)
+                    .disabled(!autoRehideEnabled)
+                Text(text.autoRehideSecondsSuffix)
+                    .foregroundStyle(.secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            Text(text.autoRehideCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Toggle(text.hoverExpandToggle, isOn: $hoverExpandEnabled)
+            Text(text.hoverExpandCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         } header: {
             Text(text.behaviorTitle)
         }
     }
 
+    private static let delayFieldFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.minimum = NSNumber(
+            value: Defaults.allowedMenuBarOrganizerAutoRehideDelayRange.lowerBound)
+        formatter.maximum = NSNumber(
+            value: Defaults.allowedMenuBarOrganizerAutoRehideDelayRange.upperBound)
+        formatter.usesGroupingSeparator = false
+        return formatter
+    }()
+
     private var preferenceSignature: String {
         "\(alwaysHiddenEnabled)|\(showDividers)|\(presentationMode)"
+            + "|\(autoRehideEnabled)|\(hoverExpandEnabled)"
     }
 
     private func organizerLane(_ section: MenuBarOrganizerSection,

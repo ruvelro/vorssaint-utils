@@ -562,6 +562,11 @@ enum DefaultsKey {
     static let menuBarOrganizerAlwaysHiddenEnabled = "menuBarOrganizerAlwaysHiddenEnabled"
     static let menuBarOrganizerShowDividers = "menuBarOrganizerShowDividers"
     static let menuBarOrganizerPresentationMode = "menuBarOrganizerPresentationMode"
+    static let menuBarOrganizerShortcut = "menuBarOrganizerShortcut"
+    static let menuBarOrganizerShortcutEnabled = "menuBarOrganizerShortcutEnabled"
+    static let menuBarOrganizerAutoRehideEnabled = "menuBarOrganizerAutoRehideEnabled"
+    static let menuBarOrganizerAutoRehideDelay = "menuBarOrganizerAutoRehideDelay"
+    static let menuBarOrganizerHoverExpandEnabled = "menuBarOrganizerHoverExpandEnabled"
 
     // Dev-build only: force the "update available" UI for local testing.
     static let simulateUpdate = "simulateUpdate"
@@ -738,6 +743,8 @@ enum Defaults {
     static let allowedPreviewSizes = ["small", "normal", "large", "xlarge"]
     static let allowedClipboardHistoryLimits = [20, 50, 100, 250, 500, 1_000]
     static let allowedClipboardAutoClearDelayRange = 5...3_600
+    static let allowedMenuBarOrganizerAutoRehideDelayRange = 2...600
+    static let defaultMenuBarOrganizerAutoRehideDelay = 10
     static let defaultClipboardAutoClearDelay = 20
     static let allowedMonitorAlertCooldowns = [2, 5, 15, 30, 60]
 
@@ -883,6 +890,11 @@ enum Defaults {
         DefaultsKey.menuBarOrganizerShowDividers: false,
         DefaultsKey.menuBarOrganizerPresentationMode:
             MenuBarOrganizerPresentationMode.automatic.rawValue,
+        DefaultsKey.menuBarOrganizerShortcut: GlobalShortcut.menuBarOrganizerDefault.storageValue,
+        DefaultsKey.menuBarOrganizerShortcutEnabled: false,
+        DefaultsKey.menuBarOrganizerAutoRehideEnabled: false,
+        DefaultsKey.menuBarOrganizerAutoRehideDelay: Defaults.defaultMenuBarOrganizerAutoRehideDelay,
+        DefaultsKey.menuBarOrganizerHoverExpandEnabled: false,
         DefaultsKey.windowMaximizeEnabled: false,
         DefaultsKey.keyboardDebounceEnabled: false,
         DefaultsKey.keyboardDebounceWindowMs: defaultKeyboardDebounceWindowMs,
@@ -1458,6 +1470,11 @@ enum Defaults {
     static func sanitizedClipboardAutoClearDelay(_ seconds: Int) -> Int {
         min(max(seconds, allowedClipboardAutoClearDelayRange.lowerBound),
             allowedClipboardAutoClearDelayRange.upperBound)
+    }
+
+    static func sanitizedMenuBarOrganizerAutoRehideDelay(_ seconds: Int) -> Int {
+        min(max(seconds, allowedMenuBarOrganizerAutoRehideDelayRange.lowerBound),
+            allowedMenuBarOrganizerAutoRehideDelayRange.upperBound)
     }
 
     static func sanitizedMenuBarPreset(_ preset: String) -> String {

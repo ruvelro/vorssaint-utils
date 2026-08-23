@@ -29,6 +29,11 @@ enum ShortcutCapture {
         ShelfService.shared.suspendShortcut()
         ClipboardHistoryService.shared.suspendShortcut()
         SoundOutputSwitcher.shared.suspendShortcut()
+        // Documented main-thread-only above; the organizer service is the one
+        // MainActor-isolated holder in this list.
+        MainActor.assumeIsolated {
+            MenuBarOrganizerService.shared.suspendShortcut()
+        }
         WindowLayoutService.shared.suspendShortcuts()
         QuickToolHotkey.unregisterAll()
     }

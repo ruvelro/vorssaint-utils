@@ -10077,6 +10077,52 @@ struct MetricsTests {
                 && !MenuBarOrganizerSupport.shouldUseSecondaryBar(
                     mode: .menuBar, hiddenWidth: 900, availableWidth: 100, hasNotch: true),
                "automatic presentation handles overflow and notches while explicit mode wins")
+        expect(GlobalShortcutRole.menuBarOrganizer.storageKey == DefaultsKey.menuBarOrganizerShortcut
+                && GlobalShortcutRole.menuBarOrganizer.defaultShortcut == .menuBarOrganizerDefault
+                && GlobalShortcutRole.menuBarOrganizer.requiredEnableKeys
+                    == [DefaultsKey.menuBarOrganizerEnabled,
+                        DefaultsKey.menuBarOrganizerShortcutEnabled]
+                && GlobalShortcutRole.menuBarOrganizer.feature == .menuBarOrganizer,
+               "the organizer toggle shortcut wires its role to the feature and both enable keys")
+        expect(Defaults.registeredDefaults[DefaultsKey.menuBarOrganizerShortcutEnabled] as? Bool == false
+                && Defaults.registeredDefaults[DefaultsKey.menuBarOrganizerAutoRehideEnabled] as? Bool == false
+                && Defaults.registeredDefaults[DefaultsKey.menuBarOrganizerHoverExpandEnabled] as? Bool == false
+                && Defaults.registeredDefaults[DefaultsKey.menuBarOrganizerAutoRehideDelay] as? Int
+                    == Defaults.defaultMenuBarOrganizerAutoRehideDelay,
+               "the organizer shortcut, auto rehide and hover reveal all ship off")
+        expect(Defaults.sanitizedMenuBarOrganizerAutoRehideDelay(0) == 2
+                && Defaults.sanitizedMenuBarOrganizerAutoRehideDelay(10) == 10
+                && Defaults.sanitizedMenuBarOrganizerAutoRehideDelay(10_000) == 600,
+               "the auto rehide delay clamps into its allowed range")
+        expect(MenuBarOrganizerSupport.isPointerInMenuBarStrip(
+                    CGPoint(x: 100, y: 996),
+                    screenFrames: [CGRect(x: 0, y: 0, width: 1_600, height: 1_000)],
+                    thickness: 24)
+                && !MenuBarOrganizerSupport.isPointerInMenuBarStrip(
+                    CGPoint(x: 100, y: 900),
+                    screenFrames: [CGRect(x: 0, y: 0, width: 1_600, height: 1_000)],
+                    thickness: 24)
+                && !MenuBarOrganizerSupport.isPointerInMenuBarStrip(
+                    CGPoint(x: 2_000, y: 996),
+                    screenFrames: [CGRect(x: 0, y: 0, width: 1_600, height: 1_000)],
+                    thickness: 24),
+               "the pointer strip check matches only the top band of a screen")
+        expect(MenuBarOrganizerSupport.shouldAutoRehide(
+                    hiddenShown: true, editing: false, setupComplete: true,
+                    deadlinePassed: true, pointerInStrip: false)
+                && !MenuBarOrganizerSupport.shouldAutoRehide(
+                    hiddenShown: true, editing: false, setupComplete: true,
+                    deadlinePassed: true, pointerInStrip: true)
+                && !MenuBarOrganizerSupport.shouldAutoRehide(
+                    hiddenShown: true, editing: true, setupComplete: true,
+                    deadlinePassed: true, pointerInStrip: false)
+                && !MenuBarOrganizerSupport.shouldAutoRehide(
+                    hiddenShown: true, editing: false, setupComplete: true,
+                    deadlinePassed: false, pointerInStrip: false)
+                && !MenuBarOrganizerSupport.shouldAutoRehide(
+                    hiddenShown: false, editing: false, setupComplete: true,
+                    deadlinePassed: true, pointerInStrip: false),
+               "auto rehide waits out the pointer and the deadline and never fires while editing")
 
         func menuBarRecord(_ windowID: CGWindowID,
                            ownerPID: pid_t = 1,
