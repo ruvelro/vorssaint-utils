@@ -60,10 +60,13 @@ final class MenuBarItemMover {
 
         let targetX = placeAfter ? destinationFrame.maxX + 2 : destinationFrame.minX - 2
         let end = CGPoint(x: targetX, y: destinationFrame.midY)
-        let screenFrames = NSScreen.screens.map(\.frame)
-        guard screenFrames.contains(where: { $0.contains(
+        // Item frames and synthetic event coordinates are Quartz-global;
+        // NSScreen frames are Cocoa-flipped and diverge from them on stacked
+        // or unevenly sized displays.
+        let displayBounds = displays.map(CGDisplayBounds)
+        guard displayBounds.contains(where: { $0.contains(
             CGPoint(x: item.frame.midX, y: item.frame.midY)) }),
-              screenFrames.contains(where: { $0.contains(end) })
+              displayBounds.contains(where: { $0.contains(end) })
         else { throw MenuBarItemMoveError.itemNotMovable }
         try await postCommandDrag(
             from: CGPoint(x: item.frame.midX, y: item.frame.midY),
@@ -85,10 +88,14 @@ final class MenuBarItemMover {
                                mouseCursorPosition: point,
                                mouseButton: .left)
         else { throw MenuBarItemMoveError.eventCreationFailed }
-        let targetPID = MenuBarOrganizerSupport.eventTargetPID(
-            ownerPID: item.ownerPID,
-            ownerBundleIdentifier: item.ownerBundleIdentifier,
-            sourcePID: item.sourcePID)
+        // Like move: MenuBarAgent hosts the composited item on macOS 27, so a
+        // PID-targeted click cannot reach it; post globally and let the
+        // system hit-test the coordinates.
+        let targetPID: pid_t? = item.backend == .accessibility ? nil
+            : MenuBarOrganizerSupport.eventTargetPID(
+                ownerPID: item.ownerPID,
+                ownerBundleIdentifier: item.ownerBundleIdentifier,
+                sourcePID: item.sourcePID)
         post(down, targetPID: targetPID)
         do {
             try await Task.sleep(for: .milliseconds(35))
