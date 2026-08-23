@@ -927,6 +927,18 @@ final class MediaService: ObservableObject {
         clean.removeValue(forKey: kCGImagePropertyOrientation)
         clean[kCGImagePropertyPixelWidth] = image.width
         clean[kCGImagePropertyPixelHeight] = image.height
+        // The rendered bitmap is already upright and resized, but the nested
+        // TIFF/Exif tags still describe the original file; a viewer honoring
+        // them would rotate the image again or report the old dimensions.
+        if var tiff = clean[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+            tiff.removeValue(forKey: kCGImagePropertyTIFFOrientation)
+            clean[kCGImagePropertyTIFFDictionary] = tiff
+        }
+        if var exif = clean[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+            exif[kCGImagePropertyExifPixelXDimension] = image.width
+            exif[kCGImagePropertyExifPixelYDimension] = image.height
+            clean[kCGImagePropertyExifDictionary] = exif
+        }
         return clean
     }
 

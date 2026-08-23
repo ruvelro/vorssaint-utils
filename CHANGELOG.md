@@ -16,6 +16,14 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - Beta releases now automatically turn on the beta update channel on first launch, ensuring seamless delivery of subsequent beta updates.
+- The Media page in Settings now scrolls, so expanding the image converter's
+  More options no longer shifts the page up and out of reach; the label now
+  toggles the section along with its chevron. Thanks to @ruvelro.
+- Applying a saved image profile now keeps the exact "max side" it was saved
+  with instead of silently shrinking large values. Thanks to @ruvelro.
+- Converted images that keep their metadata no longer carry the original file's
+  orientation and pixel-size tags, which could show them rotated in some
+  viewers. Thanks to @ruvelro.
 
 ## [3.3.3-beta.1] - 2026-08-22
 

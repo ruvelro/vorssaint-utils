@@ -8,8 +8,15 @@ import UniformTypeIdentifiers
 
 struct MediaSettings: View {
     var body: some View {
-        MediaWorkspaceView(compact: false)
-            .padding(16)
+        // Every Settings detail must host a scroll container: without one the
+        // split view loses its title bar safe area (macOS 27) and the page
+        // draws shifted up under the toolbar. It also lets the tall image
+        // converter card stay reachable when "More options" is expanded.
+        ScrollView {
+            MediaWorkspaceView(compact: false)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
     }
 }
 
@@ -334,7 +341,7 @@ struct MediaWorkspaceView: View {
                 .pickerStyle(.segmented)
                 compressionRow(value: $imageQuality)
                 imageResizeSection
-                DisclosureGroup(imageText.moreOptions, isExpanded: $imageMoreOptionsExpanded) {
+                DisclosureGroup(isExpanded: $imageMoreOptionsExpanded) {
                     VStack(alignment: .leading, spacing: 10) {
                         imageProfileRow
                         // PDF output never carries EXIF (the image is re-encoded
@@ -350,6 +357,13 @@ struct MediaWorkspaceView: View {
                             .toggleStyle(.checkbox)
                     }
                     .padding(.top, 6)
+                } label: {
+                    // Only the chevron toggles a stock DisclosureGroup on
+                    // macOS; stretch the label so the whole row works.
+                    Text(imageText.moreOptions)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { imageMoreOptionsExpanded.toggle() }
                 }
             }
             .panelCard()
@@ -1457,7 +1471,10 @@ struct MediaWorkspaceView: View {
 
     private func applyImageOptions(_ options: MediaImageOptions) {
         imageQuality = options.quality
-        imageMaxDimension = options.maxDimension
+        // The legacy maxDimension field is clamped (and evened) on save, so
+        // restoring from it would silently shrink a profile's "max side";
+        // resizeMode carries the value the user actually picked.
+        imageMaxDimension = options.resizeMode.maxDimension
         imageFormatRaw = options.format.rawValue
         imageStripMetadata = options.stripMetadata
         imageResizeKindRaw = options.resizeMode.kind.rawValue
