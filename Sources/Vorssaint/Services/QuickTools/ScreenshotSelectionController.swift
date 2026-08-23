@@ -88,7 +88,12 @@ final class ScreenshotSelectionController {
     }
     fileprivate var isPickingColor: Bool { activeMode == .color }
     fileprivate var loupeEnabled = false {
-        didSet { panels.forEach { $0.overlayView.refreshPointerState() } }
+        didSet {
+            panels.forEach {
+                $0.overlayView.refreshCaptureGuide()
+                $0.overlayView.refreshPointerState()
+            }
+        }
     }
     fileprivate var loupeZoom: CGFloat = 1 {
         didSet { panels.forEach { $0.overlayView.needsDisplay = true } }
@@ -198,7 +203,14 @@ final class ScreenshotSelectionController {
         }
         keyPanelUnderMouse()?.makeKey()
         installKeyMonitor()
-        if isPickingColor { loupeEnabled = true }
+        if isPickingColor {
+            loupeEnabled = true
+        } else if UserDefaults.standard.bool(forKey: DefaultsKey.screenshotLoupeStartsOn) {
+            // Opt-in: the session opens with the magnifier already up, the
+            // way ShareX does, instead of waiting for the Z toggle.
+            loupeEnabled = true
+            if !freeze { loadLiveLoupeImages() }
+        }
         NSCursor.crosshair.set()
     }
 
@@ -257,6 +269,11 @@ final class ScreenshotSelectionController {
                 self.toggleScrollingCapture()
             case _ where Self.isLoupeKey(event):
                 self.toggleLoupe()
+            case _ where Self.isCopyColorKey(event):
+                self.copyLoupeColor()
+            case kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow:
+                self.nudgePointer(keyCode: Int(event.keyCode),
+                                  fast: event.modifierFlags.contains(.shift))
             default:
                 break
             }
@@ -318,6 +335,80 @@ final class ScreenshotSelectionController {
 
     fileprivate func adjustLoupeZoom(by scrollDelta: CGFloat) {
         loupeZoom = ScreenshotSupport.captureLoupeZoom(loupeZoom, adjustedBy: scrollDelta)
+    }
+
+    /// C copies the color under the pointer in the configured picker format
+    /// without ending the session, so a whole palette can be read off one
+    /// frozen screen. Only meaningful while the loupe shows which pixel.
+    private static func isCopyColorKey(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+        else { return false }
+        if let typed = event.charactersIgnoringModifiers?.lowercased(), !typed.isEmpty {
+            return typed == "c"
+        }
+        return Int(event.keyCode) == kVK_ANSI_C
+    }
+
+    private func copyLoupeColor() {
+        guard loupeEnabled else { return }
+        if freeze {
+            panelUnderMouse()?.overlayView.copyLoupeColorUnderPointer()
+            return
+        }
+        // Live mode magnifies a snapshot taken when the loupe was toggled on,
+        // and the screen may have changed since. Refresh the pixels first so
+        // C never quietly copies a stale color.
+        let hideWindows = hideVorssaintWindows
+        let excludedIDs = captureExcludedWindowIDs
+        Task { @MainActor [weak self] in
+            let images = await ScreenshotCaptureEngine.captureAllDisplays(
+                includePointer: false,
+                hideVorssaintWindows: hideWindows,
+                protectedWindowIDs: excludedIDs)
+            guard let self, !self.finished else { return }
+            for panel in self.panels {
+                panel.overlayView.updateLoupeImage(images[panel.displayID])
+            }
+            self.panelUnderMouse()?.overlayView.copyLoupeColorUnderPointer()
+        }
+    }
+
+    /// Arrow keys nudge the pointer by exactly one device pixel (ten with
+    /// Shift) while the loupe is up and no drag is in flight; nudging under
+    /// a held button would resize the selection behind the person's back.
+    /// The pointer may cross onto a neighbouring display; only when no
+    /// display contains the target does it stop at the current edge.
+    /// Warping generates no mouse event, so the overlays are refreshed by
+    /// hand with the position just warped to.
+    private func nudgePointer(keyCode: Int, fast: Bool) {
+        guard loupeEnabled,
+              !panels.contains(where: { $0.overlayView.isDragging })
+        else { return }
+        var dx: CGFloat = 0
+        var dy: CGFloat = 0
+        switch keyCode {
+        case kVK_LeftArrow: dx = -1
+        case kVK_RightArrow: dx = 1
+        case kVK_UpArrow: dy = 1
+        case kVK_DownArrow: dy = -1
+        default: return
+        }
+        let location = NSEvent.mouseLocation
+        guard let screen = NSScreen.withMouse else { return }
+        let delta = ScreenshotSupport.captureLoupeNudge(dx: dx,
+                                                        dy: dy,
+                                                        fast: fast,
+                                                        scale: screen.backingScaleFactor)
+        var target = CGPoint(x: location.x + delta.x, y: location.y + delta.y)
+        if !NSScreen.screens.contains(where: { $0.frame.contains(target) }) {
+            let frame = screen.frame
+            target = CGPoint(
+                x: min(max(target.x, frame.minX), frame.maxX - 0.5),
+                y: min(max(target.y, frame.minY + 0.5), frame.maxY))
+        }
+        let mainHeight = NSScreen.withMenuBar?.frame.height ?? 0
+        CGWarpMouseCursorPosition(CGPoint(x: target.x, y: mainHeight - target.y))
+        panels.forEach { $0.overlayView.refreshPointerState(mouseLocation: target) }
     }
 
     private func panelUnderMouse() -> ScreenshotOverlayPanel? {
@@ -651,6 +742,10 @@ private final class ScreenshotOverlayView: NSView {
     private var selection: CGRect = .zero
     private var hoverPoint: CGPoint = .zero
     private var hoveredWindow: ScreenshotSupport.PickableWindow?
+    /// The value just copied with C, shown briefly in the loupe's info bar
+    /// because the regular HUD sits under these shielding-level panels.
+    private var copiedValue: String?
+    private var copiedValueReset: DispatchWorkItem?
     var ghostRect: CGRect?
     var isCapturePending = false {
         didSet {
@@ -696,6 +791,7 @@ private final class ScreenshotOverlayView: NSView {
             offersScrollingCapture: controller.offersScrollingCapture,
             requiresDraggedRegion: controller.requiresDraggedRegion,
             scrollingCaptureEnabled: controller.scrollingCaptureEnabled,
+            loupeEnabled: controller.loupeEnabled,
             screenCaptureOptions: screenCaptureOptions))
         host.passesThrough = screenCaptureOptions == nil
         guideHost = host
@@ -729,10 +825,13 @@ private final class ScreenshotOverlayView: NSView {
                                  height: height)
     }
 
-    func refreshPointerState() {
+    /// An explicit location covers pointer warps, whose new position may not
+    /// be visible through NSEvent.mouseLocation yet when this runs.
+    func refreshPointerState(mouseLocation: CGPoint? = nil) {
         guard let panel else { return }
-        let point = CGPoint(x: NSEvent.mouseLocation.x - panel.screenFrame.minX,
-                            y: panel.screenFrame.maxY - NSEvent.mouseLocation.y)
+        let global = mouseLocation ?? NSEvent.mouseLocation
+        let point = CGPoint(x: global.x - panel.screenFrame.minX,
+                            y: panel.screenFrame.maxY - global.y)
         if bounds.contains(point) {
             hoverPoint = point
             hoveredWindow = controller?.acceptsWindowClick == true
@@ -747,6 +846,27 @@ private final class ScreenshotOverlayView: NSView {
         needsDisplay = true
     }
 
+    func copyLoupeColorUnderPointer() {
+        guard let loupeImage else { return }
+        let point = isDragging ? lastDragPoint : hoverPoint
+        let pixelPoint = ScreenshotSupport.imagePixelPoint(
+            fromView: point,
+            viewSize: bounds.size,
+            imageSize: CGSize(width: loupeImage.width, height: loupeImage.height))
+        guard let color = loupePixelColor(in: loupeImage, at: pixelPoint),
+              let value = ColorSamplerService.shared.copyQuietly(color)
+        else { return }
+        copiedValue = value
+        copiedValueReset?.cancel()
+        let reset = DispatchWorkItem { [weak self] in
+            self?.copiedValue = nil
+            self?.needsDisplay = true
+        }
+        copiedValueReset = reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.4, execute: reset)
+        needsDisplay = true
+    }
+
     func refreshCaptureGuide() {
         guideHost.rootView = CaptureGuideView(
             strings: strings,
@@ -754,6 +874,7 @@ private final class ScreenshotOverlayView: NSView {
             offersScrollingCapture: controller?.offersScrollingCapture ?? false,
             requiresDraggedRegion: controller?.requiresDraggedRegion ?? false,
             scrollingCaptureEnabled: controller?.scrollingCaptureEnabled ?? false,
+            loupeEnabled: controller?.loupeEnabled ?? false,
             screenCaptureOptions: screenCaptureOptions)
     }
 
@@ -990,13 +1111,20 @@ private final class ScreenshotOverlayView: NSView {
             fromView: point,
             viewSize: bounds.size,
             imageSize: imageSize)
+        let sampleSide = ScreenshotSupport.captureLoupeSampleSide(zoom: zoom)
         let source = ScreenshotSupport.cropLoupeSampleRect(
             around: pixelPoint,
             imageSize: imageSize,
-            sideLength: ScreenshotSupport.captureLoupeSampleSide(zoom: zoom))
+            sideLength: sampleSide)
         guard let sample = image.cropping(to: source) else { return }
 
-        let frame = captureLoupeFrame(near: point, size: 70)
+        let side = ScreenshotSupport.captureLoupeFrameSide
+        let infoHeight: CGFloat = 24
+        let infoGap: CGFloat = 6
+        let block = captureLoupeFrame(
+            near: point,
+            size: CGSize(width: side, height: side + infoGap + infoHeight))
+        let frame = CGRect(x: block.minX, y: block.minY, width: side, height: side)
         let path = CGPath(roundedRect: frame,
                           cornerWidth: 9,
                           cornerHeight: 9,
@@ -1017,10 +1145,9 @@ private final class ScreenshotOverlayView: NSView {
         context.restoreGState()
 
         // A ring around the target pixel rather than lines through it: the
-        // frame shows about a dozen source pixels, so a 3pt crosshair on the
-        // pointer's sub-pixel position buried the very pixel the color picker
-        // is about to copy (issue #755). The ring sits just outside the pixel
-        // so the sample keeps its own color.
+        // ring sits just outside the pixel so the sample keeps its own color
+        // (issue #755), and the ShareX-style grid underneath makes each
+        // magnified cell read as the single screen pixel it is.
         let target = ScreenshotSupport.captureLoupeTargetPixelRect(
             around: pixelPoint,
             source: source,
@@ -1042,6 +1169,12 @@ private final class ScreenshotOverlayView: NSView {
         }
 
         context.saveGState()
+        context.addPath(path)
+        context.clip()
+        if ScreenshotSupport.captureLoupeGridVisible(
+            frameSide: side, sampleSide: max(source.width, source.height)) {
+            drawLoupeGrid(context, frame: frame, source: source)
+        }
         context.addPath(reticle)
         context.setStrokeColor(CGColor(gray: 0, alpha: 0.76))
         context.setLineWidth(3)
@@ -1050,27 +1183,135 @@ private final class ScreenshotOverlayView: NSView {
         context.setStrokeColor(CGColor(gray: 1, alpha: 0.92))
         context.setLineWidth(1)
         context.strokePath()
+        context.restoreGState()
+
+        context.saveGState()
         context.addPath(path)
         context.setStrokeColor(CGColor(gray: 1, alpha: 0.95))
         context.setLineWidth(1.5)
         context.strokePath()
         context.restoreGState()
+
+        drawLoupeInfo(context,
+                      in: CGRect(x: frame.minX,
+                                 y: frame.maxY + infoGap,
+                                 width: frame.width,
+                                 height: infoHeight),
+                      image: image,
+                      pixelPoint: pixelPoint)
     }
 
-    private func captureLoupeFrame(near point: CGPoint, size: CGFloat) -> CGRect {
+    /// ShareX-style pixel grid: a faint line between every pair of sampled
+    /// pixels, so each cell reads as the single screen pixel it magnifies.
+    private func drawLoupeGrid(_ context: CGContext, frame: CGRect, source: CGRect) {
+        let columns = Int(source.width)
+        let rows = Int(source.height)
+        guard columns > 1, rows > 1 else { return }
+        context.saveGState()
+        context.setStrokeColor(CGColor(gray: 0, alpha: 0.28))
+        context.setLineWidth(1)
+        for column in 1..<columns {
+            let x = frame.minX + CGFloat(column) * frame.width / CGFloat(columns)
+            context.move(to: CGPoint(x: x, y: frame.minY))
+            context.addLine(to: CGPoint(x: x, y: frame.maxY))
+        }
+        for row in 1..<rows {
+            let y = frame.minY + CGFloat(row) * frame.height / CGFloat(rows)
+            context.move(to: CGPoint(x: frame.minX, y: y))
+            context.addLine(to: CGPoint(x: frame.maxX, y: y))
+        }
+        context.strokePath()
+        context.restoreGState()
+    }
+
+    private func loupePixelColor(in image: CGImage, at pixelPoint: CGPoint) -> NSColor? {
+        let x = min(max(Int(pixelPoint.x.rounded(.down)), 0), image.width - 1)
+        let y = min(max(Int(pixelPoint.y.rounded(.down)), 0), image.height - 1)
+        guard let pixel = image.cropping(to: CGRect(x: x, y: y, width: 1, height: 1))
+        else { return nil }
+        return NSBitmapImageRep(cgImage: pixel).colorAt(x: 0, y: 0)
+    }
+
+    /// Readout bar under the magnifier: a swatch of the pixel under the
+    /// pointer, its value in the same format C would copy, and its position
+    /// in display pixels.
+    private func drawLoupeInfo(_ context: CGContext,
+                               in rect: CGRect,
+                               image: CGImage,
+                               pixelPoint: CGPoint) {
+        let x = min(max(Int(pixelPoint.x.rounded(.down)), 0), image.width - 1)
+        let y = min(max(Int(pixelPoint.y.rounded(.down)), 0), image.height - 1)
+        var swatch: NSColor?
+        var value = ""
+        if let color = loupePixelColor(in: image, at: pixelPoint),
+           let srgb = color.usingColorSpace(.sRGB) {
+            swatch = srgb
+            value = ColorSamplerService.shared.formattedValue(color) ?? ""
+        }
+        let text: String
+        if let copiedValue {
+            text = "✓ \(copiedValue)"
+        } else {
+            text = value.isEmpty ? "\(x), \(y)" : "\(value)   \(x), \(y)"
+        }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
+            .foregroundColor: NSColor.white,
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let swatchSide: CGFloat = swatch == nil ? 0 : 12
+        let swatchGap: CGFloat = swatch == nil ? 0 : 7
+        let contentWidth = swatchSide + swatchGap + textSize.width
+        let barWidth = min(max(contentWidth + 20, rect.width), bounds.width - 12)
+        var bar = CGRect(x: rect.midX - barWidth / 2,
+                         y: rect.minY,
+                         width: barWidth,
+                         height: rect.height)
+        bar.origin.x = min(max(bar.origin.x, bounds.minX + 6),
+                           bounds.maxX - bar.width - 6)
+        let path = CGPath(roundedRect: bar, cornerWidth: 7, cornerHeight: 7,
+                          transform: nil)
+        context.saveGState()
+        context.addPath(path)
+        context.setFillColor(CGColor(gray: 0, alpha: 0.72))
+        context.fillPath()
+        context.restoreGState()
+
+        var cursor = bar.minX + (bar.width - contentWidth) / 2
+        if let swatch {
+            let swatchRect = CGRect(x: cursor,
+                                    y: bar.midY - swatchSide / 2,
+                                    width: swatchSide,
+                                    height: swatchSide)
+            context.saveGState()
+            context.setFillColor(swatch.cgColor)
+            context.fill(swatchRect)
+            context.setStrokeColor(CGColor(gray: 1, alpha: 0.85))
+            context.setLineWidth(1)
+            context.stroke(swatchRect)
+            context.restoreGState()
+            cursor += swatchSide + swatchGap
+        }
+        text.draw(at: CGPoint(x: cursor, y: bar.midY - textSize.height / 2),
+                  withAttributes: attributes)
+    }
+
+    private func captureLoupeFrame(near point: CGPoint, size: CGSize) -> CGRect {
         let gap: CGFloat = 16
         let inset: CGFloat = 8
         var origin = CGPoint(x: point.x + gap,
-                             y: point.y - size - gap)
-        if origin.x + size > bounds.maxX - inset {
-            origin.x = point.x - size - gap
+                             y: point.y - size.height - gap)
+        if origin.x + size.width > bounds.maxX - inset {
+            origin.x = point.x - size.width - gap
         }
         if origin.y < bounds.minY + inset {
             origin.y = point.y + gap
         }
-        origin.x = min(max(origin.x, bounds.minX + inset), bounds.maxX - size - inset)
-        origin.y = min(max(origin.y, bounds.minY + inset), bounds.maxY - size - inset)
-        return CGRect(origin: origin, size: CGSize(width: size, height: size))
+        origin.x = min(max(origin.x, bounds.minX + inset),
+                       bounds.maxX - size.width - inset)
+        origin.y = min(max(origin.y, bounds.minY + inset),
+                       bounds.maxY - size.height - inset)
+        return CGRect(origin: origin, size: size)
     }
 
     // MARK: Text chrome
@@ -1108,6 +1349,7 @@ private struct CaptureGuideView: View {
     let offersScrollingCapture: Bool
     let requiresDraggedRegion: Bool
     let scrollingCaptureEnabled: Bool
+    let loupeEnabled: Bool
     let screenCaptureOptions: ScreenCaptureSelectionOptions?
 
     var body: some View {
@@ -1115,7 +1357,8 @@ private struct CaptureGuideView: View {
             UnifiedCaptureGuideContent(strings: strings,
                                        options: screenCaptureOptions,
                                        offersScrollingCapture: offersScrollingCapture,
-                                       scrollingCaptureEnabled: scrollingCaptureEnabled)
+                                       scrollingCaptureEnabled: scrollingCaptureEnabled,
+                                       loupeEnabled: loupeEnabled)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(true)
         } else {
@@ -1149,7 +1392,11 @@ private struct CaptureGuideView: View {
                     CaptureKeyHint(key: scrollingCaptureEnabled ? "S on" : "S",
                                    icon: "rectangle.stack")
                 }
-                CaptureKeyHint(key: "Z", icon: "plus.magnifyingglass")
+                CaptureKeyHint(key: loupeEnabled ? "Z on" : "Z",
+                               icon: "plus.magnifyingglass")
+                if loupeEnabled {
+                    CaptureKeyHint(key: "C", icon: "doc.on.doc")
+                }
                 CaptureKeyHint(key: "esc", icon: "xmark")
             }
         }
@@ -1191,6 +1438,7 @@ private struct UnifiedCaptureGuideContent: View {
     @ObservedObject private var l10n = L10n.shared
     let offersScrollingCapture: Bool
     let scrollingCaptureEnabled: Bool
+    let loupeEnabled: Bool
     @State private var hoveredTool: ScreenCaptureTool?
 
     var body: some View {
@@ -1221,7 +1469,11 @@ private struct UnifiedCaptureGuideContent: View {
                     CaptureKeyHint(key: scrollingCaptureEnabled ? "S on" : "S",
                                    icon: "rectangle.stack")
                 }
-                CaptureKeyHint(key: "Z", icon: "plus.magnifyingglass")
+                CaptureKeyHint(key: loupeEnabled ? "Z on" : "Z",
+                               icon: "plus.magnifyingglass")
+                if loupeEnabled {
+                    CaptureKeyHint(key: "C", icon: "doc.on.doc")
+                }
             }
         }
         .padding(.horizontal, 10)

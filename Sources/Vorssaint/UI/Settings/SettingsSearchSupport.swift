@@ -29,6 +29,7 @@ enum SettingsSearchSupport {
             strings.ocrName,
             strings.colorPickerName,
             screenshot.freezeToggle,
+            screenshot.loupeStartsOnToggle,
             screenshot.fullScreenShortcutTitle,
             screenshot.previewPositionLabel,
             screenshot.pinButton,

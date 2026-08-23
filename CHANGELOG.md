@@ -12,6 +12,10 @@ All notable changes to this project are documented here. The format follows
 - The Command Bar now offers a compact mode: the bar opens as a field alone and shows results only once you type. Press Down to see the usual list anyway. Under Command Bar, off by default. Thanks to @kobebrylant.
 - Command Bar script links can now be marked to run on their bare name without an argument, so scripts that work on the clipboard, selection, or files don't need a placeholder word typed after the name. Under Command Bar, off by default. Thanks to @rhukster.
 - Monitor alerts can now warn you when the battery stays above a temperature you choose. Under Monitor alerts, off by default. Thanks to @ywu73.
+- The capture magnifier now shows each screen pixel on a grid with the
+  pointer's position and color, zooms in further, moves one pixel at a time
+  with the arrow keys and copies the color with C without ending the capture.
+  It can also start already enabled from Settings. Thanks to @ruvelro.
 
 ### Changed
 - New Scratchpad tabs now start at 1 instead of leaving the first tab unnumbered, while existing names stay unchanged. Thanks to @AB-boi and @JashRashne.
