@@ -203,13 +203,11 @@ final class ScreenshotSelectionController {
         }
         keyPanelUnderMouse()?.makeKey()
         installKeyMonitor()
-        if isPickingColor {
-            loupeEnabled = true
-        } else if UserDefaults.standard.bool(forKey: DefaultsKey.screenshotLoupeStartsOn) {
+        if isPickingColor
+            || UserDefaults.standard.bool(forKey: DefaultsKey.screenshotLoupeStartsOn) {
             // Opt-in: the session opens with the magnifier already up, the
             // way ShareX does, instead of waiting for the Z toggle.
-            loupeEnabled = true
-            if !freeze { loadLiveLoupeImages() }
+            toggleLoupe()
         }
         NSCursor.crosshair.set()
     }
@@ -269,13 +267,13 @@ final class ScreenshotSelectionController {
                 self.toggleScrollingCapture()
             case _ where Self.isLoupeKey(event):
                 self.toggleLoupe()
-            case _ where Self.isCopyColorKey(event):
+            case _ where self.loupeAcceptsKeyboardActions && Self.isCopyColorKey(event):
                 self.copyLoupeColor()
-            case kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow:
+            case _ where self.loupeAcceptsKeyboardActions && Self.isNudgeKey(event):
                 self.nudgePointer(keyCode: Int(event.keyCode),
                                   fast: event.modifierFlags.contains(.shift))
             default:
-                break
+                return event
             }
             return nil
         }
@@ -349,28 +347,24 @@ final class ScreenshotSelectionController {
         return Int(event.keyCode) == kVK_ANSI_C
     }
 
+    private static func isNudgeKey(_ event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
+        else { return false }
+        return [kVK_LeftArrow, kVK_RightArrow, kVK_UpArrow, kVK_DownArrow]
+            .contains(Int(event.keyCode))
+    }
+
+    private var loupeAcceptsKeyboardActions: Bool {
+        loupeEnabled && !panels.contains(where: { $0.overlayView.isDragging })
+    }
+
     private func copyLoupeColor() {
-        guard loupeEnabled else { return }
-        if freeze {
-            panelUnderMouse()?.overlayView.copyLoupeColorUnderPointer()
-            return
-        }
-        // Live mode magnifies a snapshot taken when the loupe was toggled on,
-        // and the screen may have changed since. Refresh the pixels first so
-        // C never quietly copies a stale color.
-        let hideWindows = hideVorssaintWindows
-        let excludedIDs = captureExcludedWindowIDs
-        Task { @MainActor [weak self] in
-            let images = await ScreenshotCaptureEngine.captureAllDisplays(
-                includePointer: false,
-                hideVorssaintWindows: hideWindows,
-                protectedWindowIDs: excludedIDs)
-            guard let self, !self.finished else { return }
-            for panel in self.panels {
-                panel.overlayView.updateLoupeImage(images[panel.displayID])
-            }
-            self.panelUnderMouse()?.overlayView.copyLoupeColorUnderPointer()
-        }
+        guard loupeAcceptsKeyboardActions else { return }
+        // The readout, ring and copy all sample the same loupe image. In live
+        // selection that image is the snapshot loaded when the loupe opens;
+        // toggling Z refreshes it without letting C copy a different frame
+        // from the one currently drawn.
+        panelUnderMouse()?.overlayView.copyLoupeColorUnderPointer()
     }
 
     /// Arrow keys nudge the pointer by exactly one device pixel (ten with
@@ -381,9 +375,7 @@ final class ScreenshotSelectionController {
     /// Warping generates no mouse event, so the overlays are refreshed by
     /// hand with the position just warped to.
     private func nudgePointer(keyCode: Int, fast: Bool) {
-        guard loupeEnabled,
-              !panels.contains(where: { $0.overlayView.isDragging })
-        else { return }
+        guard loupeAcceptsKeyboardActions else { return }
         var dx: CGFloat = 0
         var dy: CGFloat = 0
         switch keyCode {
@@ -407,7 +399,9 @@ final class ScreenshotSelectionController {
                 y: min(max(target.y, frame.minY + 0.5), frame.maxY))
         }
         let mainHeight = NSScreen.withMenuBar?.frame.height ?? 0
+        CGAssociateMouseAndMouseCursorPosition(0)
         CGWarpMouseCursorPosition(CGPoint(x: target.x, y: mainHeight - target.y))
+        CGAssociateMouseAndMouseCursorPosition(1)
         panels.forEach { $0.overlayView.refreshPointerState(mouseLocation: target) }
     }
 

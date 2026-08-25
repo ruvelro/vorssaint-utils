@@ -13134,17 +13134,23 @@ struct MetricsTests {
                     "scrolling up zooms the capture loupe in")
         expectClose(ScreenshotSupport.captureLoupeZoom(0.5, adjustedBy: -1), 0.5,
                     "capture loupe zoom stays above its minimum")
-        expectClose(ScreenshotSupport.captureLoupeZoom(10, adjustedBy: 1), 10,
+        expectClose(ScreenshotSupport.captureLoupeZoom(10, adjustedBy: 1),
+                    ScreenshotSupport.captureLoupeMaxZoom,
                     "capture loupe zoom stays below its maximum")
-        expectClose(ScreenshotSupport.captureLoupeZoom(4, adjustedBy: 1), 4.6,
-                    "the old zoom ceiling no longer stops the loupe at four")
+        expectClose(ScreenshotSupport.captureLoupeMaxZoom,
+                    ScreenshotSupport.captureLoupeBaseSampleSide / 3,
+                    "the zoom ceiling is derived from the smallest useful sample")
+        expectClose(ScreenshotSupport.captureLoupeZoom(4, adjustedBy: 1),
+                    ScreenshotSupport.captureLoupeMaxZoom,
+                    "zoom reaches the three-pixel sample without a dead range above it")
         expectClose(ScreenshotSupport.captureLoupeSampleSide(zoom: 2), 7,
                     "higher capture loupe zoom samples fewer source pixels")
         expectClose(ScreenshotSupport.captureLoupeSampleSide(zoom: 0.5), 27,
                     "zooming the loupe out widens the sample")
-        expectClose(ScreenshotSupport.captureLoupeSampleSide(zoom: 10), 3,
+        expectClose(ScreenshotSupport.captureLoupeSampleSide(
+            zoom: ScreenshotSupport.captureLoupeMaxZoom), 3,
                     "maximum loupe zoom keeps a three pixel sample around the pointer")
-        expect([0.5, 1, 2, 4, 10].allSatisfy { zoom in
+        expect([0.5, 1, 2, 4, ScreenshotSupport.captureLoupeMaxZoom].allSatisfy { zoom in
             let side = ScreenshotSupport.captureLoupeSampleSide(zoom: zoom)
             return side.truncatingRemainder(dividingBy: 2) == 1
         }, "every loupe sample side is odd so an exact center pixel exists")

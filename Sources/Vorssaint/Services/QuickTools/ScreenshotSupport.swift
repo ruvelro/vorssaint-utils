@@ -1433,7 +1433,7 @@ enum ScreenshotSupport {
     /// reticle still marks the exact adjusted pixel.
     static let captureLoupeBaseSampleSide: CGFloat = 13
     static let captureLoupeMinZoom: CGFloat = 0.5
-    static let captureLoupeMaxZoom: CGFloat = 10
+    static var captureLoupeMaxZoom: CGFloat { captureLoupeBaseSampleSide / 3 }
     /// The magnifier square on screen, in view points. Big enough that each
     /// sampled pixel becomes a readable grid cell at every zoom level.
     static let captureLoupeFrameSide: CGFloat = 132
