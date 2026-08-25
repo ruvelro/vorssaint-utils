@@ -4,37 +4,18 @@
 import AppKit
 import Foundation
 
-enum DockMediaPlaybackState: String, Equatable {
-    case playing
-    case paused
-    case stopped
-}
-
 struct DockMediaPlayer: Equatable {
     let bundleID: String
     let appName: String
     let title: String
     let artist: String?
     let album: String?
-    let state: DockMediaPlaybackState
-    let position: TimeInterval?
-    let duration: TimeInterval?
+    let isPlaying: Bool
     /// Stable artwork identity used for equality; comparing `NSImage` by
     /// encoding both sides to TIFF put image conversion on SwiftUI's hot path.
     let artworkData: Data?
     let artwork: NSImage?
     let appIcon: NSImage?
-
-    var isPlaying: Bool { state == .playing }
-
-    var progress: Double? {
-        guard let position, let duration, duration > 0 else { return nil }
-        return min(max(position / duration, 0), 1)
-    }
-
-    var hasTrack: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && state != .stopped
-    }
 
     static func == (lhs: DockMediaPlayer, rhs: DockMediaPlayer) -> Bool {
         lhs.bundleID == rhs.bundleID
@@ -42,9 +23,7 @@ struct DockMediaPlayer: Equatable {
             && lhs.title == rhs.title
             && lhs.artist == rhs.artist
             && lhs.album == rhs.album
-            && lhs.state == rhs.state
-            && lhs.position == rhs.position
-            && lhs.duration == rhs.duration
+            && lhs.isPlaying == rhs.isPlaying
             && lhs.artworkData == rhs.artworkData
     }
 }
@@ -94,9 +73,7 @@ final class DockMediaPlayerService {
                                            title: title,
                                            artist: snapshot.artist,
                                            album: snapshot.album,
-                                           state: snapshot.isPlaying ? .playing : .paused,
-                                           position: nil,
-                                           duration: nil,
+                                           isPlaying: snapshot.isPlaying,
                                            artworkData: snapshot.artworkData,
                                            artwork: artwork,
                                            appIcon: source.appIcon))

@@ -840,6 +840,7 @@ final class DockPreviewService: ObservableObject {
     }
 
     private func startMediaIfEnabled(for app: NSRunningApplication) {
+        stopMediaObserving()
         guard UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewMediaControls),
               let source = DockMediaPlayerSource(app: app)
         else { return }

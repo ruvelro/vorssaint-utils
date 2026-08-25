@@ -95,7 +95,9 @@ private struct DockPreviewPanelContent: View {
             if showsHeader {
                 panelHeader
             }
-            if let mediaPlayer {
+            // Media controls supplement a real Dock preview session; they do
+            // not create a separate panel for apps without previewable windows.
+            if !windows.isEmpty, let mediaPlayer {
                 DockMediaPlayerPanel(
                     player: mediaPlayer,
                     onPrevious: { onMediaCommand(.previous) },
@@ -369,9 +371,8 @@ private struct DockMediaPlayerPanel: View {
     var body: some View {
         HStack(spacing: 12) {
             artwork
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 9) {
                 trackText
-                progressView
                 controls
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -433,32 +434,6 @@ private struct DockMediaPlayerPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var progressView: some View {
-        VStack(spacing: 3) {
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.13))
-                    Capsule()
-                        .fill(Color.accentColor.opacity(0.9))
-                        .frame(width: proxy.size.width * CGFloat(player.progress ?? 0))
-                }
-            }
-            .frame(height: 4)
-
-            HStack {
-                Text(formatTime(player.position))
-                Spacer()
-                statusLabel
-                Spacer()
-                Text(formatTime(player.duration))
-            }
-            .font(.system(size: 9.5, weight: .medium, design: .rounded))
-            .monospacedDigit()
-            .foregroundStyle(.tertiary)
-        }
-    }
-
     private var controls: some View {
         HStack(spacing: 10) {
             mediaButton(systemName: "backward.fill", action: onPrevious)
@@ -474,10 +449,6 @@ private struct DockMediaPlayerPanel: View {
                 .lineLimit(1)
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private var statusLabel: some View {
-        Text(player.state == .playing ? "Playing" : player.state == .paused ? "Paused" : "Stopped")
     }
 
     private var accessibilityText: String {
@@ -503,11 +474,6 @@ private struct DockMediaPlayerPanel: View {
         .background(Circle().fill(background))
     }
 
-    private func formatTime(_ value: TimeInterval?) -> String {
-        guard let value, value.isFinite, value >= 0 else { return "--:--" }
-        let total = Int(value.rounded())
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
 }
 
 private struct DockPreviewCard: View {

@@ -188,8 +188,10 @@ enum DockPreviewSupport {
     static var cardSpacing: CGFloat { 8 * PreviewSizing.scale }
     static var panelPadding: CGFloat { 10 * PreviewSizing.scale }
     static let panelHeaderHeight: CGFloat = 28
-    static var mediaPanelWidth: CGFloat { 330 * PreviewSizing.scale }
-    static var mediaPanelHeight: CGFloat { 174 * PreviewSizing.scale }
+    // The player artwork and controls are fixed-size SwiftUI content, so its
+    // container is fixed too rather than following the window-preview scale.
+    static let mediaPanelWidth: CGFloat = 330
+    static let mediaPanelHeight: CGFloat = 144
 
     /// 16:10, the shape of the screen the captured window came from, so a
     /// full-height window fills the well instead of sitting between two bars.
@@ -409,11 +411,6 @@ enum DockPreviewSupport {
                            min(screenVisibleFrame.width * 0.9,
                                screenVisibleFrame.width - edgePadding * 2))
         return CGSize(width: min(run, maxWidth), height: cardHeight + padding * 2 + header)
-    }
-
-    static func mediaPanelSize(screenVisibleFrame: CGRect) -> CGSize {
-        CGSize(width: min(mediaPanelWidth, max(1, screenVisibleFrame.width - edgePadding * 2)),
-               height: min(mediaPanelHeight, max(1, screenVisibleFrame.height - edgePadding * 2)))
     }
 
     /// The mini player supplements the window cards instead of replacing
