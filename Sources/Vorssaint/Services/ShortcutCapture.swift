@@ -31,8 +31,10 @@ enum ShortcutCapture {
         SoundOutputSwitcher.shared.suspendShortcut()
         // Documented main-thread-only above; the organizer service is the one
         // MainActor-isolated holder in this list.
-        MainActor.assumeIsolated {
-            MenuBarOrganizerService.shared.suspendShortcut()
+        if AppFeature.menuBarOrganizer.isAvailable {
+            MainActor.assumeIsolated {
+                MenuBarOrganizerService.shared.suspendShortcut()
+            }
         }
         WindowLayoutService.shared.suspendShortcuts()
         QuickToolHotkey.unregisterAll()

@@ -44,7 +44,7 @@ final class MenuBarOrganizerService: ObservableObject {
     private var registeredShortcut: GlobalShortcut?
     private var pointerTimer: Timer?
     private var rehideDeadline: Date?
-    private var hoverDwellTicks = 0
+    private var hoverEnteredAt: Date?
 
     private struct UndoRecord {
         let itemID: MenuBarItemIdentity
@@ -273,7 +273,7 @@ final class MenuBarOrganizerService: ObservableObject {
         pointerTimer?.invalidate()
         pointerTimer = nil
         rehideDeadline = nil
-        hoverDwellTicks = 0
+        hoverEnteredAt = nil
         removeObservers()
         secondaryPanel?.close()
         secondaryPanel = nil
@@ -500,6 +500,7 @@ final class MenuBarOrganizerService: ObservableObject {
     }
 
     private func show(_ section: MenuBarOrganizerSection) {
+        armAutoRehide()
         guard editingCount == 0 else {
             showInMenuBar(section)
             return
@@ -510,12 +511,13 @@ final class MenuBarOrganizerService: ObservableObject {
         let hiddenWidth = items.filter {
             section == .alwaysHidden ? $0.section != .visible : $0.section == .hidden
         }.reduce(CGFloat(0)) { $0 + $1.frame.width }
-        let screen = controlItem?.frame.flatMap { frame in
-            NSScreen.screens.first { $0.frame.intersects(frame) }
-        } ?? NSScreen.main
+        let screen = organizerMenuBarScreen
         let availableWidth = (screen?.visibleFrame.width ?? 1_024) * 0.45
         let hasNotch = screen?.auxiliaryTopLeftArea != nil
             || screen?.auxiliaryTopRightArea != nil
+        // Both presentation modes are reveal surfaces. The deadline was armed
+        // before choosing one so the default secondary bar on notched Macs
+        // re-hides too.
         if MenuBarOrganizerSupport.shouldUseSecondaryBar(
             mode: mode,
             hiddenWidth: hiddenWidth,
@@ -538,7 +540,6 @@ final class MenuBarOrganizerService: ObservableObject {
             hiddenSectionShown = true
             alwaysHiddenSectionShown = true
         }
-        armAutoRehide()
         applyDividerState()
         refresh()
     }
@@ -619,16 +620,18 @@ final class MenuBarOrganizerService: ObservableObject {
     }
 
     func syncPointerTimer() {
+        let autoRehideEnabled = UserDefaults.standard.bool(
+            forKey: DefaultsKey.menuBarOrganizerAutoRehideEnabled)
+        if !autoRehideEnabled { rehideDeadline = nil }
         let wanted = isRunning && (
-            UserDefaults.standard.bool(
-                forKey: DefaultsKey.menuBarOrganizerAutoRehideEnabled)
+            autoRehideEnabled
                 || UserDefaults.standard.bool(
                     forKey: DefaultsKey.menuBarOrganizerHoverExpandEnabled))
         guard wanted else {
             pointerTimer?.invalidate()
             pointerTimer = nil
             rehideDeadline = nil
-            hoverDwellTicks = 0
+            hoverEnteredAt = nil
             return
         }
         guard pointerTimer == nil else { return }
@@ -642,20 +645,21 @@ final class MenuBarOrganizerService: ObservableObject {
 
     private func pointerTick() {
         guard isRunning else { return }
+        let now = Date()
         let inStrip = MenuBarOrganizerSupport.isPointerInMenuBarStrip(
             NSEvent.mouseLocation,
-            screenFrames: NSScreen.screens.map(\.frame),
+            screenFrames: organizerMenuBarScreen.map { [$0.frame] } ?? [],
             thickness: NSStatusBar.system.thickness + 4)
         if let deadline = rehideDeadline {
             if MenuBarOrganizerSupport.shouldAutoRehide(
-                hiddenShown: hiddenSectionShown,
+                hiddenShown: hiddenSectionShown || secondaryPanel?.isVisible == true,
                 editing: editingCount > 0,
                 setupComplete: UserDefaults.standard.bool(
                     forKey: DefaultsKey.menuBarOrganizerSetupComplete),
-                deadlinePassed: Date() >= deadline,
+                deadlinePassed: now >= deadline,
                 pointerInStrip: inStrip) {
                 hideAll()
-            } else if !hiddenSectionShown {
+            } else if !hiddenSectionShown && secondaryPanel?.isVisible != true {
                 rehideDeadline = nil
             }
         }
@@ -665,14 +669,29 @@ final class MenuBarOrganizerService: ObservableObject {
               editingCount == 0,
               secondaryPanel?.isVisible != true
         else {
-            hoverDwellTicks = 0
+            hoverEnteredAt = nil
             return
         }
-        hoverDwellTicks = inStrip ? hoverDwellTicks + 1 : 0
-        if hoverDwellTicks >= MenuBarOrganizerSupport.hoverExpandDwellTicks {
-            hoverDwellTicks = 0
+        if inStrip {
+            if hoverEnteredAt == nil { hoverEnteredAt = now }
+        } else {
+            hoverEnteredAt = nil
+        }
+        if let hoverEnteredAt,
+           MenuBarOrganizerSupport.hoverDwellSatisfied(
+               elapsed: now.timeIntervalSince(hoverEnteredAt)) {
+            self.hoverEnteredAt = nil
             show(.hidden)
         }
+    }
+
+    /// One source of truth for both reveal placement and hover detection: the
+    /// screen containing this organizer's own status item is the menu bar the
+    /// feature can actually reveal into.
+    private var organizerMenuBarScreen: NSScreen? {
+        controlItem?.frame.flatMap { frame in
+            NSScreen.screens.first { $0.frame.intersects(frame) }
+        } ?? NSScreen.withMenuBar
     }
 
 

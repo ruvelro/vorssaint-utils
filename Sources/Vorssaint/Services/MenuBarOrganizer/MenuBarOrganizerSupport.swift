@@ -143,11 +143,14 @@ enum MenuBarOrganizerSupport {
         hiddenShown && !editing && setupComplete && deadlinePassed && !pointerInStrip
     }
 
-    /// Consecutive in-strip poll ticks before hover reveals the hidden
-    /// section: two ticks of the shared quarter-second poll, a half-second
-    /// dwell, long enough that a pointer passing through never triggers it.
-    static let hoverExpandDwellTicks = 2
+    /// Elapsed dwell rather than a tick count: entering one millisecond before
+    /// a free-running poll must not turn a stated half-second into 0.25 s.
+    static let hoverExpandDwell: TimeInterval = 0.5
     static let pointerPollInterval: TimeInterval = 0.25
+
+    static func hoverDwellSatisfied(elapsed: TimeInterval) -> Bool {
+        elapsed >= hoverExpandDwell
+    }
 
     static func collapsedLength(screenWidths: [CGFloat]) -> CGFloat {
         let widest = screenWidths.max() ?? 2_048
