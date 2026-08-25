@@ -113,7 +113,7 @@ struct ScreenRecordingCaptureSettings: View {
 
             Section {
                 folderRow
-                DisclosureGroup(strings.moreOptions, isExpanded: $showsMoreOptions) {
+                DisclosureGroup(isExpanded: $showsMoreOptions) {
                     VStack(alignment: .leading, spacing: 4) {
                         Picker(strings.qualityLabel, selection: $qualityRaw) {
                             Text(strings.qualitySmall).tag(RecorderSupport.Quality.small.rawValue)
@@ -142,6 +142,9 @@ struct ScreenRecordingCaptureSettings: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                } label: {
+                    FullWidthDisclosureLabel(strings.moreOptions,
+                                             isExpanded: $showsMoreOptions)
                 }
             }
 

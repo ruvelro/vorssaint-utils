@@ -8,15 +8,8 @@ import UniformTypeIdentifiers
 
 struct MediaSettings: View {
     var body: some View {
-        // Every Settings detail must host a scroll container: without one the
-        // split view loses its title bar safe area (macOS 27) and the page
-        // draws shifted up under the toolbar. It also lets the tall image
-        // converter card stay reachable when "More options" is expanded.
-        ScrollView {
-            MediaWorkspaceView(compact: false)
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-        }
+        MediaWorkspaceView(compact: false)
+            .padding(16)
     }
 }
 
@@ -67,12 +60,16 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaVideoEnd) private var videoEnd = 0.0
     @AppStorage(DefaultsKey.mediaVideoQuality) private var videoQuality = 0.68
     @AppStorage(DefaultsKey.mediaVideoMaxDimension) private var videoMaxDimension = 1280
+    @AppStorage(DefaultsKey.mediaVideoSizing) private var videoSizingRaw = MediaSizingMode.resolution.rawValue
+    @AppStorage(DefaultsKey.mediaVideoTargetMegabytes) private var videoTargetMegabytes = 20
 
     @AppStorage(DefaultsKey.mediaGIFStart) private var gifStart = 0.0
     @AppStorage(DefaultsKey.mediaGIFEnd) private var gifEnd = 0.0
     @AppStorage(DefaultsKey.mediaGIFWidth) private var gifWidth = 720
     @AppStorage(DefaultsKey.mediaGIFFPS) private var gifFPS = 12.0
     @AppStorage(DefaultsKey.mediaGIFLoops) private var gifLoops = true
+    @AppStorage(DefaultsKey.mediaGIFSizing) private var gifSizingRaw = MediaSizingMode.resolution.rawValue
+    @AppStorage(DefaultsKey.mediaGIFTargetMegabytes) private var gifTargetMegabytes = 10
 
     @AppStorage(DefaultsKey.mediaImageQuality) private var imageQuality = 0.72
     @AppStorage(DefaultsKey.mediaImageMaxDimension) private var imageMaxDimension = 1600
@@ -155,15 +152,11 @@ struct MediaWorkspaceView: View {
         VStack(alignment: .leading, spacing: compact ? 10 : 14) {
             header
             toolPicker
-            if compact {
-                ScrollView {
-                    content
-                        .padding(.trailing, 1)
-                }
-                .frame(maxHeight: 430)
-            } else {
+            ScrollView {
                 content
+                    .padding(.trailing, 1)
             }
+            .frame(maxHeight: compact ? 430 : .infinity)
         }
         .onChange(of: currentImageOptions) { oldOptions, newOptions in
             guard selectedTool == .imageCompressor else { return }
@@ -313,16 +306,26 @@ struct MediaWorkspaceView: View {
         case .videoCompressor:
             VStack(alignment: .leading, spacing: 10) {
                 timeRangeRow(start: $videoStart, end: $videoEnd)
-                compressionRow(value: $videoQuality)
-                stepperInt(l10n.s.mediaMaxSize, value: $videoMaxDimension, range: 640...3840, step: 320, suffix: "px")
+                sizingPicker(selection: $videoSizingRaw)
+                if videoSizing == .resolution {
+                    compressionRow(value: $videoQuality)
+                    stepperInt(l10n.s.mediaMaxSize, value: $videoMaxDimension, range: 640...3840, step: 320, suffix: "px")
+                } else {
+                    targetSizeRow(value: $videoTargetMegabytes)
+                }
             }
             .panelCard()
         case .gifMaker:
             VStack(alignment: .leading, spacing: 10) {
                 timeRangeRow(start: $gifStart, end: $gifEnd)
-                fpsSliderRow(value: $gifFPS, range: 1...30)
-                HStack(spacing: 10) {
-                    stepperInt(l10n.s.mediaWidth, value: $gifWidth, range: 160...1600, step: 80, suffix: "px")
+                sizingPicker(selection: $gifSizingRaw)
+                if gifSizing == .resolution {
+                    fpsSliderRow(value: $gifFPS, range: 1...30)
+                    HStack(spacing: 10) {
+                        stepperInt(l10n.s.mediaWidth, value: $gifWidth, range: 160...1600, step: 80, suffix: "px")
+                    }
+                } else {
+                    targetSizeRow(value: $gifTargetMegabytes)
                 }
                 Toggle(l10n.s.mediaLoopGIF, isOn: $gifLoops)
                     .toggleStyle(.checkbox)
@@ -358,12 +361,8 @@ struct MediaWorkspaceView: View {
                     }
                     .padding(.top, 6)
                 } label: {
-                    // Only the chevron toggles a stock DisclosureGroup on
-                    // macOS; stretch the label so the whole row works.
-                    Text(imageText.moreOptions)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { imageMoreOptionsExpanded.toggle() }
+                    FullWidthDisclosureLabel(imageText.moreOptions,
+                                             isExpanded: $imageMoreOptionsExpanded)
                 }
             }
             .panelCard()
@@ -838,6 +837,35 @@ struct MediaWorkspaceView: View {
         }
     }
 
+    private var videoSizing: MediaSizingMode {
+        MediaSizingMode.sanitized(videoSizingRaw)
+    }
+
+    private var gifSizing: MediaSizingMode {
+        MediaSizingMode.sanitized(gifSizingRaw)
+    }
+
+    private func sizingPicker(selection: Binding<String>) -> some View {
+        Picker("", selection: selection) {
+            Text(l10n.s.mediaSizingResolution).tag(MediaSizingMode.resolution.rawValue)
+            Text(l10n.s.mediaSizingFileSize).tag(MediaSizingMode.targetSize.rawValue)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+    }
+
+    private func targetSizeRow(value: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            integerField(l10n.s.mediaTargetSize,
+                         value: value,
+                         suffix: l10n.s.mediaMegabytesSuffix)
+            Text(l10n.s.mediaTargetSizeHint)
+                .font(.system(size: compact ? 9.5 : 10.5))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private func compressionRow(value: Binding<Double>) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(l10n.s.mediaQuality)
@@ -893,11 +921,30 @@ struct MediaWorkspaceView: View {
     }
 
     private func numberField(_ label: String, value: Binding<Double>, suffix: String) -> some View {
+        numberField(label, suffix: suffix) {
+            TextField("", value: value, formatter: Self.decimalFormatter)
+        }
+    }
+
+    private func integerField(_ label: String, value: Binding<Int>, suffix: String) -> some View {
+        // Wider than the trim fields: this label is a phrase in most languages,
+        // not a single word.
+        numberField(label, suffix: suffix, labelWidth: compact ? 74 : 92) {
+            TextField("", value: value, formatter: Self.megabytesFormatter)
+        }
+    }
+
+    private func numberField<Field: View>(_ label: String,
+                                          suffix: String,
+                                          labelWidth: CGFloat? = nil,
+                                          @ViewBuilder field: () -> Field) -> some View {
         HStack(spacing: 5) {
             Text(label)
                 .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                .frame(width: compact ? 48 : 62, alignment: .leading)
-            TextField("", value: value, formatter: Self.decimalFormatter)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: labelWidth ?? (compact ? 48 : 62), alignment: .leading)
+            field()
                 .textFieldStyle(.plain)
                 .font(.system(size: compact ? 13 : 14, weight: .medium, design: .monospaced))
                 .padding(.horizontal, 9)
@@ -1331,7 +1378,10 @@ struct MediaWorkspaceView: View {
                                                            maxDimension: videoMaxDimension,
                                                            fps: 30,
                                                            keepAudio: true,
-                                                           codec: .h264))
+                                                           codec: .h264,
+                                                           sizing: videoSizing,
+                                                           targetBytes: MediaSupport.targetBytes(
+                                                               megabytes: videoTargetMegabytes)))
         case .gifMaker:
             media.makeGIF(inputURL: inputURL, outputURL: outputURL,
                           options: MediaGIFOptions(start: gifStart,
@@ -1339,7 +1389,10 @@ struct MediaWorkspaceView: View {
                                                    quality: 0.74,
                                                    width: gifWidth,
                                                    fps: gifFPS,
-                                                   loops: gifLoops))
+                                                   loops: gifLoops,
+                                                   sizing: gifSizing,
+                                                   targetBytes: MediaSupport.targetBytes(
+                                                       megabytes: gifTargetMegabytes)))
         case .imageCompressor:
             if inputURLs.count > 1 {
                 media.processImages(inputURLs: inputURLs,
@@ -1414,6 +1467,7 @@ struct MediaWorkspaceView: View {
         case let .gifTooLong(maxSeconds):
             return String(format: FeatureStrings.recorder(l10n.language).gifTooLongFormat,
                           maxSeconds)
+        case .targetTooSmall: return l10n.s.mediaErrorTargetTooSmall
         case .watermarkUnavailable: return imageText.noLogo
         case .cancelled: return l10n.s.mediaCancelled
         case let .failed(message): return message.isEmpty ? l10n.s.mediaErrorUnsupported : message
@@ -1498,6 +1552,17 @@ struct MediaWorkspaceView: View {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
+
+    /// A size target is typed rather than stepped, so the formatter is what
+    /// keeps it a whole number the planner can work with.
+    private static let megabytesFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .none
+        formatter.allowsFloats = false
+        formatter.minimum = NSNumber(value: MediaSupport.minimumTargetMegabytes)
+        formatter.maximum = NSNumber(value: MediaSupport.maximumTargetMegabytes)
+        return formatter
+    }()
 
     private static let decimalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()

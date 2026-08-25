@@ -110,15 +110,7 @@ struct MonitorPanelConfig: View {
             items()
                 .disabled(!master.wrappedValue)
         } label: {
-            HStack {
-                Text(title)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                toggle(id)
-            }
+            FullWidthDisclosureLabel(title, isExpanded: expansionBinding(for: id))
         }
     }
 
