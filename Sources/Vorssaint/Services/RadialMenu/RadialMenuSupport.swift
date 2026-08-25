@@ -268,6 +268,7 @@ enum RadialMenuMediaKey: String, Codable, CaseIterable, Identifiable {
 }
 
 struct RadialNowPlayingSnapshot: Equatable {
+    let isPlaying: Bool
     let title: String?
     let artist: String?
     let album: String?
@@ -305,8 +306,9 @@ enum RadialNowPlayingSupport {
     static func snapshot(info: [String: Any],
                          isPlaying: Bool,
                          appBundleIdentifier: String?,
-                         appPID: Int32) -> RadialNowPlayingSnapshot? {
-        guard isPlaying else { return nil }
+                         appPID: Int32,
+                         includePaused: Bool = false) -> RadialNowPlayingSnapshot? {
+        guard isPlaying || includePaused else { return nil }
         let title = sanitizedText(info[titleKey])
         let artist = sanitizedText(info[artistKey])
         let album = sanitizedText(info[albumKey])
@@ -314,7 +316,8 @@ enum RadialNowPlayingSupport {
         let pid = appPID > 0 ? appPID : nil
         let artworkData = sanitizedArtworkData(info[artworkDataKey])
         guard title != nil || bundleIdentifier != nil || pid != nil else { return nil }
-        return RadialNowPlayingSnapshot(title: title,
+        return RadialNowPlayingSnapshot(isPlaying: isPlaying,
+                                        title: title,
                                         artist: artist,
                                         album: album,
                                         artworkData: artworkData,

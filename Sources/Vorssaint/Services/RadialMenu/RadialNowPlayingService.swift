@@ -13,7 +13,7 @@ import SwiftUI
 final class RadialNowPlayingService {
     static let shared = RadialNowPlayingService()
 
-    private let bridge = MediaRemoteNowPlayingBridge()
+    private let bridge = MediaRemoteNowPlayingBridge.shared
     private var generation = 0
     private(set) var state = RadialNowPlayingState.nothingPlaying
     private var pendingPresentationAnchor: CGPoint?
@@ -288,7 +288,9 @@ enum RadialNowPlayingApplication {
     }
 }
 
-private final class MediaRemoteNowPlayingBridge {
+final class MediaRemoteNowPlayingBridge {
+    static let shared = MediaRemoteNowPlayingBridge()
+
     private typealias InfoCallback = @convention(block) (NSDictionary?) -> Void
     private typealias InfoFunction = @convention(c) (DispatchQueue, @escaping InfoCallback) -> Void
     private typealias PIDCallback = @convention(block) (Int32) -> Void
@@ -297,6 +299,7 @@ private final class MediaRemoteNowPlayingBridge {
     private typealias DisplayIDFunction = @convention(c) (DispatchQueue, @escaping DisplayIDCallback) -> Void
     private typealias IsPlayingCallback = @convention(block) (Bool) -> Void
     private typealias IsPlayingFunction = @convention(c) (DispatchQueue, @escaping IsPlayingCallback) -> Void
+    private typealias RegisterNotificationsFunction = @convention(c) (DispatchQueue) -> Void
 
     private let queue = DispatchQueue(label: "com.vorssaint.radial-now-playing", qos: .userInitiated)
     private let handle: UnsafeMutableRawPointer?
@@ -304,6 +307,9 @@ private final class MediaRemoteNowPlayingBridge {
     private let getPID: PIDFunction?
     private let getDisplayID: DisplayIDFunction?
     private let getIsPlaying: IsPlayingFunction?
+    private let registerNotifications: RegisterNotificationsFunction?
+    private let registrationLock = NSLock()
+    private var notificationsRegistered = false
 
     init() {
         let handle = dlopen("/System/Library/PrivateFrameworks/MediaRemote.framework/MediaRemote", RTLD_LAZY)
@@ -314,18 +320,22 @@ private final class MediaRemoteNowPlayingBridge {
                                      as: DisplayIDFunction.self)
         getIsPlaying = Self.function(handle, "MRMediaRemoteGetNowPlayingApplicationIsPlaying",
                                      as: IsPlayingFunction.self)
+        registerNotifications = Self.function(handle,
+                                               "MRMediaRemoteRegisterForNowPlayingNotifications",
+                                               as: RegisterNotificationsFunction.self)
     }
 
     deinit {
         if let handle { dlclose(handle) }
     }
 
-    func fetch(completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {
+    func fetch(includePaused: Bool = false,
+               completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {
         guard let getInfo else {
             completion(nil)
             return
         }
-        let result = FetchResult(completion: completion)
+        let result = FetchResult(includePaused: includePaused, completion: completion)
         let group = DispatchGroup()
 
         group.enter()
@@ -359,6 +369,27 @@ private final class MediaRemoteNowPlayingBridge {
         queue.asyncAfter(deadline: .now() + 0.75) { result.finish() }
     }
 
+    /// MediaRemote publishes these after registration, so consumers can
+    /// refresh on actual track/player changes instead of polling once a second.
+    func observeChanges(_ handler: @escaping () -> Void) -> [NSObjectProtocol] {
+        registrationLock.withLock {
+            if !notificationsRegistered {
+                registerNotifications?(.main)
+                notificationsRegistered = true
+            }
+        }
+        let names = [
+            "kMRMediaRemoteNowPlayingInfoDidChangeNotification",
+            "kMRMediaRemoteNowPlayingApplicationDidChangeNotification",
+            "kMRMediaRemoteNowPlayingApplicationIsPlayingDidChangeNotification",
+        ]
+        return names.map { rawName in
+            NotificationCenter.default.addObserver(forName: Notification.Name(rawName),
+                                                   object: nil,
+                                                   queue: .main) { _ in handler() }
+        }
+    }
+
     private static func function<T>(_ handle: UnsafeMutableRawPointer?,
                                     _ name: String,
                                     as type: T.Type) -> T? {
@@ -373,9 +404,12 @@ private final class MediaRemoteNowPlayingBridge {
         private var displayID: String?
         private var remoteIsPlaying: Bool?
         private var finished = false
+        private let includePaused: Bool
         private let completion: (RadialNowPlayingSnapshot?) -> Void
 
-        init(completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {
+        init(includePaused: Bool,
+             completion: @escaping (RadialNowPlayingSnapshot?) -> Void) {
+            self.includePaused = includePaused
             self.completion = completion
         }
 
@@ -407,7 +441,8 @@ private final class MediaRemoteNowPlayingBridge {
             completion(RadialNowPlayingSupport.snapshot(info: info,
                                                         isPlaying: isPlaying,
                                                         appBundleIdentifier: displayID,
-                                                        appPID: pid))
+                                                        appPID: pid,
+                                                        includePaused: includePaused))
         }
     }
 }

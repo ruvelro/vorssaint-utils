@@ -715,7 +715,7 @@ final class RadialMenuService: ObservableObject {
 
     /// Posts the aux-button pair the physical media keys produce, so whatever
     /// player owns the media keys reacts exactly as if F8 was pressed.
-    private static func postMediaKey(_ key: RadialMenuMediaKey) {
+    static func postMediaKey(_ key: RadialMenuMediaKey) {
         guard let auxKeyType = key.auxKeyType else { return }
         postAuxKey(auxKeyType, down: true)
         postAuxKey(auxKeyType, down: false)

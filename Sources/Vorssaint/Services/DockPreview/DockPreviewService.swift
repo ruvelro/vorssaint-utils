@@ -22,8 +22,9 @@ final class DockPreviewService: ObservableObject {
     @Published private(set) var currentAppName: String?
     @Published private(set) var isPinned = false
     @Published private(set) var mediaPlayer: DockMediaPlayer?
+    /// Which edge the Dock is on, so the panel can run its cards along it.
+    @Published private(set) var orientation: DockPreviewOrientation = .bottom
     private var isDraggingWindow = false
-    private var snapTarget: WindowEdgeSnapTarget?
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -51,8 +52,7 @@ final class DockPreviewService: ObservableObject {
     private var dockPIDCache: pid_t?
     private var cachedPreferences: DockPreviewPreferences?
     private var currentMediaSource: DockMediaPlayerSource?
-    private var currentMediaFallbackHit: DockHit?
-    private var mediaRefreshTimer: Timer?
+    private var mediaObservers: [NSObjectProtocol] = []
 
     private init() {}
 
@@ -74,7 +74,9 @@ final class DockPreviewService: ObservableObject {
 
         if currentMediaSource != nil,
            !UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewMediaControls) {
-            endSession()
+            stopMediaObserving()
+            mediaPlayer = nil
+            resizePanelForCurrentWindows()
         }
 
         let availability = DockPreviewSupport.availability(
@@ -211,14 +213,11 @@ final class DockPreviewService: ObservableObject {
         guard isVisible,
               windows.contains(item),
               DockPreviewSupport.canDragToPlace(hasWindowID: item.windowID != nil,
-                                                isOnScreen: item.isOnScreen,
-                                                isMinimized: item.isMinimized,
                                                 isFullscreen: item.isFullscreen),
               let image = item.previewWindowID.flatMap({ previews[$0] })
         else { return }
 
         isDraggingWindow = true
-        snapTarget = nil
         cancelPendingHide()
         cancelPendingHover()
         DockPreviewDragGhost.shared.begin(image: image, at: NSEvent.mouseLocation)
@@ -226,66 +225,36 @@ final class DockPreviewService: ObservableObject {
 
     func updateWindowDrag() {
         guard isDraggingWindow else { return }
-        let pointer = NSEvent.mouseLocation
-        snapTarget = edgeSnapTarget(at: pointer)
-        if let snapTarget {
-            DockPreviewDragGhost.shared.snap(to: snapTarget.frame)
-        } else {
-            DockPreviewDragGhost.shared.move(to: pointer)
-        }
-    }
-
-    /// Reuses the edge model that dragging a window's own title bar already
-    /// uses, so both gestures snap to the same regions. Skipped while macOS is
-    /// doing its own edge tiling — two things claiming the same edge is worse
-    /// than one, and the user has already picked which one they want.
-    private func edgeSnapTarget(at pointer: CGPoint) -> WindowEdgeSnapTarget? {
-        guard !WindowEdgeSnapSupport.isSystemTilingEnabled else { return nil }
-        let screens = NSScreen.screens.map {
-            WindowEdgeSnapScreen(frame: $0.frame, visibleFrame: $0.visibleFrame)
-        }
-        return WindowEdgeSnapSupport.target(at: pointer, screens: screens)
+        DockPreviewDragGhost.shared.move(to: NSEvent.mouseLocation)
     }
 
     /// Drops the window where the stand-in was: its top-left corner goes to the
-    /// pointer, then the window comes forward. The session ends either way, so
-    /// a drop that could not move the window still gets the user out of the
-    /// panel instead of leaving it hanging over the desktop.
+    /// pointer and the window keeps the size the user gave it, restored and
+    /// carried to this desktop if it was somewhere else. The session ends
+    /// either way, so a drop that could not move the window still gets the user
+    /// out of the panel instead of leaving it hanging over the desktop.
     func endWindowDrag(_ item: SwitcherItem) {
         guard isDraggingWindow else { return }
         isDraggingWindow = false
         DockPreviewDragGhost.shared.end()
 
-        guard let windowID = item.windowID else {
+        guard item.windowID != nil else {
             endSession()
             return
         }
         let pointer = NSEvent.mouseLocation
-        let selectedSnapTarget = snapTarget
-        snapTarget = nil
-
-        // A snapped drop owns position and size; a free drop only moves the
-        // window, leaving whatever size the user already chose for it.
-        let moved: Bool
-        if let selectedSnapTarget {
-            moved = WindowLayoutService.shared.place(windowID: windowID,
-                                                     pid: item.windowOwnerPID,
-                                                     at: selectedSnapTarget)
-        } else {
-            let visibleFrame = (NSScreen.screens.first { $0.frame.contains(pointer) }
-                ?? NSScreen.withMouse)?.visibleFrame ?? .zero
-            let origin = axPoint(fromAppKit: DockPreviewSupport.dragOrigin(
-                pointer: pointer,
-                windowSize: item.frame.size,
-                visibleFrame: visibleFrame
-            ))
-            moved = WindowActivator.setWindowOrigin(origin,
-                                                     windowID: windowID,
-                                                     pid: item.windowOwnerPID)
-        }
+        let visibleFrame = (NSScreen.screens.first { $0.frame.contains(pointer) }
+            ?? NSScreen.withMouse)?.visibleFrame ?? .zero
+        let origin = axPoint(fromAppKit: DockPreviewSupport.dragOrigin(
+            pointer: pointer,
+            windowSize: item.frame.size,
+            visibleFrame: visibleFrame
+        ))
+        let moved = WindowActivator.place(item, origin: origin, pointer: pointer)
         endSession()
         if moved {
             WindowActivator.activate(item)
+            WindowActivator.focusPlacedWindow(item)
         }
     }
 
@@ -304,9 +273,8 @@ final class DockPreviewService: ObservableObject {
     }
 
     func mediaCommand(_ command: DockMediaCommand) {
-        guard let bundleID = currentMediaSource?.bundleID ?? mediaPlayer?.bundleID else { return }
-        DockMediaPlayerService.shared.perform(command, for: bundleID)
-        scheduleMediaRefresh(after: 0.28)
+        guard mediaPlayer != nil else { return }
+        DockMediaPlayerService.shared.perform(command)
     }
 
     private func selectAdjacentWindow(offset: Int) {
@@ -647,12 +615,6 @@ final class DockPreviewService: ObservableObject {
         cancelPendingHover()
         cancelPendingHide()
 
-        if UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewMediaControls),
-           let source = DockMediaPlayerSource(app: hit.app) {
-            beginMediaSession(hit, source: source)
-            return
-        }
-
         beginWindowSession(hit, prefetched: prefetched)
     }
 
@@ -672,7 +634,6 @@ final class DockPreviewService: ObservableObject {
         }
 
         currentSessionPID = hit.app.processIdentifier
-        currentMediaFallbackHit = nil
         isPinned = false
         hasEnteredPanel = false
         currentAppName = hit.app.localizedName ?? hit.app.bundleIdentifier ?? ""
@@ -690,47 +651,17 @@ final class DockPreviewService: ObservableObject {
         }
 
         showPanel(for: hit, itemCount: list.count)
-    }
-
-    private func beginMediaSession(_ hit: DockHit, source: DockMediaPlayerSource) {
-        if isVisible {
-            tearDownVisuals()
-        }
-
-        currentSessionPID = hit.app.processIdentifier
-        currentMediaSource = source
-        currentMediaFallbackHit = hit
-        isPinned = false
-        hasEnteredPanel = false
-        currentAppName = source.appName
-        windows = []
-        previews = [:]
-        selectedWindowID = nil
-        mediaPlayer = DockMediaPlayer(bundleID: source.bundleID,
-                                      appName: source.appName,
-                                      title: source.appName,
-                                      artist: nil,
-                                      album: nil,
-                                      state: .stopped,
-                                      position: nil,
-                                      duration: nil,
-                                      artwork: nil,
-                                      appIcon: source.appIcon)
-
-        showPanel(for: hit, itemCount: 1, mode: .media)
-        refreshMediaNow()
-        startMediaRefreshTimer()
+        startMediaIfEnabled(for: hit.app)
     }
 
     /// Fully ends the session and tears down the panel.
     private func endSession() {
         isDraggingWindow = false
-        snapTarget = nil
         DockPreviewDragGhost.shared.end()
         cancelPendingHover()
         cancelPendingHide()
         WindowPreviewProvider.shared.cancel()
-        stopMediaRefreshTimer()
+        stopMediaObserving()
         tearDownVisuals()
         isPinned = false
         panel?.orderOut(nil)
@@ -740,13 +671,12 @@ final class DockPreviewService: ObservableObject {
     /// so the same session can be re-pointed during a Dock switch.
     private func tearDownVisuals() {
         cancelPendingMinimizeConfirmations()
-        stopMediaRefreshTimer()
+        stopMediaObserving()
 
         windows = []
         previews = [:]
         mediaPlayer = nil
         currentMediaSource = nil
-        currentMediaFallbackHit = nil
         selectedWindowID = nil
         currentAppName = nil
         currentSessionPID = nil
@@ -877,15 +807,16 @@ final class DockPreviewService: ObservableObject {
 
     // MARK: - Panel
 
-    private func showPanel(for hit: DockHit, itemCount: Int, mode: DockPreviewPanelMode = .windows) {
+    private func showPanel(for hit: DockHit, itemCount: Int) {
         let panel = ensurePanel()
         let screenVisibleFrame = visibleFrameForScreen(containing: hit.iconFrame)
-        let size: CGSize
-        switch mode {
-        case .windows:
-            size = DockPreviewSupport.panelSize(itemCount: itemCount, screenVisibleFrame: screenVisibleFrame)
-        case .media:
-            size = DockPreviewSupport.mediaPanelSize(screenVisibleFrame: screenVisibleFrame)
+        var size = DockPreviewSupport.panelSize(itemCount: itemCount,
+                                                screenVisibleFrame: screenVisibleFrame,
+                                                isPinned: false,
+                                                orientation: hit.preferences.orientation)
+        if mediaPlayer != nil {
+            size = DockPreviewSupport.combinedMediaPanelSize(windowPanelSize: size,
+                                                             screenVisibleFrame: screenVisibleFrame)
         }
         let gap = hit.preferences.autohide ? DockPreviewSupport.autohidePanelGap : DockPreviewSupport.panelGap
         let frame = DockPreviewSupport.panelFrame(anchor: hit.iconFrame,
@@ -901,44 +832,39 @@ final class DockPreviewService: ObservableObject {
         )
         activeIconFrame = hit.iconFrame
         activeDockPreferences = hit.preferences
+        orientation = hit.preferences.orientation
 
         panel.setFrame(frame, display: true, animate: false)
         panel.contentViewController?.view.layoutSubtreeIfNeeded()
         panel.orderFrontRegardless()
     }
 
-    private func startMediaRefreshTimer() {
-        stopMediaRefreshTimer()
-        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+    private func startMediaIfEnabled(for app: NSRunningApplication) {
+        guard UserDefaults.standard.bool(forKey: DefaultsKey.dockPreviewMediaControls),
+              let source = DockMediaPlayerSource(app: app)
+        else { return }
+        currentMediaSource = source
+        mediaObservers = DockMediaPlayerService.shared.observeChanges { [weak self] in
             self?.refreshMediaNow()
         }
-        timer.tolerance = 0.2
-        RunLoop.main.add(timer, forMode: .common)
-        mediaRefreshTimer = timer
+        refreshMediaNow()
     }
 
-    private func stopMediaRefreshTimer() {
-        mediaRefreshTimer?.invalidate()
-        mediaRefreshTimer = nil
-    }
-
-    private func scheduleMediaRefresh(after delay: TimeInterval) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.refreshMediaNow()
+    private func stopMediaObserving() {
+        for observer in mediaObservers {
+            NotificationCenter.default.removeObserver(observer)
         }
+        mediaObservers = []
+        currentMediaSource = nil
     }
 
     private func refreshMediaNow() {
         guard let source = currentMediaSource else { return }
         DockMediaPlayerService.shared.snapshot(for: source) { [weak self] snapshot in
             guard let self, self.currentMediaSource == source else { return }
-            if let snapshot {
-                self.mediaPlayer = snapshot
-            } else if let fallbackHit = self.currentMediaFallbackHit {
-                self.beginWindowSession(fallbackHit)
-            } else {
-                self.endSession()
-            }
+            guard self.mediaPlayer != snapshot else { return }
+            self.mediaPlayer = snapshot
+            self.resizePanelForCurrentWindows()
         }
     }
 
@@ -950,7 +876,14 @@ final class DockPreviewService: ObservableObject {
         else { return }
 
         let screenVisibleFrame = visibleFrameForScreen(containing: iconFrame)
-        let size = DockPreviewSupport.panelSize(itemCount: windows.count, screenVisibleFrame: screenVisibleFrame)
+        var size = DockPreviewSupport.panelSize(itemCount: windows.count,
+                                                screenVisibleFrame: screenVisibleFrame,
+                                                isPinned: false,
+                                                orientation: preferences.orientation)
+        if mediaPlayer != nil {
+            size = DockPreviewSupport.combinedMediaPanelSize(windowPanelSize: size,
+                                                             screenVisibleFrame: screenVisibleFrame)
+        }
         let gap = preferences.autohide ? DockPreviewSupport.autohidePanelGap : DockPreviewSupport.panelGap
         let frame = DockPreviewSupport.panelFrame(anchor: iconFrame,
                                                   panelSize: size,
@@ -1321,11 +1254,6 @@ private struct DockHit {
     let preferences: DockPreviewPreferences
 }
 
-private enum DockPreviewPanelMode {
-    case windows
-    case media
-}
-
 private enum Zone {
     case panel
     case openingPath
@@ -1606,7 +1534,8 @@ final class DockPreviewPinnedPanel: ObservableObject, Identifiable {
     private func resizePanel() {
         guard let panel else { return }
         let size = DockPreviewSupport.panelSize(itemCount: windows.count,
-                                                screenVisibleFrame: visibleFrameForScreen(containing: panel.frame))
+                                                screenVisibleFrame: visibleFrameForScreen(containing: panel.frame),
+                                                isPinned: true)
         var frame = panel.frame
         frame.size = size
         panel.setFrame(clampedPanelFrame(frame), display: true, animate: true)
