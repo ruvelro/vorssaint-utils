@@ -4654,7 +4654,7 @@ struct MetricsTests {
                                                  maxDimension: 12_000,
                                                  format: .jpeg,
                                                  stripMetadata: true,
-                                                 resizeMode: .maxDimension(12_000))
+                                                 resizeMode: nil)
         expect(largeSideOptions.maxDimension == 12_000
                 && largeSideOptions.resizeMode.maxDimension == 12_000,
                "Image profile fields share the same max-side sanitizer")
