@@ -105,12 +105,17 @@ struct MonitorPanelConfig: View {
                                       title: String,
                                       master: Binding<Bool>,
                                       @ViewBuilder _ items: @escaping () -> Content) -> some View {
-        DisclosureGroup(isExpanded: expansionBinding(for: id)) {
-            Toggle(l10n.s.monitorShowInPanel, isOn: master)
-            items()
-                .disabled(!master.wrappedValue)
-        } label: {
-            FullWidthDisclosureLabel(title, isExpanded: expansionBinding(for: id))
+        DisclosureHeaderRow(isExpanded: expansionBinding(for: id)) {
+            Text(title)
+            Spacer()
+        }
+        if expandedBlocks.contains(id) {
+            Group {
+                Toggle(l10n.s.monitorShowInPanel, isOn: master)
+                items()
+                    .disabled(!master.wrappedValue)
+            }
+            .disclosureIndent()
         }
     }
 

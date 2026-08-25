@@ -81,11 +81,13 @@ struct URLCleanerSettings: View {
                         }
                     }
                 }
-                DisclosureGroup(isExpanded: $showingAddSite) {
+                DisclosureHeaderRow(isExpanded: $showingAddSite) {
+                    Text(l10n.s.urlCleanerRulesAddSite)
+                    Spacer()
+                }
+                if showingAddSite {
                     addSiteRow
-                } label: {
-                    FullWidthDisclosureLabel(l10n.s.urlCleanerRulesAddSite,
-                                             isExpanded: $showingAddSite)
+                        .disclosureIndent()
                 }
                 Text(l10n.s.urlCleanerRulesCaption)
                     .font(.caption)

@@ -344,7 +344,11 @@ struct MediaWorkspaceView: View {
                 .pickerStyle(.segmented)
                 compressionRow(value: $imageQuality)
                 imageResizeSection
-                DisclosureGroup(isExpanded: $imageMoreOptionsExpanded) {
+                DisclosureHeaderRow(isExpanded: $imageMoreOptionsExpanded) {
+                    Text(imageText.moreOptions)
+                    Spacer()
+                }
+                if imageMoreOptionsExpanded {
                     VStack(alignment: .leading, spacing: 10) {
                         imageProfileRow
                         // PDF output never carries EXIF (the image is re-encoded
@@ -360,9 +364,7 @@ struct MediaWorkspaceView: View {
                             .toggleStyle(.checkbox)
                     }
                     .padding(.top, 6)
-                } label: {
-                    FullWidthDisclosureLabel(imageText.moreOptions,
-                                             isExpanded: $imageMoreOptionsExpanded)
+                    .disclosureIndent()
                 }
             }
             .panelCard()

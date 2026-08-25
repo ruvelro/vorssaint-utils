@@ -272,15 +272,21 @@ struct WhatsAppDownloadsSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                DisclosureGroup(isExpanded: $showingOrganizerFileTypes) {
-                    Toggle(text.allTypes, isOn: allOrganizerCategoriesBinding)
-                        .toggleStyle(.checkbox)
-                    organizerCategoryPair(.image, .video)
-                    organizerCategoryPair(.audio, .document)
-                    organizerCategoryPair(.archive, .other)
-                } label: {
-                    FullWidthDisclosureLabel(text.fileTypes,
-                                             isExpanded: $showingOrganizerFileTypes)
+                Group {
+                    DisclosureHeaderRow(isExpanded: $showingOrganizerFileTypes) {
+                        Text(text.fileTypes)
+                        Spacer()
+                    }
+                    if showingOrganizerFileTypes {
+                        Group {
+                            Toggle(text.allTypes, isOn: allOrganizerCategoriesBinding)
+                                .toggleStyle(.checkbox)
+                            organizerCategoryPair(.image, .video)
+                            organizerCategoryPair(.audio, .document)
+                            organizerCategoryPair(.archive, .other)
+                        }
+                        .disclosureIndent()
+                    }
                 }
                 .disabled(organizer.isBusy)
 
