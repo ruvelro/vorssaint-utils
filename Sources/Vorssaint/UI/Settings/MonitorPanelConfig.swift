@@ -127,13 +127,6 @@ struct MonitorPanelConfig: View {
         )
     }
 
-    private func toggle(_ id: PanelConfigBlock) {
-        if expandedBlocks.contains(id) {
-            expandedBlocks.remove(id)
-        } else {
-            expandedBlocks.insert(id)
-        }
-    }
 }
 
 private enum PanelConfigBlock: Hashable {
