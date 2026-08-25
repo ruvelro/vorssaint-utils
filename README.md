@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/logo-dark.png">
-    <img src="docs/assets/readme/logo.png" width="220" alt="Vorssaint logo">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/logo-dark.svg">
+    <img src="docs/assets/readme/logo.svg" width="220" alt="Vorssaint logo">
   </picture>
 </p>
 
@@ -23,9 +23,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vorssaint/vorssaint-utils/releases"><img src="https://img.shields.io/github/v/release/vorssaint/vorssaint-utils?label=release&color=4c8dff" alt="Latest release"></a>
-  <a href="https://github.com/vorssaint/vorssaint-utils/releases"><img src="https://img.shields.io/github/downloads/vorssaint/vorssaint-utils/total?color=4c8dff" alt="Downloads"></a>
-  <a href="https://github.com/vorssaint/vorssaint-utils/actions/workflows/ci.yml"><img src="https://github.com/vorssaint/vorssaint-utils/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI status"></a>
+  <a href="https://github.com/vorssaintapp/vorssaint-utils/releases"><img src="https://img.shields.io/github/v/release/vorssaintapp/vorssaint-utils?label=release&color=4c8dff" alt="Latest release"></a>
+  <a href="https://github.com/vorssaintapp/vorssaint-utils/releases"><img src="https://img.shields.io/github/downloads/vorssaintapp/vorssaint-utils/total?color=4c8dff" alt="Downloads"></a>
+  <a href="https://github.com/vorssaintapp/vorssaint-utils/actions/workflows/ci.yml"><img src="https://github.com/vorssaintapp/vorssaint-utils/actions/workflows/ci.yml/badge.svg?branch=main&event=push" alt="CI status"></a>
   <a href="#what-you-need"><img src="https://img.shields.io/badge/macOS-14%2B%20Apple%20Silicon-black" alt="macOS 14 and newer, Apple Silicon"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue" alt="License GPL 3.0 or later"></a>
 </p>
@@ -42,9 +42,9 @@
 </p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/53716?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-53716" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/53716/daily?language=Swift" alt="vorssaint/vorssaint-utils | Trendshift daily ranking" width="250" height="55"></a>
+  <a href="https://trendshift.io/repositories/53716?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-53716" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/53716/daily?language=Swift" alt="vorssaintapp/vorssaint-utils | Trendshift daily ranking" width="250" height="55"></a>
   &nbsp;&nbsp;
-  <a href="https://trendshift.io/repositories/53716?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-53716" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/53716/weekly?language=Swift" alt="vorssaint/vorssaint-utils | Trendshift weekly ranking" width="250" height="55"></a>
+  <a href="https://trendshift.io/repositories/53716?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-53716" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/53716/weekly?language=Swift" alt="vorssaintapp/vorssaint-utils | Trendshift weekly ranking" width="250" height="55"></a>
 </p>
 
 <p align="center">
@@ -66,7 +66,7 @@ First setup offers three one click bundles, Essentials, Windows, and Battery and
   <img src="docs/assets/readme/features-hub.png" width="720" alt="The Features hub in Settings, installing and uninstalling whole features">
 </p>
 
-The rest bends the same way: panel sections reorder and hide, the compact layout trades sections for tabs, settings export to a file and import on a new Mac, the app can stay light or dark apart from the Mac, and the whole app speaks thirteen languages.
+The rest bends the same way: panel sections reorder and hide, the compact layout trades sections for tabs, settings export to a file and import on a new Mac, the app can stay light or dark apart from the Mac, and the whole app speaks more than a dozen languages.
 
 ## Everything it does
 
@@ -83,7 +83,7 @@ The rest bends the same way: panel sections reorder and hide, the compact layout
 - **System monitor.** CPU, GPU, memory, swap use and temperatures with history graphs, including a choice between total memory in use and memory held by apps, plus battery health, time remaining, cycle count, power draw, an optional Fan Control beta with continuous manual speeds, custom temperature curves and live RPM, the apps burning energy right now and a shortcut to the Mac's full process inspector.
 - **Menu bar readouts.** Keep the readings you care about in the bar itself, with values or compact usage bars, including optional battery time remaining and fan speed, combined or as separate items.
 - **Network.** Live rates, session totals and a built in speed test.
-- **Alerts.** Optional notifications for sustained CPU load, high temperature, memory pressure, low disk space and low battery.
+- **Alerts.** Optional notifications for sustained CPU load, high CPU or battery temperature, memory pressure, low disk space and low battery.
 
 ### Windows and the Dock
 
@@ -153,6 +153,7 @@ The rest bends the same way: panel sections reorder and hide, the compact layout
 - **HDR.** Switch HDR on or off for a monitor that has modes to switch between, the same switch System Settings offers. While HDR is on the monitor takes its own brightness over, so the slider dims the picture instead.
 - **Monitor speakers.** Monitors with speakers of their own get a volume slider and a mute button, over the same channel their buttons use, and the keyboard volume keys can reach them instead of a level macOS cannot change.
 - **Extra brightness.** Pushes a display past its regular maximum using its HDR headroom, on the XDR panel of a MacBook Pro and on external HDR monitors.
+- **Bluetooth on sleep.** Switches Bluetooth off while the Mac sleeps, so a laptop in a bag stops stealing the headphones you are listening to elsewhere. Bluetooth you had already turned off stays off, and only what Vorssaint switched off comes back on wake.
 
 ## Install
 
@@ -162,7 +163,7 @@ With [Homebrew](https://brew.sh):
 brew install --cask vorssaint
 ```
 
-Or grab the disk image from the [releases page](https://github.com/vorssaint/vorssaint-utils/releases) and drag Vorssaint into Applications.
+Or grab the disk image from the [releases page](https://github.com/vorssaintapp/vorssaint-utils/releases) and drag Vorssaint into Applications.
 
 Builds are signed with an Apple Developer ID and notarized, so macOS opens them without a fuss and your permissions survive updates.
 
@@ -210,7 +211,7 @@ The shelf and almost every quick toggle need no permission at all. Finder cut an
 ### Build it yourself
 
 ```sh
-git clone https://github.com/vorssaint/vorssaint-utils.git
+git clone https://github.com/vorssaintapp/vorssaint-utils.git
 cd vorssaint-utils
 ./build.sh            # compile, generate the icon, assemble the signed bundle
 ./build.sh --install  # the same, then install into Applications and launch
@@ -236,6 +237,10 @@ The [troubleshooting guide](docs/TROUBLESHOOTING.md) walks through the common ca
 Vorssaint went from first commit to the front of GitHub trending in three days, top of the Swift charts, and issues and pull requests have shaped every release since. Bug reports, feature ideas and translations are all welcome, starting from the [contributing guide](CONTRIBUTING.md).
 
 Vorssaint is free and will stay that way. If it earned its place in your menu bar, a star helps other people find it, and a [coffee](https://buymeacoffee.com/vorssaint) keeps the maintainer awake, with or without the Keep awake feature.
+
+## Acknowledgements
+
+- App icon designed by [@divisionseven](https://github.com/divisionseven)
 
 ## License
 

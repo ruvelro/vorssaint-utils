@@ -116,8 +116,12 @@ extension AppFeature {
             // the built-in panel, which has no notification to wait on.
             return UserDefaults.standard.bool(forKey: DefaultsKey.brightnessSyncEnabled)
                 ? .periodic : .idle
-        case .pastePlain, .mixer, .soundOutputSwitcher, .micMute,
+        case .mixer:
+            return UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
+                ? .keyboard : .idle
+        case .pastePlain, .soundOutputSwitcher, .micMute,
              .musicBlock, .keepAwake, .quickLauncher, .quickToggles, .colorPicker,
+             .bluetoothSleep,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .fanControl,
              .diskImageInstaller, .killProcess:

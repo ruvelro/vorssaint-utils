@@ -139,6 +139,11 @@ final class ExtraBrightnessService: ObservableObject {
                                                               potentialEDR: potential) else { return nil }
                 return (screen, id, panelReference)
             }
+            // BrightnessService deliberately routes an HDR-owned monitor
+            // through gamma dimming. Do not place a competing EDR multiplier
+            // on that same display; the two transforms otherwise depend on
+            // write order and compress the headroom each other is measuring.
+            guard !BrightnessService.shared.hdrOwnsLuminance(for: id) else { return nil }
             guard ExtraBrightnessSupport.isBoostableExternal(potentialEDR: potential) else { return nil }
             return (screen, id, ExtraBrightnessSupport.externalReference(potentialEDR: potential))
         }
@@ -267,6 +272,13 @@ final class ExtraBrightnessService: ObservableObject {
         }
         reconcileBoosts(with: screens)
         renderIfNeeded()
+    }
+
+    /// BrightnessService calls this after a route rebuild so an external
+    /// display entering or leaving HDR is added to or removed from the boost
+    /// set immediately, without waiting for an AppKit screen notification.
+    func displayLuminanceOwnershipDidChange() {
+        handleScreenChange()
     }
 
     /// Brings the live overlays in line with the boostable screens: new
