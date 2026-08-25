@@ -5,23 +5,6 @@ import AppKit
 import ColorSync
 import CoreGraphics
 import Foundation
-import IOKit
-import IOKit.graphics
-
-@_silgen_name("CGDisplayIOServicePort")
-private func CGDisplayIOServicePort(_ display: CGDirectDisplayID) -> io_service_t
-
-private let displayServicesGetBrightness: (@convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32)? = {
-    guard let handle = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_LAZY),
-          let symbol = dlsym(handle, "DisplayServicesGetBrightness") else { return nil }
-    return unsafeBitCast(symbol, to: (@convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32).self)
-}()
-
-private let coreDisplayGetBrightness: (@convention(c) (CGDirectDisplayID) -> Double)? = {
-    guard let handle = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY),
-          let symbol = dlsym(handle, "CoreDisplay_Display_GetUserBrightness") else { return nil }
-    return unsafeBitCast(symbol, to: (@convention(c) (CGDirectDisplayID) -> Double).self)
-}()
 
 struct DisplayResolutionMode: Identifiable, Hashable {
     let id: Int32
@@ -64,10 +47,6 @@ struct ManagedDisplay: Identifiable, Equatable {
     let currentModeID: Int32?
     let currentModeLabel: String
     let modes: [DisplayResolutionMode]
-    let hdrSupported: Bool
-    let hdrEnabled: Bool
-    let hdrMutable: Bool
-    let hiDPIOverrideInstalled: Bool
 
     var nativeMode: DisplayResolutionMode? {
         modes.filter { !$0.isHiDPI }.max {
@@ -87,13 +66,11 @@ struct ManagedDisplay: Identifiable, Equatable {
     static func == (lhs: ManagedDisplay, rhs: ManagedDisplay) -> Bool {
         lhs.id == rhs.id
             && lhs.currentModeID == rhs.currentModeID
-            && lhs.hdrEnabled == rhs.hdrEnabled
             && lhs.isMain == rhs.isMain
             && lhs.originX == rhs.originX
             && lhs.originY == rhs.originY
             && lhs.pointWidth == rhs.pointWidth
             && lhs.pointHeight == rhs.pointHeight
-            && lhs.hiDPIOverrideInstalled == rhs.hiDPIOverrideInstalled
             && lhs.modes == rhs.modes
     }
 }
@@ -147,47 +124,28 @@ final class DisplayManagementService: ObservableObject {
     @Published private(set) var activeProfileByDisplayID: [CGDirectDisplayID: URL] = [:]
     @Published private(set) var nightShiftAvailable = false
     @Published private(set) var trueToneAvailable = false
-    @Published private(set) var autoBrightnessAvailable = false
     @Published private(set) var imageAdjustments: [CGDirectDisplayID: DisplayImageAdjustment] = [:]
     @Published var nightShiftEnabled = false
     @Published var trueToneEnabled = false
-    @Published var autoBrightnessEnabled = false {
-        didSet {
-            UserDefaults.standard.set(autoBrightnessEnabled,
-                                      forKey: DefaultsKey.displayAutoBrightnessEnabled)
-            autoBrightnessEnabled ? startAutoBrightness() : stopAutoBrightness()
-        }
-    }
-    @Published var autoBrightnessSensitivity = 1.0 {
-        didSet {
-            let sanitized = min(max(autoBrightnessSensitivity, 0.5), 1.5)
-            if sanitized != autoBrightnessSensitivity {
-                autoBrightnessSensitivity = sanitized
-                return
-            }
-            UserDefaults.standard.set(sanitized,
-                                      forKey: DefaultsKey.displayAutoBrightnessSensitivity)
-            applyAutoBrightness()
-        }
-    }
     @Published private(set) var lastError: String?
 
     private let presetsKey = "displayManagementPresets"
     private let queue = DispatchQueue(label: "com.vorssaint.utils.display-management", qos: .userInitiated)
     private var blueLightClient: NSObject?
     private var trueToneClient: NSObject?
-    private var autoBrightnessTimer: Timer?
     private var screenObserver: NSObjectProtocol?
 
+    private var strings: DisplayManagementStrings {
+        FeatureStrings.displayManagement(L10n.shared.language)
+    }
+
+    private func failure(_ action: String, display: ManagedDisplay) -> String {
+        "\(action): \(display.name)"
+    }
+
     private init() {
-        autoBrightnessEnabled = UserDefaults.standard.bool(forKey: DefaultsKey.displayAutoBrightnessEnabled)
-        let storedSensitivity = UserDefaults.standard.double(forKey: DefaultsKey.displayAutoBrightnessSensitivity)
-        if storedSensitivity > 0 {
-            autoBrightnessSensitivity = min(max(storedSensitivity, 0.5), 1.5)
-        }
         loadPresets()
         configureSystemEffects()
-        autoBrightnessAvailable = Self.builtInBrightness() != nil
         screenObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil,
@@ -197,16 +155,12 @@ final class DisplayManagementService: ObservableObject {
                 self?.screenParametersChanged()
             }
         }
-        if autoBrightnessEnabled {
-            startAutoBrightness()
-        }
     }
 
     func refresh() {
         refreshDisplays()
         refreshSystemEffects()
         loadColorProfilesIfNeeded()
-        autoBrightnessAvailable = Self.builtInBrightness() != nil
     }
 
     func clearError() {
@@ -221,7 +175,7 @@ final class DisplayManagementService: ObservableObject {
                 if success {
                     self.refreshDisplays()
                 } else {
-                    self.lastError = "Could not change the resolution for \(display.name)."
+                    self.lastError = self.failure(self.strings.resolution, display: display)
                 }
             }
         }
@@ -234,9 +188,8 @@ final class DisplayManagementService: ObservableObject {
         case .hiDPI: target = display.bestHiDPIMode
         }
         guard let target else {
-            lastError = choice == .hiDPI
-                ? "No HiDPI mode is available for \(display.name)."
-                : "No native mode is available for \(display.name)."
+            let mode = choice == .hiDPI ? "HiDPI" : strings.native
+            lastError = failure("\(strings.scale) — \(mode)", display: display)
             return
         }
         setMode(target, for: display)
@@ -251,7 +204,7 @@ final class DisplayManagementService: ObservableObject {
                 if success {
                     self.refreshDisplays()
                 } else {
-                    self.lastError = "Could not make \(display.name) the main display."
+                    self.lastError = self.failure(self.strings.makeMain, display: display)
                 }
             }
         }
@@ -265,60 +218,9 @@ final class DisplayManagementService: ObservableObject {
                 if success {
                     self.refreshDisplays()
                 } else {
-                    self.lastError = "Could not move \(display.name)."
+                    self.lastError = self.failure(self.strings.arrangement, display: display)
                 }
             }
-        }
-    }
-
-    func installHiDPIOverride(for display: ManagedDisplay) {
-        guard !display.isBuiltIn else {
-            lastError = "HiDPI overrides are only for external displays."
-            return
-        }
-        let width = max(display.pixelWidth, display.nativeMode?.pixelWidth ?? display.pixelWidth)
-        let height = max(display.pixelHeight, display.nativeMode?.pixelHeight ?? display.pixelHeight)
-        queue.async {
-            let error = Self.writeHiDPIOverride(vendorID: display.vendorID,
-                                                productID: display.productID,
-                                                nativeWidth: width,
-                                                nativeHeight: height)
-            DispatchQueue.main.async {
-                if let error {
-                    self.lastError = error
-                } else {
-                    self.refreshDisplays()
-                    self.lastError = nil
-                }
-            }
-        }
-    }
-
-    func removeHiDPIOverride(for display: ManagedDisplay) {
-        queue.async {
-            let error = Self.removeHiDPIOverride(vendorID: display.vendorID, productID: display.productID)
-            DispatchQueue.main.async {
-                if let error {
-                    self.lastError = error
-                } else {
-                    self.refreshDisplays()
-                    self.lastError = nil
-                }
-            }
-        }
-    }
-
-    func setHDR(_ enabled: Bool, for display: ManagedDisplay) {
-        guard display.hdrMutable else {
-            lastError = "HDR control is not available for \(display.name)."
-            return
-        }
-        lastError = nil
-        let success = displayHDRControl.set(display.id, enabled)
-        if success {
-            refreshDisplays()
-        } else {
-            lastError = "Could not change HDR for \(display.name)."
         }
     }
 
@@ -333,7 +235,7 @@ final class DisplayManagementService: ObservableObject {
                 modeID: display.currentModeID,
                 brightness: brightnessByID[display.id],
                 colorProfilePath: activeProfileByDisplayID[display.id]?.path,
-                hdrEnabled: display.hdrMutable ? display.hdrEnabled : nil,
+                hdrEnabled: nil,
                 originX: display.originX,
                 originY: display.originY,
                 isMain: display.isMain
@@ -366,7 +268,7 @@ final class DisplayManagementService: ObservableObject {
                 modeID: display.currentModeID,
                 brightness: brightnessByID[display.id],
                 colorProfilePath: activeProfileByDisplayID[display.id]?.path,
-                hdrEnabled: display.hdrMutable ? display.hdrEnabled : nil,
+                hdrEnabled: nil,
                 originX: display.originX,
                 originY: display.originY,
                 isMain: display.isMain
@@ -394,9 +296,6 @@ final class DisplayManagementService: ObservableObject {
                let profile = colorProfiles.first(where: { $0.path.path == profilePath }) {
                 _ = Self.setColorProfile(profile.path, for: display.id)
             }
-            if let hdrEnabled = entry.hdrEnabled, display.hdrMutable {
-                _ = displayHDRControl.set(display.id, hdrEnabled)
-            }
             if let brightness = entry.brightness,
                BrightnessService.shared.displays.contains(where: { $0.id == display.id }) {
                 BrightnessService.shared.setBrightness(brightness, for: display.id)
@@ -415,7 +314,7 @@ final class DisplayManagementService: ObservableObject {
         if success {
             activeProfileByDisplayID[display.id] = profile.path
         } else {
-            lastError = "Could not apply \(profile.name) to \(display.name)."
+            lastError = failure("\(strings.colorProfile) — \(profile.name)", display: display)
         }
     }
 
@@ -426,7 +325,8 @@ final class DisplayManagementService: ObservableObject {
             activeProfileByDisplayID.removeValue(forKey: display.id)
             refreshActiveProfiles()
         } else {
-            lastError = "Could not restore the default color profile for \(display.name)."
+            lastError = failure("\(strings.colorProfile) — \(strings.systemDefault)",
+                                display: display)
         }
     }
 
@@ -464,9 +364,6 @@ final class DisplayManagementService: ObservableObject {
 
     private func screenParametersChanged() {
         refresh()
-        if autoBrightnessEnabled {
-            applyAutoBrightness()
-        }
     }
 
     nonisolated private static func onlineDisplays() -> [ManagedDisplay] {
@@ -485,7 +382,6 @@ final class DisplayManagementService: ObservableObject {
             let name = NSScreen.screens.first {
                 ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == id
             }?.localizedName ?? "Display \(id)"
-            let hdr = displayHDRControl.state(id)
             let bounds = CGDisplayBounds(id)
             return ManagedDisplay(
                 id: id,
@@ -503,12 +399,7 @@ final class DisplayManagementService: ObservableObject {
                 pixelHeight: CGDisplayPixelsHigh(id),
                 currentModeID: current?.ioDisplayModeID,
                 currentModeLabel: currentMode?.label ?? "\(CGDisplayPixelsWide(id)) x \(CGDisplayPixelsHigh(id))",
-                modes: modes,
-                hdrSupported: hdr.supported,
-                hdrEnabled: hdr.enabled,
-                hdrMutable: hdr.mutable,
-                hiDPIOverrideInstalled: hiDPIOverrideInstalled(vendorID: CGDisplayVendorNumber(id),
-                                                               productID: CGDisplayModelNumber(id))
+                modes: modes
             )
         }
     }
@@ -600,126 +491,6 @@ final class DisplayManagementService: ObservableObject {
         return applyOrigins(origins.map { ($0.0, $0.1, $0.2) })
     }
 
-    nonisolated private static func overrideURL(vendorID: UInt32, productID: UInt32) -> URL {
-        URL(fileURLWithPath: "/Library/Displays/Contents/Resources/Overrides", isDirectory: true)
-            .appendingPathComponent(String(format: "DisplayVendorID-%x", vendorID), isDirectory: true)
-            .appendingPathComponent(String(format: "DisplayProductID-%x", productID))
-    }
-
-    nonisolated private static func hiDPIOverrideInstalled(vendorID: UInt32, productID: UInt32) -> Bool {
-        FileManager.default.fileExists(atPath: overrideURL(vendorID: vendorID, productID: productID).path)
-    }
-
-    nonisolated private static func writeHiDPIOverride(vendorID: UInt32,
-                                                       productID: UInt32,
-                                                       nativeWidth: Int,
-                                                       nativeHeight: Int) -> String? {
-        let modes = hiDPIModeData(nativeWidth: nativeWidth, nativeHeight: nativeHeight)
-        guard let data = try? PropertyListSerialization.data(fromPropertyList: ["scale-resolutions": modes],
-                                                             format: .xml,
-                                                             options: 0) else {
-            return "Could not build the HiDPI override."
-        }
-        let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("vorssaint-hidpi-\(vendorID)-\(productID).plist")
-        do {
-            try data.write(to: temporaryURL, options: .atomic)
-        } catch {
-            return error.localizedDescription
-        }
-        let destination = overrideURL(vendorID: vendorID, productID: productID)
-        let command = "mkdir -p '\(destination.deletingLastPathComponent().path)' && cp '\(temporaryURL.path)' '\(destination.path)'"
-        defer { try? FileManager.default.removeItem(at: temporaryURL) }
-        return runPrivileged(command)
-    }
-
-    nonisolated private static func removeHiDPIOverride(vendorID: UInt32, productID: UInt32) -> String? {
-        let destination = overrideURL(vendorID: vendorID, productID: productID)
-        guard FileManager.default.fileExists(atPath: destination.path) else { return nil }
-        return runPrivileged("rm -f '\(destination.path)'")
-    }
-
-    nonisolated private static func hiDPIModeData(nativeWidth: Int, nativeHeight: Int) -> [Data] {
-        let scales = [1.0, 0.75, 0.625, 0.5]
-        return scales.compactMap { scale in
-            let logicalWidth = Int((Double(nativeWidth) * scale).rounded()) & ~1
-            let logicalHeight = Int((Double(nativeHeight) * scale).rounded()) & ~1
-            guard logicalWidth >= 800, logicalHeight >= 600 else { return nil }
-            let backingWidth = logicalWidth * 2
-            let backingHeight = logicalHeight * 2
-            var bytes = [UInt8](repeating: 0, count: 8)
-            bytes[0] = UInt8((backingWidth >> 24) & 0xff)
-            bytes[1] = UInt8((backingWidth >> 16) & 0xff)
-            bytes[2] = UInt8((backingWidth >> 8) & 0xff)
-            bytes[3] = UInt8(backingWidth & 0xff)
-            bytes[4] = UInt8((backingHeight >> 24) & 0xff)
-            bytes[5] = UInt8((backingHeight >> 16) & 0xff)
-            bytes[6] = UInt8((backingHeight >> 8) & 0xff)
-            bytes[7] = UInt8(backingHeight & 0xff)
-            return Data(bytes)
-        }
-    }
-
-    nonisolated private static func runPrivileged(_ command: String) -> String? {
-        let escaped = command.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let script = "do shell script \"\(escaped)\" with administrator privileges"
-        var error: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&error)
-        if let error {
-            let message = error[NSAppleScript.errorMessage] as? String ?? "Administrator authorization failed."
-            return message
-        }
-        return nil
-    }
-
-    private func startAutoBrightness() {
-        stopAutoBrightness()
-        autoBrightnessTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.applyAutoBrightness() }
-        }
-        autoBrightnessTimer?.tolerance = 0.3
-        applyAutoBrightness()
-    }
-
-    private func stopAutoBrightness() {
-        autoBrightnessTimer?.invalidate()
-        autoBrightnessTimer = nil
-    }
-
-    private func applyAutoBrightness() {
-        guard autoBrightnessEnabled,
-              let builtIn = Self.builtInBrightness() else { return }
-        let target = min(max(builtIn * autoBrightnessSensitivity, 0), 1)
-        for display in BrightnessService.shared.displays where !display.isBuiltIn && display.isActive {
-            BrightnessService.shared.setBrightness(target, for: display.id)
-        }
-    }
-
-    nonisolated private static func builtInBrightness() -> Double? {
-        guard let id = activeDisplayIDs().first(where: { CGDisplayIsBuiltin($0) != 0 }) else { return nil }
-        if let get = displayServicesGetBrightness {
-            var value: Float = 0
-            if get(id, &value) == 0 { return min(max(Double(value), 0), 1) }
-        }
-        if let get = coreDisplayGetBrightness {
-            let value = get(id)
-            if value > 0 { return min(max(value, 0), 1) }
-        }
-        var value: Float = 0
-        let service = CGDisplayIOServicePort(id)
-        guard service != 0 else { return nil }
-        let result = IODisplayGetFloatParameter(service, 0, kIODisplayBrightnessKey as CFString, &value)
-        return result == KERN_SUCCESS ? min(max(Double(value), 0), 1) : nil
-    }
-
-    nonisolated private static func activeDisplayIDs() -> [CGDirectDisplayID] {
-        var count: UInt32 = 0
-        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return [] }
-        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
-        guard CGGetActiveDisplayList(count, &ids, &count) == .success else { return [] }
-        return Array(ids.prefix(Int(count)))
-    }
 
     private func loadColorProfilesIfNeeded() {
         guard colorProfiles.isEmpty else {
@@ -908,58 +679,4 @@ final class DisplayManagementService: ObservableObject {
         return "\(CGDisplayVendorNumber(displayID)):\(CGDisplayModelNumber(displayID)):\(CGDisplaySerialNumber(displayID))"
     }
 
-}
-
-private let displayHDRControl = HDRControl()
-
-private struct HDRControl {
-    typealias SetFn = @convention(c) (CGDirectDisplayID, Bool) -> Bool
-    typealias GetFn = @convention(c) (CGDirectDisplayID) -> Bool
-
-    private let setFn: SetFn?
-    private let getEnabledFn: GetFn?
-    private let getSupportedFn: GetFn?
-
-    init() {
-        guard let handle = dlopen("/System/Library/Frameworks/CoreDisplay.framework/CoreDisplay", RTLD_LAZY) else {
-            setFn = nil
-            getEnabledFn = nil
-            getSupportedFn = nil
-            return
-        }
-        setFn = Self.load(handle, [
-            "CoreDisplay_Display_SetHighDynamicRangeEnabled",
-            "CoreDisplay_Display_SetHDREnabled",
-        ])
-        getEnabledFn = Self.load(handle, [
-            "CoreDisplay_Display_IsHighDynamicRangeEnabled",
-            "CoreDisplay_Display_IsHDREnabled",
-        ])
-        getSupportedFn = Self.load(handle, [
-            "CoreDisplay_Display_SupportsHighDynamicRange",
-            "CoreDisplay_Display_SupportsHDR",
-        ])
-    }
-
-    func state(_ displayID: CGDirectDisplayID) -> (supported: Bool, enabled: Bool, mutable: Bool) {
-        let potentialEDR = NSScreen.screens.first {
-            ($0.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value == displayID
-        }?.maximumPotentialExtendedDynamicRangeColorComponentValue ?? 1
-        let supported = getSupportedFn?(displayID) ?? (potentialEDR > 1)
-        let enabled = getEnabledFn?(displayID) ?? (potentialEDR > 1)
-        return (supported, enabled, setFn != nil && supported)
-    }
-
-    func set(_ displayID: CGDirectDisplayID, _ enabled: Bool) -> Bool {
-        setFn?(displayID, enabled) ?? false
-    }
-
-    private static func load<T>(_ handle: UnsafeMutableRawPointer, _ names: [String]) -> T? {
-        for name in names {
-            if let symbol = dlsym(handle, name) {
-                return unsafeBitCast(symbol, to: T.self)
-            }
-        }
-        return nil
-    }
 }
