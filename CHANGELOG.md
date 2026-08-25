@@ -20,6 +20,8 @@ All notable changes to this project are documented here. The format follows
 - App Switcher now keeps walking backwards when you hold Shift and tap Tab again. Thanks to @iltonandrew and @justin-chiam.
 - The screen capture loupe now rings the pixel under the pointer instead of drawing a crosshair across it, and that pixel sits in the middle of the loupe, so the Color picker shows the color it is about to copy. Thanks to @I-Have-No-Idea-What-Im-Doing-Right-Now and @PathGao.
 - Screenshot editor crop now snaps selection and resize edges to pixel boundaries, keeping the loupe cross and the final cut aligned to the exact source pixel. Thanks to @PathGao.
+- Media settings now keep the title and tool picker in place when More options expands, and matching disclosure rows across Settings toggle from the full label. Thanks to @ruvelro.
+- Saved image profiles now restore max-side values up to 20,000 pixels without silently shrinking them. Thanks to @ruvelro.
 
 ## [3.3.3-beta.2] - 2026-08-22
 
@@ -46,12 +48,6 @@ All notable changes to this project are documented here. The format follows
 - App Switcher now shows an application's user-selected alternate icon instead of the default bundled icon. Thanks to @iltonandrew and @EugeneCarldotme.
 - App Switcher and Dock previews no longer show stale previews for windows that were closed or apps that quit. Thanks to @atomsbaza.
 - Beta releases now automatically turn on the beta update channel on first launch, ensuring seamless delivery of subsequent beta updates.
-- The Media page in Settings now scrolls, so expanding the image converter's
-  More options no longer shifts the page up and out of reach; the label now
-  toggles the section along with its chevron. The same full-row disclosure
-  behavior now applies to the matching settings controls. Thanks to @ruvelro.
-- Applying a saved image profile now keeps the exact "max side" it was saved
-  with instead of silently shrinking large values. Thanks to @ruvelro.
 - Keep Awake now preserves the order of asynchronous closed-lid sleep requests when rapidly toggled. Thanks to @Tr1meputiNe.
 - The Uninstaller now names the items a removal could not move, and offers Full Disk Access on the spot when that permission is what stopped it. Sandboxed app data used to be left behind under a success tick. Thanks to @PathGao.
 - Rebuilding the display list after a hotplug, a wake or opening the panel no

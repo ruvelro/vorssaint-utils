@@ -1525,9 +1525,8 @@ struct MediaWorkspaceView: View {
 
     private func applyImageOptions(_ options: MediaImageOptions) {
         imageQuality = options.quality
-        // The legacy maxDimension field is clamped (and evened) on save, so
-        // restoring from it would silently shrink a profile's "max side";
-        // resizeMode carries the value the user actually picked.
+        // Older profiles can carry the previously clamped legacy field;
+        // resizeMode remains authoritative for the value the user selected.
         imageMaxDimension = options.resizeMode.maxDimension
         imageFormatRaw = options.format.rawValue
         imageStripMetadata = options.stripMetadata
