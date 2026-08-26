@@ -299,21 +299,11 @@ final class ScreenshotSelectionController {
     /// as a fallback: the Z key sits elsewhere on some keyboard layouts and
     /// the localized hints promise the letter itself.
     private static func isLoupeKey(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
-        else { return false }
-        if let typed = event.charactersIgnoringModifiers?.lowercased(), !typed.isEmpty {
-            return typed == "z"
-        }
-        return Int(event.keyCode) == kVK_ANSI_Z
+        matchesShortcutKey(event, character: "z", physicalKeyCode: kVK_ANSI_Z)
     }
 
     private static func isScrollingCaptureKey(_ event: NSEvent) -> Bool {
-        guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
-        else { return false }
-        if let typed = event.charactersIgnoringModifiers?.lowercased(), !typed.isEmpty {
-            return typed == "s"
-        }
-        return Int(event.keyCode) == kVK_ANSI_S
+        matchesShortcutKey(event, character: "s", physicalKeyCode: kVK_ANSI_S)
     }
 
     private func toggleScrollingCapture() {
@@ -341,12 +331,19 @@ final class ScreenshotSelectionController {
     /// without ending the session, so a whole palette can be read off one
     /// frozen screen. Only meaningful while the loupe shows which pixel.
     private static func isCopyColorKey(_ event: NSEvent) -> Bool {
+        matchesShortcutKey(event, character: "c", physicalKeyCode: kVK_ANSI_C)
+    }
+
+    /// Accept either the character promised by the shortcut hint or its
+    /// physical ANSI key. The latter keeps shortcuts reachable on layouts
+    /// whose printable character is non-Latin.
+    private static func matchesShortcutKey(_ event: NSEvent,
+                                           character: String,
+                                           physicalKeyCode: Int) -> Bool {
         guard event.modifierFlags.intersection([.command, .control, .option]).isEmpty
         else { return false }
-        if let typed = event.charactersIgnoringModifiers?.lowercased(), !typed.isEmpty {
-            return typed == "c"
-        }
-        return Int(event.keyCode) == kVK_ANSI_C
+        return event.charactersIgnoringModifiers?.lowercased() == character
+            || Int(event.keyCode) == physicalKeyCode
     }
 
     private static func isNudgeKey(_ event: NSEvent) -> Bool {
@@ -849,7 +846,8 @@ private final class ScreenshotOverlayView: NSView {
             fromView: point,
             viewSize: bounds.size,
             imageSize: CGSize(width: loupeImage.width, height: loupeImage.height))
-        guard let color = loupePixelColor(in: loupeImage, at: pixelPoint),
+        let sample = loupePixelColor(in: loupeImage, at: pixelPoint)
+        guard let color = sample.color,
               let value = ColorSamplerService.shared.copyQuietly(color)
         else { return }
         copiedValue = value
@@ -1220,12 +1218,14 @@ private final class ScreenshotOverlayView: NSView {
         context.restoreGState()
     }
 
-    private func loupePixelColor(in image: CGImage, at pixelPoint: CGPoint) -> NSColor? {
+    private func loupePixelColor(in image: CGImage,
+                                 at pixelPoint: CGPoint) -> (color: NSColor?, point: CGPoint) {
         let x = min(max(Int(pixelPoint.x.rounded(.down)), 0), image.width - 1)
         let y = min(max(Int(pixelPoint.y.rounded(.down)), 0), image.height - 1)
+        let point = CGPoint(x: x, y: y)
         guard let pixel = image.cropping(to: CGRect(x: x, y: y, width: 1, height: 1))
-        else { return nil }
-        return NSBitmapImageRep(cgImage: pixel).colorAt(x: 0, y: 0)
+        else { return (nil, point) }
+        return (NSBitmapImageRep(cgImage: pixel).colorAt(x: 0, y: 0), point)
     }
 
     /// Readout bar under the magnifier: a swatch of the pixel under the
@@ -1235,11 +1235,12 @@ private final class ScreenshotOverlayView: NSView {
                                in rect: CGRect,
                                image: CGImage,
                                pixelPoint: CGPoint) {
-        let x = min(max(Int(pixelPoint.x.rounded(.down)), 0), image.width - 1)
-        let y = min(max(Int(pixelPoint.y.rounded(.down)), 0), image.height - 1)
+        let sample = loupePixelColor(in: image, at: pixelPoint)
+        let x = Int(sample.point.x)
+        let y = Int(sample.point.y)
         var swatch: NSColor?
         var value = ""
-        if let color = loupePixelColor(in: image, at: pixelPoint),
+        if let color = sample.color,
            let srgb = color.usingColorSpace(.sRGB) {
             swatch = srgb
             value = ColorSamplerService.shared.formattedValue(color) ?? ""
