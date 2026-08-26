@@ -58,6 +58,7 @@ final class DockMediaPlayerService {
 
     func snapshot(for source: DockMediaPlayerSource, completion: @escaping (DockMediaPlayer?) -> Void) {
         bridge.fetch(includePaused: true) { snapshot in
+            let artwork = snapshot?.artworkData.flatMap(NSImage.init(data:))
             DispatchQueue.main.async {
                 guard let snapshot,
                       snapshot.appBundleIdentifier == source.bundleID
@@ -67,7 +68,6 @@ final class DockMediaPlayerService {
                     return
                 }
                 let title = snapshot.title ?? source.appName
-                let artwork = snapshot.artworkData.flatMap(NSImage.init(data:))
                 completion(DockMediaPlayer(bundleID: source.bundleID,
                                            appName: source.appName,
                                            title: title,

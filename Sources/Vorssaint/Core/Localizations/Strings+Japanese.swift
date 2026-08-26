@@ -224,7 +224,7 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "下げると、パネルの後ろにあるものがより見えるようになります。",
         dockPreviewOpenDelay: "表示までの待ち時間",
         dockPreviewOpenDelayCaption: "ポインタをアイコンに置いてからパネルが開くまでの時間です。",
-        dockPreviewMediaControls: "音楽アプリのメディアコントロールを表示",
+        dockPreviewMediaControls: "再生中のアプリのメディアコントロールを表示",
         dockPreviewMediaControlsCaption: "再生中のアプリにポインタを置いたとき、ウインドウのサムネイルと一緒にアートワーク、トラック情報、再生コントロールを表示します。",
         dockClickMinimize: "Dock クリックでしまう",
         dockClickMinimizeCaption: "手前のアプリの Dock アイコンをクリックするとウインドウをしまいます。もう一度クリックすると戻ります。",

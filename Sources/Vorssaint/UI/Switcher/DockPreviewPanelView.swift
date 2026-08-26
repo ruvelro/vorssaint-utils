@@ -98,8 +98,12 @@ private struct DockPreviewPanelContent: View {
             // Media controls supplement a real Dock preview session; they do
             // not create a separate panel for apps without previewable windows.
             if !windows.isEmpty, let mediaPlayer {
+                let mediaText = FeatureStrings.radialMenu(l10n.language)
                 DockMediaPlayerPanel(
                     player: mediaPlayer,
+                    previousLabel: mediaText.mediaPrevious,
+                    playPauseLabel: mediaText.mediaPlayPause,
+                    nextLabel: mediaText.mediaNext,
                     onPrevious: { onMediaCommand(.previous) },
                     onPlayPause: { onMediaCommand(.playPause) },
                     onNext: { onMediaCommand(.next) }
@@ -364,6 +368,9 @@ private struct NativeWindowDragHandle: NSViewRepresentable {
 
 private struct DockMediaPlayerPanel: View {
     let player: DockMediaPlayer
+    let previousLabel: String
+    let playPauseLabel: String
+    let nextLabel: String
     let onPrevious: () -> Void
     let onPlayPause: () -> Void
     let onNext: () -> Void
@@ -378,8 +385,7 @@ private struct DockMediaPlayerPanel: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText)
+        .accessibilityElement(children: .contain)
     }
 
     private var artwork: some View {
@@ -407,6 +413,7 @@ private struct DockMediaPlayerPanel: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
         )
+        .accessibilityHidden(true)
     }
 
     private var trackText: some View {
@@ -432,17 +439,24 @@ private struct DockMediaPlayerPanel: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityText)
     }
 
     private var controls: some View {
         HStack(spacing: 10) {
-            mediaButton(systemName: "backward.fill", action: onPrevious)
+            mediaButton(systemName: "backward.fill",
+                        accessibilityLabel: previousLabel,
+                        action: onPrevious)
             mediaButton(systemName: player.isPlaying ? "pause.fill" : "play.fill",
                         size: 36,
                         foreground: .primary,
                         background: Color.white.opacity(0.16),
+                        accessibilityLabel: playPauseLabel,
                         action: onPlayPause)
-            mediaButton(systemName: "forward.fill", action: onNext)
+            mediaButton(systemName: "forward.fill",
+                        accessibilityLabel: nextLabel,
+                        action: onNext)
             Spacer(minLength: 0)
             Text(player.appName)
                 .font(.system(size: 10, weight: .semibold))
@@ -462,6 +476,7 @@ private struct DockMediaPlayerPanel: View {
                              size: CGFloat = 28,
                              foreground: Color = .secondary,
                              background: Color = Color.white.opacity(0.10),
+                             accessibilityLabel: String,
                              action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
@@ -472,6 +487,7 @@ private struct DockMediaPlayerPanel: View {
         .buttonStyle(.plain)
         .foregroundStyle(foreground)
         .background(Circle().fill(background))
+        .accessibilityLabel(accessibilityLabel)
     }
 
 }

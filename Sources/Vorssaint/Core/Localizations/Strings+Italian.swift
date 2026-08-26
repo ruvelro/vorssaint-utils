@@ -224,7 +224,7 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "Abbassalo per vedere di più di ciò che sta dietro al pannello.",
         dockPreviewOpenDelay: "Ritardo di apertura",
         dockPreviewOpenDelayCaption: "Quanto a lungo il puntatore deve restare su un'icona prima che il pannello si apra.",
-        dockPreviewMediaControls: "Mostra controlli multimediali per app musicali",
+        dockPreviewMediaControls: "Mostra controlli multimediali per app in riproduzione",
         dockPreviewMediaControlsCaption: "Passando su un’app in riproduzione, mostra copertina, dettagli del brano e controlli accanto alle miniature delle finestre.",
         dockClickMinimize: "Riduci con un clic sul Dock",
         dockClickMinimizeCaption: "Le finestre dell'app attiva si riducono nel Dock cliccando la sua icona. Fai clic di nuovo per ripristinarle.",

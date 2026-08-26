@@ -857,6 +857,7 @@ final class DockPreviewService: ObservableObject {
         }
         mediaObservers = []
         currentMediaSource = nil
+        mediaPlayer = nil
     }
 
     private func refreshMediaNow() {

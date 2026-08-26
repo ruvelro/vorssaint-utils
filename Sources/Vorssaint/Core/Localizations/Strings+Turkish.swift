@@ -224,7 +224,7 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "Panelin arkasındakileri daha çok görmek için azalt.",
         dockPreviewOpenDelay: "Açılma gecikmesi",
         dockPreviewOpenDelayCaption: "Panelin açılması için imlecin bir simgenin üzerinde ne kadar bekleyeceği.",
-        dockPreviewMediaControls: "Müzik çalan uygulamalar için medya denetimlerini göster",
+        dockPreviewMediaControls: "Medya oynatan uygulamalar için medya denetimlerini göster",
         dockPreviewMediaControlsCaption: "Çalan bir uygulamanın üzerine gelince pencere küçük resimleriyle birlikte kapak, parça ayrıntıları ve oynatma denetimlerini gösterir.",
         dockClickMinimize: "Dock simgesine tıklayınca küçült",
         dockClickMinimizeCaption: "Etkin uygulamanın pencereleri Dock simgesine tıklandığında küçülür. Geri getirmek için yeniden tıklayın.",

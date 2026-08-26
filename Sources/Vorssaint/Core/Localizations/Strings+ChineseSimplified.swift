@@ -224,7 +224,7 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "调低后可以看到更多面板后面的内容。",
         dockPreviewOpenDelay: "打开延迟",
         dockPreviewOpenDelayCaption: "指针停在图标上多久之后才打开面板。",
-        dockPreviewMediaControls: "显示音乐 App 的媒体控制",
+        dockPreviewMediaControls: "显示正在播放媒体的 App 的媒体控制",
         dockPreviewMediaControlsCaption: "悬停在正在播放媒体的 App 上时，在窗口缩略图旁显示封面、曲目信息和播放控制。",
         dockClickMinimize: "点按 Dock 图标最小化",
         dockClickMinimizeCaption: "点按最前面 App 的 Dock 图标可将其窗口最小化。再次点按即可恢复。",

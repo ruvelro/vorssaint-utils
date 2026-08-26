@@ -225,7 +225,7 @@ extension Strings {
         dockPreviewBackgroundOpacityCaption: "Уменьшите, чтобы видеть больше того, что находится за панелью.",
         dockPreviewOpenDelay: "Задержка открытия",
         dockPreviewOpenDelayCaption: "Сколько указатель должен оставаться на значке, прежде чем откроется панель.",
-        dockPreviewMediaControls: "Показывать медиакнопки для музыкальных приложений",
+        dockPreviewMediaControls: "Показывать медиакнопки для приложений, воспроизводящих медиа",
         dockPreviewMediaControlsCaption: "При наведении на воспроизводящее приложение показывает обложку, сведения о треке и элементы управления рядом с миниатюрами окон.",
         dockClickMinimize: "Сворачивать кликом по Dock",
         dockClickMinimizeCaption: "Окна активного приложения сворачиваются при клике по его значку в Dock. Кликните ещё раз, чтобы вернуть их.",
