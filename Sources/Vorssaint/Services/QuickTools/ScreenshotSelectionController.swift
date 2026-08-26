@@ -267,13 +267,15 @@ final class ScreenshotSelectionController {
                 self.toggleScrollingCapture()
             case _ where Self.isLoupeKey(event):
                 self.toggleLoupe()
-            case _ where self.loupeAcceptsKeyboardActions && Self.isCopyColorKey(event):
+            case _ where Self.isCopyColorKey(event):
+                guard self.loupeAcceptsKeyboardActions else { return event }
                 self.copyLoupeColor()
-            case _ where self.loupeAcceptsKeyboardActions && Self.isNudgeKey(event):
+            case _ where Self.isNudgeKey(event):
+                guard self.loupeAcceptsKeyboardActions else { return event }
                 self.nudgePointer(keyCode: Int(event.keyCode),
                                   fast: event.modifierFlags.contains(.shift))
             default:
-                return event
+                break
             }
             return nil
         }

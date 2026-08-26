@@ -13138,7 +13138,8 @@ struct MetricsTests {
                     ScreenshotSupport.captureLoupeMaxZoom,
                     "capture loupe zoom stays below its maximum")
         expectClose(ScreenshotSupport.captureLoupeMaxZoom,
-                    ScreenshotSupport.captureLoupeBaseSampleSide / 3,
+                    ScreenshotSupport.captureLoupeBaseSampleSide
+                        / ScreenshotSupport.captureLoupeMinSampleSide,
                     "the zoom ceiling is derived from the smallest useful sample")
         expectClose(ScreenshotSupport.captureLoupeZoom(4, adjustedBy: 1),
                     ScreenshotSupport.captureLoupeMaxZoom,
@@ -13154,9 +13155,12 @@ struct MetricsTests {
             let side = ScreenshotSupport.captureLoupeSampleSide(zoom: zoom)
             return side.truncatingRemainder(dividingBy: 2) == 1
         }, "every loupe sample side is odd so an exact center pixel exists")
-        expect(ScreenshotSupport.captureLoupeGridVisible(frameSide: 132, sampleSide: 13)
-                && !ScreenshotSupport.captureLoupeGridVisible(frameSide: 132, sampleSide: 27)
-                && !ScreenshotSupport.captureLoupeGridVisible(frameSide: 132, sampleSide: 0),
+        expect(ScreenshotSupport.captureLoupeGridVisible(
+                    frameSide: ScreenshotSupport.captureLoupeFrameSide, sampleSide: 13)
+                && !ScreenshotSupport.captureLoupeGridVisible(
+                    frameSide: ScreenshotSupport.captureLoupeFrameSide, sampleSide: 27)
+                && !ScreenshotSupport.captureLoupeGridVisible(
+                    frameSide: ScreenshotSupport.captureLoupeFrameSide, sampleSide: 0),
                "the loupe pixel grid appears only when cells are readable")
         expect(ScreenshotSupport.captureLoupeNudge(dx: 1, dy: 0, fast: false, scale: 2)
                 == CGPoint(x: 0.5, y: 0),

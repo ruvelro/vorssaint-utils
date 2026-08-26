@@ -1432,8 +1432,11 @@ enum ScreenshotSupport {
     /// edge the sample slides inward instead of shrinking, and the loupe's
     /// reticle still marks the exact adjusted pixel.
     static let captureLoupeBaseSampleSide: CGFloat = 13
+    static let captureLoupeMinSampleSide: CGFloat = 3
     static let captureLoupeMinZoom: CGFloat = 0.5
-    static var captureLoupeMaxZoom: CGFloat { captureLoupeBaseSampleSide / 3 }
+    static var captureLoupeMaxZoom: CGFloat {
+        captureLoupeBaseSampleSide / captureLoupeMinSampleSide
+    }
     /// The magnifier square on screen, in view points. Big enough that each
     /// sampled pixel becomes a readable grid cell at every zoom level.
     static let captureLoupeFrameSide: CGFloat = 132
@@ -1453,7 +1456,7 @@ enum ScreenshotSupport {
         let clamped = min(max(zoom, captureLoupeMinZoom), captureLoupeMaxZoom)
         let raw = captureLoupeBaseSampleSide / clamped
         let odd = 2 * (raw / 2).rounded(.down) + 1
-        return max(3, odd)
+        return max(captureLoupeMinSampleSide, odd)
     }
 
     /// The pixel grid earns its ink only once a cell is big enough that the
