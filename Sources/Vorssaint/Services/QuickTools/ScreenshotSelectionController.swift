@@ -98,6 +98,7 @@ final class ScreenshotSelectionController {
     fileprivate var loupeZoom: CGFloat = 1 {
         didSet { panels.forEach { $0.overlayView.needsDisplay = true } }
     }
+    fileprivate var currentPointerLocation: CGPoint?
 
     /// The last confirmed region, per display, so R repeats it instantly.
     private static var lastRegion: (displayID: CGDirectDisplayID, viewRect: CGRect)?
@@ -387,8 +388,9 @@ final class ScreenshotSelectionController {
         case kVK_DownArrow: dy = -1
         default: return
         }
-        let location = NSEvent.mouseLocation
-        guard let screen = NSScreen.withMouse else { return }
+        let location = currentPointerLocation ?? NSEvent.mouseLocation
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(location) })
+            ?? NSScreen.withMouse else { return }
         let delta = ScreenshotSupport.captureLoupeNudge(dx: dx,
                                                         dy: dy,
                                                         fast: fast,
@@ -397,18 +399,17 @@ final class ScreenshotSelectionController {
         if !NSScreen.screens.contains(where: { $0.frame.contains(target) }) {
             let frame = screen.frame
             target = CGPoint(
-                x: min(max(target.x, frame.minX), frame.maxX - 0.5),
-                y: min(max(target.y, frame.minY + 0.5), frame.maxY))
+                x: min(max(target.x, frame.minX), frame.maxX),
+                y: min(max(target.y, frame.minY), frame.maxY))
         }
+        currentPointerLocation = target
         let mainHeight = NSScreen.withMenuBar?.frame.height ?? 0
-        CGAssociateMouseAndMouseCursorPosition(0)
         CGWarpMouseCursorPosition(CGPoint(x: target.x, y: mainHeight - target.y))
-        CGAssociateMouseAndMouseCursorPosition(1)
         panels.forEach { $0.overlayView.refreshPointerState(mouseLocation: target) }
     }
 
     private func panelUnderMouse() -> ScreenshotOverlayPanel? {
-        let location = NSEvent.mouseLocation
+        let location = currentPointerLocation ?? NSEvent.mouseLocation
         return panels.first { $0.screenFrame.contains(location) } ?? panels.first
     }
 
@@ -826,7 +827,7 @@ private final class ScreenshotOverlayView: NSView {
     /// be visible through NSEvent.mouseLocation yet when this runs.
     func refreshPointerState(mouseLocation: CGPoint? = nil) {
         guard let panel else { return }
-        let global = mouseLocation ?? NSEvent.mouseLocation
+        let global = mouseLocation ?? controller?.currentPointerLocation ?? NSEvent.mouseLocation
         let point = CGPoint(x: global.x - panel.screenFrame.minX,
                             y: panel.screenFrame.maxY - global.y)
         if bounds.contains(point) {
@@ -890,6 +891,7 @@ private final class ScreenshotOverlayView: NSView {
     // MARK: Mouse
 
     override func mouseMoved(with event: NSEvent) {
+        controller?.currentPointerLocation = nil
         hoverPoint = convert(event.locationInWindow, from: nil)
         hoveredWindow = controller?.acceptsWindowClick == true
             ? ScreenshotSupport.window(at: hoverPoint, in: windows)
@@ -918,6 +920,7 @@ private final class ScreenshotOverlayView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard acceptsPointerInput else { return }
+        controller?.currentPointerLocation = nil
         let point = convert(event.locationInWindow, from: nil)
         hoverPoint = point
         dragOrigin = point
@@ -929,6 +932,7 @@ private final class ScreenshotOverlayView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard acceptsPointerInput, let controller, let origin = dragOrigin else { return }
+        controller.currentPointerLocation = nil
         let point = convert(event.locationInWindow, from: nil)
         hoverPoint = point
         if controller.isPickingColor {
@@ -992,8 +996,9 @@ private final class ScreenshotOverlayView: NSView {
             guideHost.isHidden = true
             return
         }
+        let global = controller?.currentPointerLocation ?? NSEvent.mouseLocation
         guideHost.isHidden = !ScreenshotSupport.captureGuideIsVisible(
-            pointerOnDisplay: panel.screenFrame.contains(NSEvent.mouseLocation),
+            pointerOnDisplay: panel.screenFrame.contains(global),
             selectionInProgress: controller?.selectionInProgress ?? true,
             capturePending: isCapturePending)
     }
@@ -1005,7 +1010,8 @@ private final class ScreenshotOverlayView: NSView {
               let controller,
               let panel
         else { return }
-        let mouseIsOnThisScreen = panel.screenFrame.contains(NSEvent.mouseLocation)
+        let global = controller.currentPointerLocation ?? NSEvent.mouseLocation
+        let mouseIsOnThisScreen = panel.screenFrame.contains(global) || bounds.contains(hoverPoint)
 
         let dimAlpha: CGFloat = frozenImage == nil ? 0.18 : 0.22
         context.setFillColor(CGColor(gray: 0, alpha: dimAlpha))
