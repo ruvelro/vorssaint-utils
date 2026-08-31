@@ -148,6 +148,9 @@ final class ScreenshotSelectionController {
     func begin(completion: @escaping (Outcome) -> Void) {
         Self.isSessionOnScreen = true
         self.completion = completion
+        screenCaptureOptions?.onSelectionChange = { [weak self] in
+            self?.screenCaptureToolDidChange()
+        }
         if freeze {
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -212,12 +215,12 @@ final class ScreenshotSelectionController {
         NSCursor.crosshair.set()
     }
 
-    func prepareForCapturePolicyChange() {
+    private func screenCaptureToolDidChange() {
         scrollingCaptureEnabled = false
-        loupeEnabled = false
+        loupeEnabled = isPickingColor
+        if isPickingColor, !freeze { loadLiveLoupeImages() }
         panels.forEach { $0.overlayView.captureToolDidChange() }
         if selectionInProgress { selectionInProgress = false }
-        markCapturePending()
     }
 
     /// Live selection stays transparent, but the loupe still needs source
@@ -545,7 +548,8 @@ final class ScreenshotSelectionController {
     }
 
     fileprivate func confirmColor(at viewPoint: CGPoint, on panel: ScreenshotOverlayPanel) {
-        guard activeMode == .color, let image = panel.frozenImage else { return }
+        guard activeMode == .color,
+              let image = panel.frozenImage ?? panel.overlayView.loupeImage else { return }
         let point = ScreenshotSupport.imagePixelPoint(
             fromView: viewPoint,
             viewSize: panel.screenFrame.size,
@@ -718,7 +722,7 @@ private final class ScreenshotOverlayPanel: NSPanel {
 /// geometry matches image pixels (top-left origin) with no sign juggling.
 private final class ScreenshotOverlayView: NSView {
     private let frozenImage: CGImage?
-    private var loupeImage: CGImage?
+    fileprivate var loupeImage: CGImage?
     private let windows: [ScreenshotSupport.PickableWindow]
     /// Both are held weakly on purpose. The session hands its result over
     /// after the panels leave the screen, so the controller is already gone
