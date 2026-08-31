@@ -208,8 +208,8 @@ final class ScreenshotSelectionController {
         installKeyMonitor()
         if isPickingColor
             || UserDefaults.standard.bool(forKey: DefaultsKey.screenshotLoupeStartsOn) {
-            // Opt-in: the session opens with the magnifier already up, the
-            // way ShareX does, instead of waiting for the Z toggle.
+            // Opt-in: the session opens with the magnifier already up,
+            // instead of waiting for the Z toggle.
             toggleLoupe()
         }
         NSCursor.crosshair.set()
@@ -1144,7 +1144,7 @@ private final class ScreenshotOverlayView: NSView {
 
         // A ring around the target pixel rather than lines through it: the
         // ring sits just outside the pixel so the sample keeps its own color
-        // (issue #755), and the ShareX-style grid underneath makes each
+        // (issue #755), and the pixel grid underneath makes each
         // magnified cell read as the single screen pixel it is.
         let target = ScreenshotSupport.captureLoupeTargetPixelRect(
             around: pixelPoint,
@@ -1199,7 +1199,7 @@ private final class ScreenshotOverlayView: NSView {
                       pixelPoint: pixelPoint)
     }
 
-    /// ShareX-style pixel grid: a faint line between every pair of sampled
+    /// Pixel grid: a faint line between every pair of sampled
     /// pixels, so each cell reads as the single screen pixel it magnifies.
     private func drawLoupeGrid(_ context: CGContext, frame: CGRect, source: CGRect) {
         let columns = Int(source.width)
