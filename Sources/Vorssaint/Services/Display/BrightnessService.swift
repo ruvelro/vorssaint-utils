@@ -77,6 +77,14 @@ final class BrightnessService: ObservableObject {
                                     category: "display")
 
     @Published private(set) var displays: [BrightnessDisplay] = []
+    /// The displays that currently put a picture in front of a person, as the
+    /// last rebuild found them. The panel decides from this snapshot instead
+    /// of asking the display server itself: `canToggleDisplay` is read from a
+    /// SwiftUI body, and a body is laid out again from inside the display
+    /// reconfiguration this app drives on the main thread, where a question
+    /// for the display server is one the same thread is already busy
+    /// answering (issue #969).
+    @Published private(set) var drawableDisplays = Set<CGDirectDisplayID>()
     @Published private(set) var pendingDisplayIDs = Set<CGDirectDisplayID>()
     @Published private(set) var displayControlFailure: DisplayControlFailure?
     @Published private(set) var brightnessOSDSupported = false
@@ -357,6 +365,7 @@ final class BrightnessService: ObservableObject {
         brightnessOSDSupported = false
         BrightnessOSD.teardown()
         if !displays.isEmpty { displays = [] }
+        if !drawableDisplays.isEmpty { drawableDisplays = [] }
         // Queue on the work queue first so this lands AFTER any operation
         // already in flight, then hand the reconfigurations to the main
         // thread, which is the only place they may run (see
@@ -427,6 +436,12 @@ final class BrightnessService: ObservableObject {
     func setHDR(_ enabled: Bool, for id: CGDirectDisplayID) {
         guard let hdrBridge, hdrBridge.setHDREnabled(enabled, for: id) else { return }
         Self.log.log("display \(id) hdr set to \(enabled)")
+        // The bridge confirmed the mode by reading it back, so publishing the
+        // hardware's answer (not the intent) moves the switch now and keeps
+        // hdrOwnsLuminance fresh until the settle refresh below re-scans.
+        if let index = displays.firstIndex(where: { $0.id == id }) {
+            displays[index].hdrEnabled = hdrBridge.isHDREnabled(id)
+        }
         // The window server takes a moment to bring the display up in the new
         // mode, and the brightness route has to move with it. An HDR flip
         // changes no topology, so nothing else here would ask for a scan.
@@ -741,12 +756,8 @@ final class BrightnessService: ObservableObject {
     func canToggleDisplay(_ display: BrightnessDisplay) -> Bool {
         guard displaySwitchingAvailable, !isDisplayPending(display.id) else { return false }
         guard display.isActive else { return true }
-        stateLock.lock()
-        let online = knownTopology
-        let active = knownActiveTopology
-        stateLock.unlock()
-        let drawable = Self.drawableDisplayIDs(online: online, active: active)
-        return BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawable, target: display.id)
+        return BrightnessSupport.canDisableDisplay(drawableDisplayIDs: drawableDisplays,
+                                                  target: display.id)
     }
 
     /// Enables or disables one connected display without changing the saved
@@ -1614,12 +1625,17 @@ final class BrightnessService: ObservableObject {
         var built: [BrightnessDisplay] = []
         var newRoutes: [CGDirectDisplayID: Route] = [:]
         var ddcCandidates: [(index: Int, identity: BrightnessSupport.DisplayIdentity)] = []
+        var virtualIDs = Set<CGDirectDisplayID>()
 
         for id in onlineIDs {
+            let info = Self.displayInfoDictionary(id)
+            // Read before the mirroring guard below, so the snapshot the panel
+            // decides from covers every online display, exactly like the live
+            // reading it replaces.
+            if (info?["kCGDisplayIsVirtualDevice"] as? Bool ?? false) { virtualIDs.insert(id) }
             // A mirroring display follows its source; the source's slider is
             // the real control.
             guard CGDisplayMirrorsDisplay(id) == 0 else { continue }
-            let info = Self.displayInfoDictionary(id)
             if let info,
                (info["kCGDisplayIsVirtualDevice"] as? Bool ?? false)
                 || (info["kCGDisplayIsAirPlay"] as? Bool ?? false) {
@@ -1676,6 +1692,10 @@ final class BrightnessService: ObservableObject {
                                            brightness: 0.5, readable: false))
         }
 
+        let drawableIDs = BrightnessSupport.drawableDisplayIDs(
+            onlineDisplayIDs: seenTopology, activeDisplayIDs: activeTopology,
+            virtualDisplayIDs: virtualIDs)
+
         stateLock.lock()
         let disabledSnapshots = managedDisabledDisplays
         // Still the previous rebuild's set at this point: what was not in it
@@ -1715,6 +1735,7 @@ final class BrightnessService: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.running, generation == self.rebuildGeneration else { return }
                 if self.displays != discovered { self.displays = discovered }
+                if self.drawableDisplays != drawableIDs { self.drawableDisplays = drawableIDs }
             }
         }
 
@@ -1944,6 +1965,7 @@ final class BrightnessService: ObservableObject {
         DispatchQueue.main.async { [weak self] in
             guard let self, self.running, generation == self.rebuildGeneration else { return }
             if self.displays != resolved { self.displays = resolved }
+            if self.drawableDisplays != drawableIDs { self.drawableDisplays = drawableIDs }
             if self.brightnessOSDSupported != supportsBrightnessOSD {
                 self.brightnessOSDSupported = supportsBrightnessOSD
             }

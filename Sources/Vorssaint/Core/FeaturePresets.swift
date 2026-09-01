@@ -90,9 +90,10 @@ extension AppFeature {
     var energyProfile: FeatureEnergyProfile {
         switch self {
         case .scrollInverter, .focusFollowsMouse, .smoothScroll, .windowMaximizer, .middleClick,
-             .mouseNavigation, .mouseButtonShortcuts, .dockPreview, .dockClick, .shelf:
+             .mouseNavigation, .mouseButtonShortcuts, .mouseClickDebounce,
+             .dockPreview, .dockClick, .shelf:
             return .mouse
-        case .switcher, .keyboardDebounce, .finderCutPaste, .finderRename, .superKey:
+        case .switcher, .keyboardDebounce, .finderCutPaste, .finderRename, .superKey, .quitWindowProtection:
             return .keyboard
         case .textSnippets, .autoQuit:
             return .inputs
@@ -119,9 +120,8 @@ extension AppFeature {
         case .mixer:
             return UserDefaults.standard.bool(forKey: DefaultsKey.preciseVolumeRollerEnabled)
                 ? .keyboard : .idle
-        case .pastePlain, .soundOutputSwitcher, .micMute,
-             .musicBlock, .keepAwake, .quickLauncher, .quickToggles, .colorPicker,
-             .bluetoothSleep,
+        case .mouseAcceleration, .pastePlain, .soundOutputSwitcher, .micMute,
+             .musicBlock, .bluetoothSleep, .keepAwake, .quickLauncher, .quickToggles, .colorPicker,
              .screenOCR, .cleaningMode, .mediaTools, .cleaner, .uninstaller, .homebrew, .screenshot,
              .cameraPreview, .scratchpad, .commandBar, .screenRecorder, .fanControl,
              .diskImageInstaller, .killProcess:
