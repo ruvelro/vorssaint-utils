@@ -731,11 +731,33 @@ final class CommandBarService: ObservableObject {
     /// lists never show a bare id. Builds the catalog once if this loading
     /// presentation has not prepared it yet.
     func entryTitle(forStableKey key: String) -> String? {
+        ensureCatalogIndexed()
+        return entriesByStableKey[key]?.title
+    }
+
+    /// Keys the catalog can name right now. Settings uses this to drop pins
+    /// of features that were uninstalled, without hiding an app pin whose
+    /// app is simply not on this Mac at the moment.
+    var presentStableKeys: Set<String> {
+        ensureCatalogIndexed()
+        return Set(entriesByStableKey.keys)
+    }
+
+    /// Rebuilds the rows after a hub install or uninstall, so Settings and
+    /// an open bar stop offering a feature that is no longer there.
+    func noteHubChange() {
+        guard AppFeature.commandBar.isAvailable else { return }
+        rebuildCatalog()
+        rebuildRunningEntries()
+        if isVisible { refreshResults() }
+        objectWillChange.send()
+    }
+
+    private func ensureCatalogIndexed() {
         if entriesByStableKey.isEmpty {
             rebuildCatalog()
             rebuildRunningEntries()
         }
-        return entriesByStableKey[key]?.title
     }
 
     func alias(for entry: CommandBarEntry) -> String? {
@@ -1731,12 +1753,56 @@ final class CommandBarService: ObservableObject {
     /// fields in Settings use, and it gives every key back, not only ours.
     private func beginCapturingShortcut(_ entry: CommandBarEntry) {
         ShortcutCapture.begin()
+        // The tap sits ahead of the app's own menu. Without it, Command Q
+        // never reaches the local monitor. It quits Vorssaint instead of
+        // landing on the card (issue #1193). When Accessibility cannot
+        // create the tap, the monitor below still records as before.
+        ShortcutRecordingTap.begin { [weak self] keyCode, modifiers in
+            self?.handleCaptureKey(keyCode: keyCode, modifiers: modifiers)
+        }
         mode = .capturingShortcut(entryID: entry.id)
         refreshPanelLayout()
     }
 
     private func endCapturingShortcut() {
+        ShortcutRecordingTap.end()
         ShortcutCapture.end()
+    }
+
+    /// One press while the capture card is up. Shared by the recording tap
+    /// and the local monitor fallback.
+    private func handleCaptureKey(keyCode: Int64, modifiers: GlobalShortcutModifiers) {
+        guard case .capturingShortcut(let entryID) = mode else { return }
+        switch Int(keyCode) {
+        case kVK_Escape:
+            stepBack()
+        case kVK_Delete, kVK_ForwardDelete:
+            if let entry = entry(withID: entryID) {
+                setRowShortcut(nil, for: entry)
+            }
+            stepBack()
+        default:
+            let shortcut = GlobalShortcut(keyCode: keyCode, modifiers: modifiers)
+            // A bare letter would take that letter away from every app
+            // on the Mac, so the bar waits for a real combination.
+            guard CommandBarRowShortcuts.isUsable(shortcut) else {
+                NSSound.beep()
+                return
+            }
+            guard let entry = entry(withID: entryID) else {
+                stepBack()
+                return
+            }
+            // Full means full: the card stays up rather than closing on
+            // a combination that was never stored.
+            guard CommandBarRowShortcuts.hasRoom(for: entry.stableKey,
+                                                 in: rowShortcuts) else {
+                NSSound.beep()
+                return
+            }
+            setRowShortcut(shortcut, for: entry)
+            stepBack()
+        }
     }
 
     private func beginNaming(_ entry: CommandBarEntry) {
@@ -2220,8 +2286,9 @@ final class CommandBarService: ObservableObject {
         if let loadedAt = windowsLoadedAt, Date().timeIntervalSince(loadedAt) < 4 { return }
         guard !windowsLoading else { return }
         windowsLoading = true
+        let enumerationSnapshot = WindowEnumerator.snapshot()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let windows = WindowEnumerator.listWindowsForCommandBar()
+            let windows = WindowEnumerator.listWindowsForCommandBar(snapshot: enumerationSnapshot)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.windowsLoading = false
@@ -2407,40 +2474,13 @@ final class CommandBarService: ObservableObject {
             if self.fieldIsComposing(in: panel) { return event }
 
             // Listening for a combination: every key belongs to the person,
-            // except the two that mean "never mind" and "take it off".
-            if case .capturingShortcut(let entryID) = self.mode {
-                switch Int(event.keyCode) {
-                case kVK_Escape:
-                    self.stepBack()
-                case kVK_Delete, kVK_ForwardDelete:
-                    if let entry = self.entry(withID: entryID) {
-                        self.setRowShortcut(nil, for: entry)
-                    }
-                    self.stepBack()
-                default:
-                    let modifiers = GlobalShortcutModifiers(eventFlags: event.modifierFlags)
-                    let shortcut = GlobalShortcut(keyCode: Int64(event.keyCode),
-                                                  modifiers: modifiers)
-                    // A bare letter would take that letter away from every app
-                    // on the Mac, so the bar waits for a real combination.
-                    guard CommandBarRowShortcuts.isUsable(shortcut) else {
-                        NSSound.beep()
-                        return nil
-                    }
-                    guard let entry = self.entry(withID: entryID) else {
-                        self.stepBack()
-                        return nil
-                    }
-                    // Full means full: the card stays up rather than closing on
-                    // a combination that was never stored.
-                    guard CommandBarRowShortcuts.hasRoom(for: entry.stableKey,
-                                                         in: self.rowShortcuts) else {
-                        NSSound.beep()
-                        return nil
-                    }
-                    self.setRowShortcut(shortcut, for: entry)
-                    self.stepBack()
-                }
+            // except the two that mean "never mind" and "take it off". The
+            // recording tap is the primary path; this is the fallback when
+            // that tap cannot exist.
+            if case .capturingShortcut = self.mode {
+                self.handleCaptureKey(
+                    keyCode: Int64(event.keyCode),
+                    modifiers: GlobalShortcutModifiers(eventFlags: event.modifierFlags))
                 return nil
             }
 
