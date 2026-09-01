@@ -25,20 +25,27 @@ SwiftPM aware editors can index the code.
 Hitting a build or permission snag while developing? See the
 [troubleshooting guide](docs/TROUBLESHOOTING.md).
 
-### Stable signing (optional)
+### Stable signing
 
-By default `build.sh` signs ad hoc, and that code hash changes on every build,
-so macOS asks again for Accessibility and Screen Recording after each rebuild.
-Run this once
+By default `build.sh` signs ad hoc, and that code hash changes on every build.
+macOS ties Accessibility and Screen Recording grants to the hash, so each
+rebuild silently orphans them: System Settings keeps showing the app as
+granted, the app is no longer trusted, and no new prompt appears. Developer
+builds (`--dev`) therefore create a free, self signed identity called
+`Vorssaint Utils Signing` in a dedicated keychain automatically when no
+identity is installed. For plain local builds, run the same setup once
+yourself:
 
 ```sh
 ./Tools/setup-signing.sh
 ```
 
-to create a free, self signed identity called `Vorssaint Utils Signing` in a
-dedicated keychain. `build.sh` then signs local builds with it and gives them a
+Either way `build.sh` then signs local builds with it and gives them a
 constant designated requirement, so granted permissions stick across rebuilds.
-It is a local convenience only and never shows up outside the keychain.
+If a permission was granted to an earlier ad-hoc build, clear the stale grant
+once (`tccutil reset Accessibility com.vorssaint.utils.dev`) and grant it
+again. The identity is a local convenience only and never shows up outside
+the keychain.
 
 Official releases work differently. CI signs the app and DMG with an Apple
 **Developer ID**, using credentials isolated in the protected `release-signing`
@@ -146,12 +153,22 @@ For general help and every support channel, see [support](SUPPORT.md).
    is a conflict with every sibling PR and a wording that gets rewritten
    anyway. Say in the description what a user would notice; the entry is
    written from that.
-9. Link the issue with `Refs #123` rather than `Closes`/`Fixes`, and when the
-   branch merges, say on that issue which part of it this covered and which
-   part it did not. An issue here often carries more than one report, and a
-   fix for one of them reads as a fix for all of them until somebody says
-   otherwise. The issue itself stays open until the person who reported it
-   confirms on a real build.
+9. **A pull request that has an issue must link it, written exactly as `Refs
+   #123`.** Not `Closes`/`Fixes`, not a bare `#123`, not a sentence about it.
+   That one line is the whole tie between the change and the person who
+   reported it: the fix-status bot reads it on merge, labels the issue,
+   comments again when a release carries the fix, and closes the issue after
+   two weeks of silence. A branch that leaves it out drops that report out of
+   the track entirely, and nobody finds out until the reporter asks months
+   later. `Closes`/`Fixes` fails the other way, closing the report on merge
+   when the fix is not on anyone's Mac yet. Several issues means several
+   references, each on its own line and each starting with its own `Refs`:
+   the bot reads the word and the number as a pair, so `Refs #123, #456`
+   reaches #123 and leaves #456 sitting there. When the branch merges, say on
+   the issue which part of it this covered and which part it did not. An issue
+   here often carries more than one report, and a fix for one of them reads as
+   a fix for all of them until somebody says otherwise. The issue itself stays
+   open until the person who reported it confirms on a real build.
 10. Fix the cause, not the path the report happened to take. A reporter names
     the symptom they hit; the same mistake usually sits in every sibling call
     site. Find the other callers of whatever you are about to change before
@@ -168,8 +185,9 @@ For general help and every support channel, see [support](SUPPORT.md).
     on a different Mac. Building with a stable signing identity, see above,
     keeps granted permissions across rebuilds and makes this cheap.
 12. The pull request template lists the sections a description here usually
-    has. Nothing in it is required, and it is a prompt rather than a form, so
-    delete what does not apply and write prose.
+    has. Apart from the issue reference, nothing in it is required, and it is
+    a prompt rather than a form, so delete what does not apply and write
+    prose.
 13. A new feature is not ready the day it compiles. Install your own build,
     live with it for a few days, and fix what surfaces. The rough edge you
     only notice on the third day is the one a reviewer cannot find and a user
