@@ -30,8 +30,11 @@ enum ShortcutCapture {
         ClipboardHistoryService.shared.suspendShortcut()
         SoundOutputSwitcher.shared.suspendShortcut()
         // Documented main-thread-only above; the organizer service is the one
-        // MainActor-isolated holder in this list.
-        if AppFeature.menuBarOrganizer.isAvailable {
+        // MainActor-isolated holder in this list. An availability key can
+        // survive an upgrade past the supported OS range, so OS support gates
+        // the singleton the same way the AppDelegate teardown does.
+        if AppFeature.menuBarOrganizer.isAvailable,
+           AppFeature.menuBarOrganizer.isSupportedOnCurrentSystem {
             MainActor.assumeIsolated {
                 MenuBarOrganizerService.shared.suspendShortcut()
             }
