@@ -148,7 +148,8 @@ struct MediaImageResizeMode: Codable, Equatable {
             return CGSize(width: Int(sourceWidth.rounded()), height: Int(sourceHeight.rounded()))
         case .maxDimension:
             let maxSide = CGFloat(max(1, maxDimension))
-            let scale = min(1, maxSide / max(sourceWidth, sourceHeight))
+            let requestedScale = maxSide / max(sourceWidth, sourceHeight)
+            let scale = allowUpscaling ? requestedScale : min(1, requestedScale)
             return MediaSupport.integralImageSize(width: sourceWidth * scale, height: sourceHeight * scale)
         case .width:
             let outWidth = CGFloat(max(1, width))

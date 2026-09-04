@@ -6346,6 +6346,13 @@ struct MetricsTests {
         expect(MediaImageResizeMode.maxDimension(1000).targetSize(for: CGSize(width: 1920, height: 1080))
                == CGSize(width: 1000, height: 563),
                "Image max-side resize keeps aspect ratio")
+        expect(MediaImageResizeMode(kind: .maxDimension, maxDimension: 1_000,
+                                    allowUpscaling: true)
+               .targetSize(for: CGSize(width: 640, height: 480)) == CGSize(width: 1000, height: 750)
+               && MediaImageResizeMode(kind: .maxDimension, maxDimension: 1_000,
+                                       allowUpscaling: false)
+               .targetSize(for: CGSize(width: 640, height: 480)) == CGSize(width: 640, height: 480),
+               "Image max-side resize honors its upscaling control")
         expect(MediaImageResizeMode.width(800).targetSize(for: CGSize(width: 1600, height: 1200))
                == CGSize(width: 800, height: 600),
                "Image width resize calculates proportional height")
