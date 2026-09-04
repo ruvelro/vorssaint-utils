@@ -6330,6 +6330,17 @@ struct MetricsTests {
         expect(MediaImageResizeMode.height(500).targetSize(for: CGSize(width: 1600, height: 1200))
                == CGSize(width: 667, height: 500),
                "Image height resize calculates proportional width")
+        expect(MediaImageResizeMode.percentage(50).targetSize(for: CGSize(width: 1600, height: 1200))
+               == CGSize(width: 800, height: 600),
+               "Image resize supports percentages")
+        expect(MediaImageResizeMode.shortestSide(600).targetSize(for: CGSize(width: 1600, height: 1200))
+               == CGSize(width: 800, height: 600),
+               "Image resize can target the shortest side")
+        expect(MediaImageResizeMode.percentage(200, allowUpscaling: false)
+               .targetSize(for: CGSize(width: 640, height: 480)) == CGSize(width: 640, height: 480)
+               && MediaImageResizeMode.shortestSide(1_000, allowUpscaling: false)
+               .targetSize(for: CGSize(width: 640, height: 480)) == CGSize(width: 640, height: 480),
+               "Image resize can prevent percentage and shortest-side upscaling")
         expect(MediaImageResizeMode.exact(width: 321, height: 123).targetSize(for: CGSize(width: 1600, height: 1200))
                == CGSize(width: 321, height: 123),
                "Image exact resize uses custom dimensions")

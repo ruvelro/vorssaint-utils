@@ -96,6 +96,9 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaImageFlipHorizontal) private var imageFlipHorizontal = false
     @AppStorage(DefaultsKey.mediaImageFlipVertical) private var imageFlipVertical = false
     @AppStorage(DefaultsKey.mediaImageCrop) private var imageCropRaw = MediaImageCrop.none.rawValue
+    @AppStorage(DefaultsKey.mediaImageResizePercentage) private var imageResizePercentage = 100
+    @AppStorage(DefaultsKey.mediaImageResizeShortestSide) private var imageResizeShortestSide = 1200
+    @AppStorage(DefaultsKey.mediaImageAllowUpscaling) private var imageAllowUpscaling = true
 
     @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
 
@@ -758,6 +761,8 @@ struct MediaWorkspaceView: View {
                 Text(imageText.resizeMax).tag(MediaImageResizeKind.maxDimension.rawValue)
                 Text(imageText.resizeWidth).tag(MediaImageResizeKind.width.rawValue)
                 Text(imageText.resizeHeight).tag(MediaImageResizeKind.height.rawValue)
+                Text(advancedImageText.percentage).tag(MediaImageResizeKind.percentage.rawValue)
+                Text(advancedImageText.shortestSide).tag(MediaImageResizeKind.shortestSide.rawValue)
                 Text(imageText.resizeExact).tag(MediaImageResizeKind.exact.rawValue)
             }
             .pickerStyle(.menu)
@@ -770,6 +775,12 @@ struct MediaWorkspaceView: View {
                 stepperInt(l10n.s.mediaWidth, value: $imageResizeWidth, range: 1...20_000, step: 64, suffix: "px")
             case .height:
                 stepperInt(imageText.height, value: $imageResizeHeight, range: 1...20_000, step: 64, suffix: "px")
+            case .percentage:
+                stepperInt(advancedImageText.percentage, value: $imageResizePercentage,
+                           range: 1...1_000, step: 5, suffix: "%")
+            case .shortestSide:
+                stepperInt(advancedImageText.shortestSide, value: $imageResizeShortestSide,
+                           range: 1...20_000, step: 64, suffix: "px")
             case .exact:
                 HStack(spacing: 10) {
                     stepperInt(l10n.s.mediaWidth, value: $imageResizeWidth, range: 1...20_000, step: 64, suffix: "px")
@@ -782,6 +793,10 @@ struct MediaWorkspaceView: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
+            }
+            if MediaImageResizeKind.sanitized(imageResizeKindRaw) != .none {
+                Toggle(advancedImageText.allowUpscaling, isOn: $imageAllowUpscaling)
+                    .toggleStyle(.checkbox)
             }
         }
     }
@@ -1069,6 +1084,9 @@ struct MediaWorkspaceView: View {
                              maxDimension: imageMaxDimension,
                              width: imageResizeWidth,
                              height: imageResizeHeight,
+                             percentage: imageResizePercentage,
+                             shortestSide: imageResizeShortestSide,
+                             allowUpscaling: imageAllowUpscaling,
                              exactMode: MediaImageExactResizeMode.sanitized(imageExactResizeModeRaw))
     }
 
@@ -1634,6 +1652,9 @@ struct MediaWorkspaceView: View {
         imageResizeWidth = options.resizeMode.width
         imageResizeHeight = options.resizeMode.height
         imageExactResizeModeRaw = options.resizeMode.exactMode.rawValue
+        imageResizePercentage = options.resizeMode.percentage
+        imageResizeShortestSide = options.resizeMode.shortestSide
+        imageAllowUpscaling = options.resizeMode.allowUpscaling
         imageWatermarkKindRaw = options.watermark.kind.rawValue
         imageWatermarkText = options.watermark.text
         imageWatermarkLogoPath = options.watermark.logoPath

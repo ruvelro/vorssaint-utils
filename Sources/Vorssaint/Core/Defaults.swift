@@ -445,6 +445,9 @@ enum DefaultsKey {
     static let mediaImageFlipHorizontal = "mediaImageFlipHorizontal"
     static let mediaImageFlipVertical = "mediaImageFlipVertical"
     static let mediaImageCrop = "mediaImageCrop"
+    static let mediaImageResizePercentage = "mediaImageResizePercentage"
+    static let mediaImageResizeShortestSide = "mediaImageResizeShortestSide"
+    static let mediaImageAllowUpscaling = "mediaImageAllowUpscaling"
     static let mediaTextAccurate = "mediaTextAccurate"
     static let mediaTextLanguageCorrection = "mediaTextLanguageCorrection"
 
@@ -1197,6 +1200,9 @@ enum Defaults {
         DefaultsKey.mediaImageFlipHorizontal: false,
         DefaultsKey.mediaImageFlipVertical: false,
         DefaultsKey.mediaImageCrop: MediaImageCrop.none.rawValue,
+        DefaultsKey.mediaImageResizePercentage: 100,
+        DefaultsKey.mediaImageResizeShortestSide: 1200,
+        DefaultsKey.mediaImageAllowUpscaling: true,
         DefaultsKey.mediaTextAccurate: true,
         DefaultsKey.mediaTextLanguageCorrection: true,
         DefaultsKey.clipboardHistoryEnabled: false,

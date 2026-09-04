@@ -36,7 +36,7 @@ enum MediaImageFormat: String, CaseIterable, Codable, Identifiable {
 }
 
 enum MediaImageResizeKind: String, CaseIterable, Codable, Identifiable {
-    case none, maxDimension, width, height, exact
+    case none, maxDimension, width, height, percentage, shortestSide, exact
 
     var id: String { rawValue }
 
@@ -60,22 +60,31 @@ struct MediaImageResizeMode: Codable, Equatable {
     var maxDimension: Int
     var width: Int
     var height: Int
+    var percentage: Int
+    var shortestSide: Int
+    var allowUpscaling: Bool
     var exactMode: MediaImageExactResizeMode
 
     init(kind: MediaImageResizeKind = .maxDimension,
          maxDimension: Int = 1600,
          width: Int = 1600,
          height: Int = 1200,
+         percentage: Int = 100,
+         shortestSide: Int = 1200,
+         allowUpscaling: Bool = true,
          exactMode: MediaImageExactResizeMode = .stretch) {
         self.kind = kind
         self.maxDimension = MediaSupport.sanitizedImageDimension(maxDimension, fallback: 1600)
         self.width = MediaSupport.sanitizedImageDimension(width, fallback: 1600)
         self.height = MediaSupport.sanitizedImageDimension(height, fallback: 1200)
+        self.percentage = min(1_000, max(1, percentage))
+        self.shortestSide = MediaSupport.sanitizedImageDimension(shortestSide, fallback: 1200)
+        self.allowUpscaling = allowUpscaling
         self.exactMode = exactMode
     }
 
     private enum CodingKeys: String, CodingKey {
-        case kind, maxDimension, width, height, exactMode
+        case kind, maxDimension, width, height, percentage, shortestSide, allowUpscaling, exactMode
     }
 
     init(from decoder: Decoder) throws {
@@ -86,6 +95,9 @@ struct MediaImageResizeMode: Codable, Equatable {
                   maxDimension: try container.decodeIfPresent(Int.self, forKey: .maxDimension) ?? 1600,
                   width: try container.decodeIfPresent(Int.self, forKey: .width) ?? 1600,
                   height: try container.decodeIfPresent(Int.self, forKey: .height) ?? 1200,
+                  percentage: try container.decodeIfPresent(Int.self, forKey: .percentage) ?? 100,
+                  shortestSide: try container.decodeIfPresent(Int.self, forKey: .shortestSide) ?? 1200,
+                  allowUpscaling: try container.decodeIfPresent(Bool.self, forKey: .allowUpscaling) ?? true,
                   exactMode: MediaImageExactResizeMode.sanitized(exactModeRaw))
     }
 
@@ -95,6 +107,9 @@ struct MediaImageResizeMode: Codable, Equatable {
         try container.encode(maxDimension, forKey: .maxDimension)
         try container.encode(width, forKey: .width)
         try container.encode(height, forKey: .height)
+        try container.encode(percentage, forKey: .percentage)
+        try container.encode(shortestSide, forKey: .shortestSide)
+        try container.encode(allowUpscaling, forKey: .allowUpscaling)
         try container.encode(exactMode, forKey: .exactMode)
     }
 
@@ -110,6 +125,14 @@ struct MediaImageResizeMode: Codable, Equatable {
 
     static func height(_ value: Int) -> MediaImageResizeMode {
         MediaImageResizeMode(kind: .height, height: value)
+    }
+
+    static func percentage(_ value: Int, allowUpscaling: Bool = true) -> MediaImageResizeMode {
+        MediaImageResizeMode(kind: .percentage, percentage: value, allowUpscaling: allowUpscaling)
+    }
+
+    static func shortestSide(_ value: Int, allowUpscaling: Bool = true) -> MediaImageResizeMode {
+        MediaImageResizeMode(kind: .shortestSide, shortestSide: value, allowUpscaling: allowUpscaling)
     }
 
     static func exact(width: Int, height: Int,
@@ -129,14 +152,26 @@ struct MediaImageResizeMode: Codable, Equatable {
             return MediaSupport.integralImageSize(width: sourceWidth * scale, height: sourceHeight * scale)
         case .width:
             let outWidth = CGFloat(max(1, width))
-            let outHeight = outWidth * sourceHeight / sourceWidth
-            return MediaSupport.integralImageSize(width: outWidth, height: outHeight)
+            let scale = allowUpscaling ? outWidth / sourceWidth : min(1, outWidth / sourceWidth)
+            return MediaSupport.integralImageSize(width: sourceWidth * scale, height: sourceHeight * scale)
         case .height:
             let outHeight = CGFloat(max(1, height))
-            let outWidth = outHeight * sourceWidth / sourceHeight
-            return MediaSupport.integralImageSize(width: outWidth, height: outHeight)
+            let scale = allowUpscaling ? outHeight / sourceHeight : min(1, outHeight / sourceHeight)
+            return MediaSupport.integralImageSize(width: sourceWidth * scale, height: sourceHeight * scale)
+        case .percentage:
+            let requestedScale = CGFloat(max(1, percentage)) / 100
+            let scale = allowUpscaling ? requestedScale : min(1, requestedScale)
+            return MediaSupport.integralImageSize(width: sourceWidth * scale, height: sourceHeight * scale)
+        case .shortestSide:
+            let requestedScale = CGFloat(max(1, shortestSide)) / min(sourceWidth, sourceHeight)
+            let scale = allowUpscaling ? requestedScale : min(1, requestedScale)
+            return MediaSupport.integralImageSize(width: sourceWidth * scale, height: sourceHeight * scale)
         case .exact:
-            return CGSize(width: max(1, width), height: max(1, height))
+            let targetWidth = CGFloat(max(1, width))
+            let targetHeight = CGFloat(max(1, height))
+            guard !allowUpscaling else { return CGSize(width: targetWidth, height: targetHeight) }
+            return MediaSupport.integralImageSize(width: min(sourceWidth, targetWidth),
+                                                  height: min(sourceHeight, targetHeight))
         }
     }
 }
