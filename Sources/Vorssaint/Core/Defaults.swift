@@ -441,6 +441,10 @@ enum DefaultsKey {
     static let mediaImageProfiles = "mediaImageProfiles"
     static let mediaImageSelectedProfileID = "mediaImageSelectedProfileID"
     static let mediaImageIncludeSubfolders = "mediaImageIncludeSubfolders"
+    static let mediaImageRotation = "mediaImageRotation"
+    static let mediaImageFlipHorizontal = "mediaImageFlipHorizontal"
+    static let mediaImageFlipVertical = "mediaImageFlipVertical"
+    static let mediaImageCrop = "mediaImageCrop"
     static let mediaTextAccurate = "mediaTextAccurate"
     static let mediaTextLanguageCorrection = "mediaTextLanguageCorrection"
 
@@ -1189,6 +1193,10 @@ enum Defaults {
         DefaultsKey.mediaImageProfiles: "[]",
         DefaultsKey.mediaImageSelectedProfileID: "",
         DefaultsKey.mediaImageIncludeSubfolders: true,
+        DefaultsKey.mediaImageRotation: MediaImageRotation.none.rawValue,
+        DefaultsKey.mediaImageFlipHorizontal: false,
+        DefaultsKey.mediaImageFlipVertical: false,
+        DefaultsKey.mediaImageCrop: MediaImageCrop.none.rawValue,
         DefaultsKey.mediaTextAccurate: true,
         DefaultsKey.mediaTextLanguageCorrection: true,
         DefaultsKey.clipboardHistoryEnabled: false,

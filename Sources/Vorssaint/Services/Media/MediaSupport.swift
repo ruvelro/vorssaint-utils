@@ -171,6 +171,78 @@ enum MediaImageBackground: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+enum MediaImageRotation: String, CaseIterable, Codable, Identifiable {
+    case none, clockwise90, clockwise180, clockwise270
+
+    var id: String { rawValue }
+
+    static func sanitized(_ value: String) -> MediaImageRotation {
+        MediaImageRotation(rawValue: value) ?? .none
+    }
+}
+
+enum MediaImageCrop: String, CaseIterable, Codable, Identifiable {
+    case none, square, fourThree, sixteenNine
+
+    var id: String { rawValue }
+
+    static func sanitized(_ value: String) -> MediaImageCrop {
+        MediaImageCrop(rawValue: value) ?? .none
+    }
+}
+
+struct MediaImageTransform: Codable, Equatable {
+    var rotation: MediaImageRotation
+    var flipHorizontal: Bool
+    var flipVertical: Bool
+    var crop: MediaImageCrop
+
+    init(rotation: MediaImageRotation = .none,
+         flipHorizontal: Bool = false,
+         flipVertical: Bool = false,
+         crop: MediaImageCrop = .none) {
+        self.rotation = rotation
+        self.flipHorizontal = flipHorizontal
+        self.flipVertical = flipVertical
+        self.crop = crop
+    }
+
+    static let none = MediaImageTransform()
+
+    func cropRect(for sourceSize: CGSize) -> CGRect {
+        let width = max(1, abs(sourceSize.width))
+        let height = max(1, abs(sourceSize.height))
+        guard crop != .none else { return CGRect(x: 0, y: 0, width: width, height: height) }
+        let landscapeRatio: CGFloat
+        switch crop {
+        case .none: return CGRect(x: 0, y: 0, width: width, height: height)
+        case .square: landscapeRatio = 1
+        case .fourThree: landscapeRatio = 4 / 3
+        case .sixteenNine: landscapeRatio = 16 / 9
+        }
+        let targetRatio = width >= height ? landscapeRatio : 1 / landscapeRatio
+        let sourceRatio = width / height
+        if sourceRatio > targetRatio {
+            let croppedWidth = height * targetRatio
+            return CGRect(x: (width - croppedWidth) / 2, y: 0,
+                          width: croppedWidth, height: height)
+        }
+        let croppedHeight = width / targetRatio
+        return CGRect(x: 0, y: (height - croppedHeight) / 2,
+                      width: width, height: croppedHeight)
+    }
+
+    func outputSize(for sourceSize: CGSize) -> CGSize {
+        let cropped = cropRect(for: sourceSize).size
+        switch rotation {
+        case .clockwise90, .clockwise270:
+            return MediaSupport.integralImageSize(width: cropped.height, height: cropped.width)
+        case .none, .clockwise180:
+            return MediaSupport.integralImageSize(width: cropped.width, height: cropped.height)
+        }
+    }
+}
+
 struct MediaImageWatermark: Codable, Equatable {
     var kind: MediaImageWatermarkKind
     var text: String
@@ -284,6 +356,7 @@ struct MediaImageOptions: Codable, Equatable {
     var renamePattern: MediaImageRenamePattern
     var background: MediaImageBackground
     var preserveModificationDate: Bool
+    var transform: MediaImageTransform
 
     init(quality: Double,
          maxDimension: Int,
@@ -293,7 +366,8 @@ struct MediaImageOptions: Codable, Equatable {
          watermark: MediaImageWatermark = .off,
          renamePattern: MediaImageRenamePattern = .automatic,
          background: MediaImageBackground = .transparent,
-         preserveModificationDate: Bool = false) {
+         preserveModificationDate: Bool = false,
+         transform: MediaImageTransform = .none) {
         self.quality = MediaSupport.sanitizedQuality(quality)
         // Image profiles and their resize mode share one range. Keeping this
         // legacy field on the video-oriented even/7680 sanitizer let the two
@@ -306,6 +380,47 @@ struct MediaImageOptions: Codable, Equatable {
         self.renamePattern = renamePattern
         self.background = background
         self.preserveModificationDate = preserveModificationDate
+        self.transform = transform
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case quality, maxDimension, format, stripMetadata, resizeMode, watermark
+        case renamePattern, background, preserveModificationDate, transform
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let maxDimension = try container.decodeIfPresent(Int.self, forKey: .maxDimension) ?? 1600
+        self.init(
+            quality: try container.decodeIfPresent(Double.self, forKey: .quality) ?? 0.72,
+            maxDimension: maxDimension,
+            format: try container.decodeIfPresent(MediaImageFormat.self, forKey: .format) ?? .jpeg,
+            stripMetadata: try container.decodeIfPresent(Bool.self, forKey: .stripMetadata) ?? true,
+            resizeMode: try container.decodeIfPresent(MediaImageResizeMode.self, forKey: .resizeMode)
+                ?? .maxDimension(maxDimension),
+            watermark: try container.decodeIfPresent(MediaImageWatermark.self, forKey: .watermark) ?? .off,
+            renamePattern: try container.decodeIfPresent(MediaImageRenamePattern.self, forKey: .renamePattern)
+                ?? .automatic,
+            background: try container.decodeIfPresent(MediaImageBackground.self, forKey: .background)
+                ?? .transparent,
+            preserveModificationDate: try container.decodeIfPresent(Bool.self,
+                                                                      forKey: .preserveModificationDate) ?? false,
+            transform: try container.decodeIfPresent(MediaImageTransform.self, forKey: .transform) ?? .none
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(quality, forKey: .quality)
+        try container.encode(maxDimension, forKey: .maxDimension)
+        try container.encode(format, forKey: .format)
+        try container.encode(stripMetadata, forKey: .stripMetadata)
+        try container.encode(resizeMode, forKey: .resizeMode)
+        try container.encode(watermark, forKey: .watermark)
+        try container.encode(renamePattern, forKey: .renamePattern)
+        try container.encode(background, forKey: .background)
+        try container.encode(preserveModificationDate, forKey: .preserveModificationDate)
+        try container.encode(transform, forKey: .transform)
     }
 }
 
@@ -565,6 +680,77 @@ enum MediaSupport {
                                  height: sourceHeight * decodeScale)
         guard imageRenderSizeIsSafe(decodedSize) else { return nil }
         return max(1, Int((max(sourceWidth, sourceHeight) * decodeScale).rounded(.up)))
+    }
+
+    static func imageDecodeMaxPixel(sourceSize: CGSize,
+                                    transformedSize: CGSize,
+                                    targetSize: CGSize,
+                                    resizeMode: MediaImageResizeMode) -> Int? {
+        guard let transformedMaxPixel = imageDecodeMaxPixel(sourceSize: transformedSize,
+                                                             targetSize: targetSize,
+                                                             resizeMode: resizeMode) else { return nil }
+        let transformedMax = max(1, max(abs(transformedSize.width), abs(transformedSize.height)))
+        let sourceMax = max(1, max(abs(sourceSize.width), abs(sourceSize.height)))
+        let decodeScale = min(1, CGFloat(transformedMaxPixel) / transformedMax)
+        let decodedSize = CGSize(width: abs(sourceSize.width) * decodeScale,
+                                 height: abs(sourceSize.height) * decodeScale)
+        guard imageRenderSizeIsSafe(decodedSize) else { return nil }
+        return max(1, Int((sourceMax * decodeScale).rounded(.up)))
+    }
+
+    static func transformedImage(_ image: CGImage,
+                                 transform: MediaImageTransform) -> CGImage? {
+        let cropRect = transform.cropRect(
+            for: CGSize(width: image.width, height: image.height)
+        ).integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard !cropRect.isEmpty, let cropped = image.cropping(to: cropRect) else { return nil }
+        let rotatedSize = transform.outputSize(
+            for: CGSize(width: image.width, height: image.height)
+        )
+        let width = max(1, Int(rotatedSize.width.rounded()))
+        let height = max(1, Int(rotatedSize.height.rounded()))
+        guard let rotatedContext = imageTransformContext(width: width, height: height) else { return nil }
+        let sourceRect = CGRect(x: 0, y: 0, width: cropped.width, height: cropped.height)
+        switch transform.rotation {
+        case .none:
+            rotatedContext.draw(cropped, in: sourceRect)
+        case .clockwise90:
+            rotatedContext.translateBy(x: CGFloat(width), y: 0)
+            rotatedContext.rotate(by: .pi / 2)
+            rotatedContext.draw(cropped, in: sourceRect)
+        case .clockwise180:
+            rotatedContext.translateBy(x: CGFloat(width), y: CGFloat(height))
+            rotatedContext.rotate(by: .pi)
+            rotatedContext.draw(cropped, in: sourceRect)
+        case .clockwise270:
+            rotatedContext.translateBy(x: 0, y: CGFloat(height))
+            rotatedContext.rotate(by: -.pi / 2)
+            rotatedContext.draw(cropped, in: sourceRect)
+        }
+        guard let rotated = rotatedContext.makeImage() else { return nil }
+        guard transform.flipHorizontal || transform.flipVertical else { return rotated }
+        guard let flippedContext = imageTransformContext(width: width, height: height) else { return nil }
+        if transform.flipHorizontal {
+            flippedContext.translateBy(x: CGFloat(width), y: 0)
+            flippedContext.scaleBy(x: -1, y: 1)
+        }
+        if transform.flipVertical {
+            flippedContext.translateBy(x: 0, y: CGFloat(height))
+            flippedContext.scaleBy(x: 1, y: -1)
+        }
+        flippedContext.draw(rotated, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return flippedContext.makeImage()
+    }
+
+    private static func imageTransformContext(width: Int,
+                                              height: Int) -> CGContext? {
+        CGContext(data: nil,
+                  width: width,
+                  height: height,
+                  bitsPerComponent: 8,
+                  bytesPerRow: 0,
+                  space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
     }
 
     static func scaledEvenSize(source: CGSize, maxDimension: Int) -> CGSize {

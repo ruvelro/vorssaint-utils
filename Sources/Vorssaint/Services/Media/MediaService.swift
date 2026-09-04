@@ -610,11 +610,13 @@ final class MediaService: ObservableObject {
         guard let sourceSize = MediaSupport.imageDisplaySize(properties: properties) else {
             throw MediaFailureBox(.unsupported)
         }
-        let expectedSize = options.resizeMode.targetSize(for: sourceSize)
+        let transformedSourceSize = options.transform.outputSize(for: sourceSize)
+        let expectedSize = options.resizeMode.targetSize(for: transformedSourceSize)
         guard MediaSupport.imageRenderSizeIsSafe(expectedSize) else {
             throw MediaFailureBox(.imageTooLarge)
         }
         guard let maxPixel = MediaSupport.imageDecodeMaxPixel(sourceSize: sourceSize,
+                                                              transformedSize: transformedSourceSize,
                                                               targetSize: expectedSize,
                                                               resizeMode: options.resizeMode) else {
             throw MediaFailureBox(.imageTooLarge)
@@ -628,14 +630,15 @@ final class MediaService: ObservableObject {
         guard let sourceImage = CGImageSourceCreateThumbnailAtIndex(source, 0, imageOptions as CFDictionary) else {
             throw MediaFailureBox(.unsupported)
         }
-        let targetSize = options.resizeMode.targetSize(
-            for: CGSize(width: sourceImage.width, height: sourceImage.height)
-        )
-        guard MediaSupport.imageRenderSizeIsSafe(targetSize) else {
+        guard let transformedImage = MediaSupport.transformedImage(sourceImage,
+                                                                   transform: options.transform) else {
+            throw MediaFailureBox(.unsupported)
+        }
+        guard MediaSupport.imageRenderSizeIsSafe(expectedSize) else {
             throw MediaFailureBox(.imageTooLarge)
         }
-        guard let image = renderImage(sourceImage,
-                                      targetSize: targetSize,
+        guard let image = renderImage(transformedImage,
+                                      targetSize: expectedSize,
                                       resizeMode: options.resizeMode,
                                       watermark: options.watermark,
                                       watermarkLogo: watermarkLogo,

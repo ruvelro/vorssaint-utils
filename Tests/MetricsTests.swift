@@ -6293,6 +6293,31 @@ struct MetricsTests {
         expect(MediaImageBackground.sanitized("black") == .black
                && MediaImageBackground.sanitized("mystery") == .transparent,
                "Image backgrounds sanitize known values and fall back to transparent")
+        let squareTransform = MediaImageTransform(rotation: .clockwise90,
+                                                  flipHorizontal: true,
+                                                  crop: .square)
+        expect(squareTransform.cropRect(for: CGSize(width: 400, height: 300))
+               == CGRect(x: 50, y: 0, width: 300, height: 300)
+               && squareTransform.outputSize(for: CGSize(width: 400, height: 300))
+               == CGSize(width: 300, height: 300),
+               "Image transforms calculate centered crop and rotated output geometry")
+        let portraitCrop = MediaImageTransform(crop: .sixteenNine)
+        expect(portraitCrop.outputSize(for: CGSize(width: 900, height: 1200))
+               == CGSize(width: 675, height: 1200),
+               "Portrait aspect-ratio crops preserve the source orientation")
+        let transformContext = CGContext(data: nil, width: 4, height: 2,
+                                         bitsPerComponent: 8, bytesPerRow: 0,
+                                         space: CGColorSpaceCreateDeviceRGB(),
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        let transformSource = transformContext?.makeImage()
+        let transformedImage = transformSource.flatMap {
+            MediaSupport.transformedImage($0,
+                                          transform: MediaImageTransform(rotation: .clockwise90,
+                                                                         flipHorizontal: true,
+                                                                         flipVertical: true))
+        }
+        expect(transformedImage?.width == 2 && transformedImage?.height == 4,
+               "Image renderer applies rotation and both flip directions to pixel data")
         expect(MediaImageResizeMode.none.targetSize(for: CGSize(width: 123, height: 45))
                == CGSize(width: 123, height: 45),
                "Image resize can preserve source dimensions")
@@ -6368,7 +6393,10 @@ struct MetricsTests {
                                                watermark: MediaImageWatermark(kind: .text,
                                                                               text: "Sample",
                                                                               opacity: 0.5),
-                                               renamePattern: MediaImageRenamePattern("{name}-{index}"))
+                                               renamePattern: MediaImageRenamePattern("{name}-{index}"),
+                                               transform: MediaImageTransform(rotation: .clockwise270,
+                                                                              flipVertical: true,
+                                                                              crop: .fourThree))
         let encodedProfile = try? JSONEncoder().encode([MediaImageProfile(id: "profile-1",
                                                                            name: "PNG web",
                                                                            options: profileOptions)])

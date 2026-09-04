@@ -92,6 +92,10 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaImageProfiles) private var imageProfilesRaw = "[]"
     @AppStorage(DefaultsKey.mediaImageSelectedProfileID) private var imageSelectedProfileID = ""
     @AppStorage(DefaultsKey.mediaImageIncludeSubfolders) private var imageIncludeSubfolders = true
+    @AppStorage(DefaultsKey.mediaImageRotation) private var imageRotationRaw = MediaImageRotation.none.rawValue
+    @AppStorage(DefaultsKey.mediaImageFlipHorizontal) private var imageFlipHorizontal = false
+    @AppStorage(DefaultsKey.mediaImageFlipVertical) private var imageFlipVertical = false
+    @AppStorage(DefaultsKey.mediaImageCrop) private var imageCropRaw = MediaImageCrop.none.rawValue
 
     @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
 
@@ -119,6 +123,10 @@ struct MediaWorkspaceView: View {
     private var inputURL: URL? { inputURLs.first }
     private var imageText: MediaImageConverterStrings {
         MediaImageConverterStrings.localized(l10n.language)
+    }
+
+    private var advancedImageText: MediaImageAdvancedStrings {
+        MediaImageAdvancedStrings.localized(l10n.language)
     }
 
     private var screenshotText: ScreenshotFeatureStrings {
@@ -376,6 +384,7 @@ struct MediaWorkspaceView: View {
                                 .toggleStyle(.checkbox)
                         }
                         imageBackgroundSection
+                        imageTransformSection
                         imageWatermarkSection
                         imageRenameSection
                         Toggle(imageText.preserveDate, isOn: $imagePreserveModificationDate)
@@ -666,7 +675,7 @@ struct MediaWorkspaceView: View {
             ZStack(alignment: previewAlignment) {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
                     .fill(previewBackgroundColor)
-                if let thumbnail = inputURL.flatMap({ ImageThumbnailer.thumbnail(for: $0, pointSize: compact ? 96 : 128) }) {
+                if let thumbnail = transformedPreviewThumbnail {
                     previewImage(thumbnail)
                         .padding(4)
                 } else {
@@ -774,6 +783,33 @@ struct MediaWorkspaceView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
+        }
+    }
+
+    private var imageTransformSection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(advancedImageText.transform)
+                .font(.system(size: compact ? 10 : 11, weight: .semibold))
+            Picker(advancedImageText.rotation, selection: $imageRotationRaw) {
+                Text(advancedImageText.noChange).tag(MediaImageRotation.none.rawValue)
+                Text("90°").tag(MediaImageRotation.clockwise90.rawValue)
+                Text("180°").tag(MediaImageRotation.clockwise180.rawValue)
+                Text("270°").tag(MediaImageRotation.clockwise270.rawValue)
+            }
+            .pickerStyle(.menu)
+            HStack(spacing: 12) {
+                Toggle(advancedImageText.flipHorizontal, isOn: $imageFlipHorizontal)
+                    .toggleStyle(.checkbox)
+                Toggle(advancedImageText.flipVertical, isOn: $imageFlipVertical)
+                    .toggleStyle(.checkbox)
+            }
+            Picker(advancedImageText.crop, selection: $imageCropRaw) {
+                Text(advancedImageText.noChange).tag(MediaImageCrop.none.rawValue)
+                Text("1:1").tag(MediaImageCrop.square.rawValue)
+                Text("4:3").tag(MediaImageCrop.fourThree.rawValue)
+                Text("16:9").tag(MediaImageCrop.sixteenNine.rawValue)
+            }
+            .pickerStyle(.menu)
         }
     }
 
@@ -1040,6 +1076,13 @@ struct MediaWorkspaceView: View {
         MediaImageWatermarkKind.sanitized(imageWatermarkKindRaw)
     }
 
+    private var currentTransform: MediaImageTransform {
+        MediaImageTransform(rotation: MediaImageRotation.sanitized(imageRotationRaw),
+                            flipHorizontal: imageFlipHorizontal,
+                            flipVertical: imageFlipVertical,
+                            crop: MediaImageCrop.sanitized(imageCropRaw))
+    }
+
     private var currentWatermark: MediaImageWatermark {
         MediaImageWatermark(kind: currentWatermarkKind,
                             text: imageWatermarkText,
@@ -1059,7 +1102,8 @@ struct MediaWorkspaceView: View {
                           watermark: currentWatermark,
                           renamePattern: MediaImageRenamePattern(imageRenamePattern),
                           background: MediaImageBackground.sanitized(imageBackgroundRaw),
-                          preserveModificationDate: imagePreserveModificationDate)
+                          preserveModificationDate: imagePreserveModificationDate,
+                          transform: currentTransform)
     }
 
     private var imageProfiles: [MediaImageProfile] {
@@ -1089,9 +1133,22 @@ struct MediaWorkspaceView: View {
 
     private var previewOutputSize: CGSize {
         guard inputURL != nil, let sourceSize = inputImageSize else {
-            return currentResizeMode.targetSize(for: CGSize(width: 1600, height: 1200))
+            return currentResizeMode.targetSize(
+                for: currentTransform.outputSize(for: CGSize(width: 1600, height: 1200))
+            )
         }
-        return currentResizeMode.targetSize(for: sourceSize)
+        return currentResizeMode.targetSize(for: currentTransform.outputSize(for: sourceSize))
+    }
+
+    private var transformedPreviewThumbnail: NSImage? {
+        guard let inputURL,
+              let thumbnail = ImageThumbnailer.thumbnail(for: inputURL, pointSize: compact ? 96 : 128),
+              let source = thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil),
+              let transformed = MediaSupport.transformedImage(source, transform: currentTransform) else {
+            return nil
+        }
+        return NSImage(cgImage: transformed,
+                       size: NSSize(width: transformed.width, height: transformed.height))
     }
 
     private var previewFrameSize: CGSize {
@@ -1587,6 +1644,10 @@ struct MediaWorkspaceView: View {
         imageRenamePattern = options.renamePattern.rawValue
         imageBackgroundRaw = options.background.rawValue
         imagePreserveModificationDate = options.preserveModificationDate
+        imageRotationRaw = options.transform.rotation.rawValue
+        imageFlipHorizontal = options.transform.flipHorizontal
+        imageFlipVertical = options.transform.flipVertical
+        imageCropRaw = options.transform.crop.rawValue
     }
 
     private func copy(_ text: String) {
