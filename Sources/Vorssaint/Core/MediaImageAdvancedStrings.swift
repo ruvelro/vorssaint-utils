@@ -35,7 +35,7 @@ struct MediaImageAdvancedStrings {
                               flipHorizontal: "Yatay çevir", flipVertical: "Dikey çevir", crop: "Kırp",
                               percentage: "Yüzde", shortestSide: "Kısa kenar", allowUpscaling: "Büyütmeye izin ver",
                               resampling: "Yeniden örnekleme", nearest: "En yakın komşu", removeGPS: "Konumu kaldır (GPS)",
-                              removeEXIF: "EXIF'i kaldır", removeIPTC: "IPTC'yi kaldır", removeXMP: "XMP'yi kaldır", insertVariable: "Değişken ekle")
+                              removeEXIF: "EXIF’i kaldır", removeIPTC: "IPTC’yi kaldır", removeXMP: "XMP’yi kaldır", insertVariable: "Değişken ekle")
         case .ru: return .init(transform: "Преобразование", rotation: "Поворот", noChange: "Без изменений",
                               flipHorizontal: "Отразить по горизонтали", flipVertical: "Отразить по вертикали", crop: "Обрезка",
                               percentage: "Процент", shortestSide: "Короткая сторона", allowUpscaling: "Разрешить увеличение",
