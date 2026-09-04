@@ -14,7 +14,7 @@ enum MediaTool: String, CaseIterable, Identifiable {
 }
 
 enum MediaImageFormat: String, CaseIterable, Codable, Identifiable {
-    case jpeg, heic, png, pdf
+    case jpeg, heic, png, webp, tiff, avif, pdf
 
     var id: String { rawValue }
 
@@ -23,6 +23,9 @@ enum MediaImageFormat: String, CaseIterable, Codable, Identifiable {
         case .jpeg: return "jpg"
         case .heic: return "heic"
         case .png: return "png"
+        case .webp: return "webp"
+        case .tiff: return "tiff"
+        case .avif: return "avif"
         case .pdf: return "pdf"
         }
     }

@@ -343,9 +343,12 @@ struct MediaWorkspaceView: View {
                     Text("JPEG").tag(MediaImageFormat.jpeg.rawValue)
                     Text("PNG").tag(MediaImageFormat.png.rawValue)
                     Text("HEIC").tag(MediaImageFormat.heic.rawValue)
+                    Text("WebP").tag(MediaImageFormat.webp.rawValue)
+                    Text("TIFF").tag(MediaImageFormat.tiff.rawValue)
+                    Text("AVIF").tag(MediaImageFormat.avif.rawValue)
                     Text("PDF").tag(MediaImageFormat.pdf.rawValue)
                 }
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
                 compressionRow(value: $imageQuality)
                 imageResizeSection
                 DisclosureHeaderRow(isExpanded: $imageMoreOptionsExpanded) {
@@ -1440,6 +1443,9 @@ struct MediaWorkspaceView: View {
             case .jpeg: return .jpeg
             case .heic: return .heic
             case .png: return .png
+            case .webp: return .webP
+            case .tiff: return .tiff
+            case .avif: return UTType(importedAs: "public.avif")
             case .pdf: return .pdf
             }
         case .textExtractor: return .plainText

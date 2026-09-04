@@ -652,7 +652,11 @@ final class MediaService: ObservableObject {
                             properties: [CFString: Any],
                             outputURL: URL,
                             options: MediaImageOptions) throws {
-        if options.format == .pdf {
+        if options.format == .webp {
+            try writeWebP(image: image,
+                          outputURL: outputURL,
+                          quality: MediaSupport.sanitizedQuality(options.quality))
+        } else if options.format == .pdf {
             try writePDF(image: image, outputURL: outputURL,
                          quality: MediaSupport.sanitizedQuality(options.quality))
         } else {
@@ -1103,11 +1107,53 @@ final class MediaService: ObservableObject {
         pdf.closePDF()
     }
 
+    private func writeWebP(image: CGImage, outputURL: URL, quality: Double) throws {
+        let intermediateURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("vorssaint-webp-\(UUID().uuidString)")
+            .appendingPathExtension("png")
+        defer { try? FileManager.default.removeItem(at: intermediateURL) }
+        guard let destination = CGImageDestinationCreateWithURL(
+            intermediateURL as CFURL, UTType.png.identifier as CFString, 1, nil
+        ) else {
+            throw MediaFailureBox(.unsupported)
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else {
+            throw MediaFailureBox(.unsupported)
+        }
+
+        let executable = Bundle.main.bundleURL
+            .appendingPathComponent("Contents/Library/Helpers/VorssaintWebPEncoder")
+        guard FileManager.default.isExecutableFile(atPath: executable.path) else {
+            throw MediaFailureBox(.failed("The bundled WebP encoder is unavailable."))
+        }
+        let process = Process()
+        let errors = Pipe()
+        process.executableURL = executable
+        process.arguments = [intermediateURL.path, outputURL.path, "\(quality * 100)"]
+        process.standardError = errors
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            throw MediaFailureBox(.failed(error.localizedDescription))
+        }
+        guard process.terminationStatus == 0 else {
+            let detail = String(data: errors.fileHandleForReading.readDataToEndOfFile(),
+                                encoding: .utf8)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            throw MediaFailureBox(.failed(detail?.isEmpty == false ? detail! : "WebP encoding failed."))
+        }
+    }
+
     private func typeIdentifier(for format: MediaImageFormat) -> String {
         switch format {
         case .jpeg: return UTType.jpeg.identifier
         case .heic: return UTType.heic.identifier
         case .png: return UTType.png.identifier
+        case .webp: return UTType.webP.identifier
+        case .tiff: return UTType.tiff.identifier
+        case .avif: return "public.avif"
         case .pdf: return UTType.pdf.identifier
         }
     }

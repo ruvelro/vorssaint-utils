@@ -6277,6 +6277,10 @@ struct MetricsTests {
                "Image converter accepts the PDF format")
         expect(MediaImageFormat.pdf.fileExtension == "pdf",
                "PDF output uses the pdf file extension")
+        expect(MediaImageFormat.webp.fileExtension == "webp"
+               && MediaImageFormat.tiff.fileExtension == "tiff"
+               && MediaImageFormat.avif.fileExtension == "avif",
+               "Image conversion exposes WebP, TIFF and AVIF output")
         expect(MediaImageFormat.sanitized("bmp") == .jpeg,
                "Unknown image format falls back to JPEG")
         expect(MediaImageResizeKind.sanitized("height") == .height,
