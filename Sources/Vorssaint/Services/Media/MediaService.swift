@@ -600,9 +600,10 @@ final class MediaService: ObservableObject {
                 publish(.running(progress: progress, message: "image"), operationID: operationID)
             }
         }
-        while completionGroup.wait(timeout: .now() + .milliseconds(50)) == .timedOut {
-            if token.isCancelled { workerQueue.cancelAllOperations() }
-        }
+        var workersFinished = false
+        repeat {
+            workersFinished = completionGroup.wait(timeout: .now() + .milliseconds(50)) == .success
+        } while !workersFinished
         try checkCancellation(token)
 
         let itemResults = indexedResults.compactMap { $0 }
@@ -1186,7 +1187,8 @@ final class MediaService: ObservableObject {
             let detail = String(data: errors.fileHandleForReading.readDataToEndOfFile(),
                                 encoding: .utf8)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw MediaFailureBox(.failed(detail?.isEmpty == false ? detail! : "WebP encoding failed."))
+            let message = detail.flatMap { $0.isEmpty ? nil : $0 } ?? "WebP encoding failed."
+            throw MediaFailureBox(.failed(message))
         }
     }
 
