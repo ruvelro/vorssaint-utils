@@ -6407,6 +6407,24 @@ struct MetricsTests {
                                                                             format: .jpeg)
                == "20240101-000000-2",
                "Image rename pattern expands datetime")
+        let renameMetadata: [CFString: Any] = [
+            kCGImagePropertyTIFFDictionary: [
+                kCGImagePropertyTIFFMake: "Fujifilm",
+                kCGImagePropertyTIFFModel: "X-T5",
+            ],
+            kCGImagePropertyExifDictionary: [
+                kCGImagePropertyExifDateTimeOriginal: "2024:03:02 12:34:56",
+                kCGImagePropertyExifISOSpeedRatings: [400],
+                kCGImagePropertyExifFocalLength: 35,
+            ],
+            kCGImagePropertyExifAuxDictionary: [kCGImagePropertyExifLensModel: "XF 23mm F2"],
+        ]
+        expect(MediaImageRenamePattern("{exif:date}-{exif:make}-{exif:model}-{exif:lens}-ISO{exif:iso}-{exif:focal}mm")
+               .outputBaseName(for: URL(fileURLWithPath: "/tmp/a.jpg"), index: 1,
+                               size: CGSize(width: 1, height: 1), format: .jpeg,
+                               properties: renameMetadata)
+               == "2024-03-02 12-34-56-Fujifilm-X-T5-XF 23mm F2-ISO400-35mm",
+               "Image rename pattern expands source EXIF camera, lens and exposure variables")
         expect(MediaImageRenamePattern("../bad/name").outputBaseName(for: URL(fileURLWithPath: "/tmp/a.jpg"),
                                                                      index: 1,
                                                                      size: CGSize(width: 1, height: 1),

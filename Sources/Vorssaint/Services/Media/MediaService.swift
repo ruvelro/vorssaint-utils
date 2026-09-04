@@ -537,6 +537,7 @@ final class MediaService: ObservableObject {
                                                                                  options: options,
                                                                                  index: offset + 1,
                                                                                  outputSize: prepared.size,
+                                                                                 properties: prepared.properties,
                                                                                  reservedPaths: reservedOutputPaths)
                 reservedOutputPaths.insert(outputURL.standardizedFileURL.path)
                 let stagedOutputURL = try stagedOutput(inputURL: inputURL, outputURL: outputURL)

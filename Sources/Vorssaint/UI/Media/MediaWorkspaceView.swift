@@ -919,12 +919,19 @@ struct MediaWorkspaceView: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(imageText.rename)
                 .font(.system(size: compact ? 10 : 11, weight: .semibold))
-            TextField("{name}-{index:03}", text: $imageRenamePattern)
-                .textFieldStyle(.roundedBorder)
-            Text("{name} {index} {index:03} {counter} {date} {time} {datetime} {width} {height} {format}")
-                .font(.system(size: compact ? 8.5 : 9.5, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+            HStack(spacing: 6) {
+                TextField("{name}-{index:03}", text: $imageRenamePattern)
+                    .textFieldStyle(.roundedBorder)
+                Menu {
+                    ForEach(Self.renameTokens, id: \.self) { token in
+                        Button(token) { insertRenameToken(token) }
+                    }
+                } label: {
+                    Label(advancedImageText.insertVariable, systemImage: "curlybraces")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+            }
         }
     }
 
@@ -1596,7 +1603,10 @@ struct MediaWorkspaceView: View {
                                                outputDirectory: inputURL.deletingLastPathComponent(),
                                                options: currentImageOptions,
                                                index: 1,
-                                               outputSize: currentResizeMode.targetSize(for: sourceSize))
+                                               outputSize: currentResizeMode.targetSize(
+                                                for: currentTransform.outputSize(for: sourceSize)
+                                               ),
+                                               properties: MediaSupport.imageProperties(at: inputURL) ?? [:])
         case .textExtractor:
             return MediaSupport.uniqueOutputURL(for: inputURL, suffix: "-text", fileExtension: "txt")
         }
@@ -1708,6 +1718,16 @@ struct MediaWorkspaceView: View {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
+
+    private func insertRenameToken(_ token: String) {
+        imageRenamePattern.append(token)
+    }
+
+    private static let renameTokens = [
+        "{name}", "{index}", "{index:03}", "{counter}", "{date}", "{time}",
+        "{datetime}", "{width}", "{height}", "{format}", "{exif:date}",
+        "{exif:make}", "{exif:model}", "{exif:lens}", "{exif:iso}", "{exif:focal}",
+    ]
 
     /// A size target is typed rather than stepped, so the formatter is what
     /// keeps it a whole number the planner can work with.

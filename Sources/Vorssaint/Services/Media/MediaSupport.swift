@@ -365,9 +365,13 @@ struct MediaImageRenamePattern: Codable, Equatable {
                         index: Int,
                         date: Date = Date(),
                         size: CGSize,
-                        format: MediaImageFormat) -> String {
+                        format: MediaImageFormat,
+                        properties: [CFString: Any] = [:]) -> String {
         let pattern = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "{name}" : rawValue
         let baseName = MediaSupport.visibleOutputBaseName(for: inputURL)
+        let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] ?? [:]
+        let auxiliary = properties[kCGImagePropertyExifAuxDictionary] as? [CFString: Any] ?? [:]
+        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
         var output = pattern
             .replacingOccurrences(of: "{name}", with: baseName)
             .replacingOccurrences(of: "{date}", with: Self.dateFormatter.string(from: date))
@@ -379,6 +383,14 @@ struct MediaImageRenamePattern: Codable, Equatable {
             .replacingOccurrences(of: "{ext}", with: format.fileExtension)
             .replacingOccurrences(of: "{index}", with: "\(max(1, index))")
             .replacingOccurrences(of: "{counter}", with: "\(max(1, index))")
+            .replacingOccurrences(of: "{exif:date}", with: Self.metadataText(exif[kCGImagePropertyExifDateTimeOriginal]))
+            .replacingOccurrences(of: "{exif:make}", with: Self.metadataText(tiff[kCGImagePropertyTIFFMake]))
+            .replacingOccurrences(of: "{exif:model}", with: Self.metadataText(tiff[kCGImagePropertyTIFFModel]))
+            .replacingOccurrences(of: "{exif:lens}", with: Self.metadataText(auxiliary[kCGImagePropertyExifLensModel]
+                                                                            ?? exif[kCGImagePropertyExifLensModel]))
+            .replacingOccurrences(of: "{exif:iso}", with: Self.metadataText(exif[kCGImagePropertyExifISOSpeedRatings]
+                                                                             ?? exif[kCGImagePropertyExifISOSpeed]))
+            .replacingOccurrences(of: "{exif:focal}", with: Self.metadataText(exif[kCGImagePropertyExifFocalLength]))
         for digits in 2...6 {
             output = output.replacingOccurrences(of: "{index:0\(digits)}",
                                                  with: String(format: "%0\(digits)d", max(1, index)))
@@ -387,6 +399,15 @@ struct MediaImageRenamePattern: Codable, Equatable {
         }
         let clean = MediaSupport.sanitizedFileBaseName(output)
         return clean.isEmpty ? baseName : clean
+    }
+
+    private static func metadataText(_ value: Any?) -> String {
+        if let text = value as? String { return text }
+        if let number = value as? NSNumber { return number.stringValue }
+        if let values = value as? [Any] {
+            return values.map { metadataText($0) }.filter { !$0.isEmpty }.joined(separator: "-")
+        }
+        return ""
     }
 
     private static let dateFormatter: DateFormatter = {
@@ -891,12 +912,14 @@ enum MediaSupport {
                                options: MediaImageOptions,
                                index: Int,
                                outputSize: CGSize,
+                               properties: [CFString: Any] = [:],
                                reservedPaths: Set<String> = [],
                                fileManager: FileManager = .default) -> URL {
         let baseName = options.renamePattern.outputBaseName(for: inputURL,
                                                             index: index,
                                                             size: outputSize,
-                                                            format: options.format)
+                                                            format: options.format,
+                                                            properties: properties)
         return uniqueOutputURL(in: outputDirectory,
                                baseName: baseName,
                                fileExtension: options.format.fileExtension,
@@ -938,10 +961,13 @@ enum MediaSupport {
     }
 
     static func imageDisplaySize(at url: URL) -> CGSize? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil)
-                as? [CFString: Any] else { return nil }
+        guard let properties = imageProperties(at: url) else { return nil }
         return imageDisplaySize(properties: properties)
+    }
+
+    static func imageProperties(at url: URL) -> [CFString: Any]? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        return CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
     }
 
     static func watermarkLogo(atPath path: String, maxPixel: Int = 2_048) -> CGImage? {
