@@ -100,6 +100,10 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaImageResizeShortestSide) private var imageResizeShortestSide = 1200
     @AppStorage(DefaultsKey.mediaImageAllowUpscaling) private var imageAllowUpscaling = true
     @AppStorage(DefaultsKey.mediaImageResampling) private var imageResamplingRaw = MediaImageResampling.high.rawValue
+    @AppStorage(DefaultsKey.mediaImageRemoveGPS) private var imageRemoveGPS = true
+    @AppStorage(DefaultsKey.mediaImageRemoveEXIF) private var imageRemoveEXIF = false
+    @AppStorage(DefaultsKey.mediaImageRemoveIPTC) private var imageRemoveIPTC = false
+    @AppStorage(DefaultsKey.mediaImageRemoveXMP) private var imageRemoveXMP = false
 
     @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
 
@@ -388,11 +392,21 @@ struct MediaWorkspaceView: View {
                 if imageMoreOptionsExpanded {
                     VStack(alignment: .leading, spacing: 10) {
                         imageProfileRow
-                        // PDF output never carries EXIF (the image is re-encoded
-                        // into the document), so the toggle would be a dead control.
-                        if MediaImageFormat.sanitized(imageFormatRaw) != .pdf {
+                        // PDF and WebP are rebuilt from pixels and do not carry
+                        // source metadata, so controls there would be misleading.
+                        if ![MediaImageFormat.pdf, .webp].contains(MediaImageFormat.sanitized(imageFormatRaw)) {
                             Toggle(l10n.s.mediaStripMetadata, isOn: $imageStripMetadata)
                                 .toggleStyle(.checkbox)
+                            if !imageStripMetadata {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Toggle(advancedImageText.removeGPS, isOn: $imageRemoveGPS)
+                                    Toggle(advancedImageText.removeEXIF, isOn: $imageRemoveEXIF)
+                                    Toggle(advancedImageText.removeIPTC, isOn: $imageRemoveIPTC)
+                                    Toggle(advancedImageText.removeXMP, isOn: $imageRemoveXMP)
+                                }
+                                .toggleStyle(.checkbox)
+                                .disclosureIndent()
+                            }
                         }
                         imageBackgroundSection
                         imageTransformSection
@@ -1130,7 +1144,11 @@ struct MediaWorkspaceView: View {
                           background: MediaImageBackground.sanitized(imageBackgroundRaw),
                           preserveModificationDate: imagePreserveModificationDate,
                           transform: currentTransform,
-                          resampling: MediaImageResampling.sanitized(imageResamplingRaw))
+                          resampling: MediaImageResampling.sanitized(imageResamplingRaw),
+                          metadataPolicy: MediaImageMetadataPolicy(removeGPS: imageRemoveGPS,
+                                                                    removeEXIF: imageRemoveEXIF,
+                                                                    removeIPTC: imageRemoveIPTC,
+                                                                    removeXMP: imageRemoveXMP))
     }
 
     private var imageProfiles: [MediaImageProfile] {
@@ -1679,6 +1697,10 @@ struct MediaWorkspaceView: View {
         imageFlipVertical = options.transform.flipVertical
         imageCropRaw = options.transform.crop.rawValue
         imageResamplingRaw = options.resampling.rawValue
+        imageRemoveGPS = options.metadataPolicy.removeGPS
+        imageRemoveEXIF = options.metadataPolicy.removeEXIF
+        imageRemoveIPTC = options.metadataPolicy.removeIPTC
+        imageRemoveXMP = options.metadataPolicy.removeXMP
     }
 
     private func copy(_ text: String) {

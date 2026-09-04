@@ -297,6 +297,23 @@ enum MediaImageResampling: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+struct MediaImageMetadataPolicy: Codable, Equatable {
+    var removeGPS: Bool
+    var removeEXIF: Bool
+    var removeIPTC: Bool
+    var removeXMP: Bool
+
+    init(removeGPS: Bool = true,
+         removeEXIF: Bool = false,
+         removeIPTC: Bool = false,
+         removeXMP: Bool = false) {
+        self.removeGPS = removeGPS
+        self.removeEXIF = removeEXIF
+        self.removeIPTC = removeIPTC
+        self.removeXMP = removeXMP
+    }
+}
+
 struct MediaImageWatermark: Codable, Equatable {
     var kind: MediaImageWatermarkKind
     var text: String
@@ -412,6 +429,7 @@ struct MediaImageOptions: Codable, Equatable {
     var preserveModificationDate: Bool
     var transform: MediaImageTransform
     var resampling: MediaImageResampling
+    var metadataPolicy: MediaImageMetadataPolicy
 
     init(quality: Double,
          maxDimension: Int,
@@ -423,7 +441,8 @@ struct MediaImageOptions: Codable, Equatable {
          background: MediaImageBackground = .transparent,
          preserveModificationDate: Bool = false,
          transform: MediaImageTransform = .none,
-         resampling: MediaImageResampling = .high) {
+         resampling: MediaImageResampling = .high,
+         metadataPolicy: MediaImageMetadataPolicy = MediaImageMetadataPolicy()) {
         self.quality = MediaSupport.sanitizedQuality(quality)
         // Image profiles and their resize mode share one range. Keeping this
         // legacy field on the video-oriented even/7680 sanitizer let the two
@@ -438,11 +457,12 @@ struct MediaImageOptions: Codable, Equatable {
         self.preserveModificationDate = preserveModificationDate
         self.transform = transform
         self.resampling = resampling
+        self.metadataPolicy = metadataPolicy
     }
 
     private enum CodingKeys: String, CodingKey {
         case quality, maxDimension, format, stripMetadata, resizeMode, watermark
-        case renamePattern, background, preserveModificationDate, transform, resampling
+        case renamePattern, background, preserveModificationDate, transform, resampling, metadataPolicy
     }
 
     init(from decoder: Decoder) throws {
@@ -463,7 +483,10 @@ struct MediaImageOptions: Codable, Equatable {
             preserveModificationDate: try container.decodeIfPresent(Bool.self,
                                                                       forKey: .preserveModificationDate) ?? false,
             transform: try container.decodeIfPresent(MediaImageTransform.self, forKey: .transform) ?? .none,
-            resampling: try container.decodeIfPresent(MediaImageResampling.self, forKey: .resampling) ?? .high
+            resampling: try container.decodeIfPresent(MediaImageResampling.self, forKey: .resampling) ?? .high,
+            metadataPolicy: try container.decodeIfPresent(MediaImageMetadataPolicy.self,
+                                                            forKey: .metadataPolicy)
+                ?? MediaImageMetadataPolicy()
         )
     }
 
@@ -480,6 +503,7 @@ struct MediaImageOptions: Codable, Equatable {
         try container.encode(preserveModificationDate, forKey: .preserveModificationDate)
         try container.encode(transform, forKey: .transform)
         try container.encode(resampling, forKey: .resampling)
+        try container.encode(metadataPolicy, forKey: .metadataPolicy)
     }
 }
 
@@ -954,6 +978,30 @@ enum MediaSupport {
         guard width.isFinite, height.isFinite, width >= 1, height >= 1,
               width <= CGFloat(maxDimension), height <= CGFloat(maxDimension) else { return false }
         return width * height <= CGFloat(maxPixels)
+    }
+
+    static func sanitizedImageProperties(_ properties: [CFString: Any],
+                                         image: CGImage,
+                                         policy: MediaImageMetadataPolicy) -> [CFString: Any] {
+        var clean = properties
+        clean.removeValue(forKey: kCGImagePropertyOrientation)
+        clean[kCGImagePropertyPixelWidth] = image.width
+        clean[kCGImagePropertyPixelHeight] = image.height
+        if policy.removeGPS {
+            clean.removeValue(forKey: kCGImagePropertyGPSDictionary)
+            clean[kCGImageMetadataShouldExcludeGPS] = true
+        }
+        if policy.removeEXIF {
+            clean.removeValue(forKey: kCGImagePropertyExifDictionary)
+            clean.removeValue(forKey: kCGImagePropertyExifAuxDictionary)
+        }
+        if policy.removeIPTC {
+            clean.removeValue(forKey: kCGImagePropertyIPTCDictionary)
+        }
+        if policy.removeXMP {
+            clean[kCGImageMetadataShouldExcludeXMP] = true
+        }
+        return clean
     }
 
     static func sanitizedImageProfiles(_ profiles: [MediaImageProfile]) -> [MediaImageProfile] {

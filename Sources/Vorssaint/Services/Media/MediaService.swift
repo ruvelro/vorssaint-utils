@@ -672,7 +672,9 @@ final class MediaService: ObservableObject {
                 kCGImageDestinationLossyCompressionQuality: MediaSupport.sanitizedQuality(options.quality),
             ]
             if !options.stripMetadata {
-                outputProperties.merge(sanitizedImageProperties(properties, image: image)) { current, _ in current }
+                outputProperties.merge(MediaSupport.sanitizedImageProperties(
+                    properties, image: image, policy: options.metadataPolicy
+                )) { current, _ in current }
             }
             CGImageDestinationAddImage(destination, image, outputProperties as CFDictionary)
             guard CGImageDestinationFinalize(destination) else { throw MediaFailureBox(.unsupported) }
@@ -1083,14 +1085,6 @@ final class MediaService: ObservableObject {
             throw MediaFailureBox(.failed("Video metadata unavailable."))
         }
         return try result.get()
-    }
-
-    private func sanitizedImageProperties(_ properties: [CFString: Any], image: CGImage) -> [CFString: Any] {
-        var clean = properties
-        clean.removeValue(forKey: kCGImagePropertyOrientation)
-        clean[kCGImagePropertyPixelWidth] = image.width
-        clean[kCGImagePropertyPixelHeight] = image.height
-        return clean
     }
 
     /// CGImageDestination accepts com.adobe.pdf but ignores the lossy quality,

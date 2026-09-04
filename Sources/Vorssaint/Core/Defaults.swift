@@ -449,6 +449,10 @@ enum DefaultsKey {
     static let mediaImageResizeShortestSide = "mediaImageResizeShortestSide"
     static let mediaImageAllowUpscaling = "mediaImageAllowUpscaling"
     static let mediaImageResampling = "mediaImageResampling"
+    static let mediaImageRemoveGPS = "mediaImageRemoveGPS"
+    static let mediaImageRemoveEXIF = "mediaImageRemoveEXIF"
+    static let mediaImageRemoveIPTC = "mediaImageRemoveIPTC"
+    static let mediaImageRemoveXMP = "mediaImageRemoveXMP"
     static let mediaTextAccurate = "mediaTextAccurate"
     static let mediaTextLanguageCorrection = "mediaTextLanguageCorrection"
 
@@ -1205,6 +1209,10 @@ enum Defaults {
         DefaultsKey.mediaImageResizeShortestSide: 1200,
         DefaultsKey.mediaImageAllowUpscaling: true,
         DefaultsKey.mediaImageResampling: MediaImageResampling.high.rawValue,
+        DefaultsKey.mediaImageRemoveGPS: true,
+        DefaultsKey.mediaImageRemoveEXIF: false,
+        DefaultsKey.mediaImageRemoveIPTC: false,
+        DefaultsKey.mediaImageRemoveXMP: false,
         DefaultsKey.mediaTextAccurate: true,
         DefaultsKey.mediaTextLanguageCorrection: true,
         DefaultsKey.clipboardHistoryEnabled: false,

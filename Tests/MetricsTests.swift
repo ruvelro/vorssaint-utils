@@ -6322,6 +6322,24 @@ struct MetricsTests {
         }
         expect(transformedImage?.width == 2 && transformedImage?.height == 4,
                "Image renderer applies rotation and both flip directions to pixel data")
+        if let transformSource {
+            let metadataProperties: [CFString: Any] = [
+                kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 40.0],
+                kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2024:01:01 00:00:00"],
+                kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCObjectName: "Sample"],
+            ]
+            let filteredMetadata = MediaSupport.sanitizedImageProperties(
+                metadataProperties, image: transformSource,
+                policy: MediaImageMetadataPolicy(removeGPS: true, removeEXIF: false,
+                                                  removeIPTC: true, removeXMP: true)
+            )
+            expect(filteredMetadata[kCGImagePropertyGPSDictionary] == nil
+                   && filteredMetadata[kCGImagePropertyIPTCDictionary] == nil
+                   && filteredMetadata[kCGImagePropertyExifDictionary] != nil
+                   && filteredMetadata[kCGImageMetadataShouldExcludeGPS] as? Bool == true
+                   && filteredMetadata[kCGImageMetadataShouldExcludeXMP] as? Bool == true,
+                   "Image metadata policy independently removes GPS, IPTC and XMP while retaining EXIF")
+        }
         expect(MediaImageResizeMode.none.targetSize(for: CGSize(width: 123, height: 45))
                == CGSize(width: 123, height: 45),
                "Image resize can preserve source dimensions")
@@ -6412,7 +6430,11 @@ struct MetricsTests {
                                                transform: MediaImageTransform(rotation: .clockwise270,
                                                                               flipVertical: true,
                                                                               crop: .fourThree),
-                                               resampling: .nearest)
+                                               resampling: .nearest,
+                                               metadataPolicy: MediaImageMetadataPolicy(removeGPS: false,
+                                                                                         removeEXIF: true,
+                                                                                         removeIPTC: true,
+                                                                                         removeXMP: true))
         let encodedProfile = try? JSONEncoder().encode([MediaImageProfile(id: "profile-1",
                                                                            name: "PNG web",
                                                                            options: profileOptions)])
