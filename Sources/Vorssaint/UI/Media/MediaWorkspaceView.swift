@@ -182,20 +182,6 @@ struct MediaWorkspaceView: View {
             }
             outputURL = defaultOutputURL(for: inputURLs, tool: .imageCompressor)
         }
-        .onChange(of: imageSaveInSubfolder) { wasEnabled, isEnabled in
-            guard selectedTool == .imageCompressor, inputURLs.count > 1 else { return }
-            if outputWasChosenManually, let outputURL {
-                if isEnabled, !wasEnabled {
-                    self.outputURL = outputURL.appendingPathComponent(Self.imageOutputSubfolderName,
-                                                                      isDirectory: true)
-                } else if !isEnabled, wasEnabled,
-                          outputURL.lastPathComponent == Self.imageOutputSubfolderName {
-                    self.outputURL = outputURL.deletingLastPathComponent()
-                }
-            } else {
-                outputURL = defaultOutputURL(for: inputURLs, tool: .imageCompressor)
-            }
-        }
         .onDisappear {
             mediaDefaultsTask?.cancel()
             cancelVideoImport()
@@ -1218,17 +1204,10 @@ struct MediaWorkspaceView: View {
             panel.canChooseFiles = false
             panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false
-            if imageSaveInSubfolder,
-               outputURL?.lastPathComponent == Self.imageOutputSubfolderName {
-                panel.directoryURL = outputURL?.deletingLastPathComponent()
-            } else {
-                panel.directoryURL = outputURL ?? inputURL.deletingLastPathComponent()
-            }
+            panel.directoryURL = outputURL ?? inputURL.deletingLastPathComponent()
             Self.runPanelModal(panel) { response in
                 if response == .OK, let url = panel.url {
-                    outputURL = imageSaveInSubfolder
-                        ? url.appendingPathComponent(Self.imageOutputSubfolderName, isDirectory: true)
-                        : url
+                    outputURL = url
                     outputWasChosenManually = true
                 }
             }
@@ -1456,8 +1435,12 @@ struct MediaWorkspaceView: View {
                                                        megabytes: gifTargetMegabytes)))
         case .imageCompressor:
             if inputURLs.count > 1 {
+                let outputDirectory = imageSaveInSubfolder
+                    ? outputURL.appendingPathComponent(Self.imageOutputSubfolderName,
+                                                       isDirectory: true)
+                    : outputURL
                 media.processImages(inputURLs: inputURLs,
-                                    outputDirectory: outputURL,
+                                    outputDirectory: outputDirectory,
                                     options: currentImageOptions)
             } else {
                 media.compressImage(inputURL: inputURL,
@@ -1505,10 +1488,7 @@ struct MediaWorkspaceView: View {
             return MediaSupport.uniqueOutputURL(for: inputURL, suffix: "", fileExtension: "gif")
         case .imageCompressor:
             if inputURLs.count > 1 {
-                let directory = inputURL.deletingLastPathComponent()
-                return imageSaveInSubfolder
-                    ? directory.appendingPathComponent(Self.imageOutputSubfolderName, isDirectory: true)
-                    : directory
+                return inputURL.deletingLastPathComponent()
             }
             let sourceSize = inputImageSize ?? CGSize(width: 1600, height: 1200)
             return MediaSupport.imageOutputURL(for: inputURL,
