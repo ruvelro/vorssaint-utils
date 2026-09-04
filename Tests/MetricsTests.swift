@@ -6763,6 +6763,12 @@ struct MetricsTests {
                    && strings.batchSummaryHeaderFormat.filter { $0 == "%" }.count == 2
                    && strings.batchSummaryItemFormat.filter { $0 == "%" }.count == 2,
                    "image converter formats keep their arguments in \(language.rawValue)")
+            let advancedStrings = MediaImageAdvancedStrings.localized(language)
+            let advancedValues = Mirror(reflecting: advancedStrings).children.compactMap { $0.value as? String }
+            expect(advancedValues.count == 16 && advancedValues.allSatisfy { !$0.isEmpty },
+                   "every advanced image converter string is set for \(language.rawValue)")
+            expect(advancedValues.allSatisfy { !$0.contains("—") },
+                   "no em-dash in advanced image converter strings (\(language.rawValue))")
         }
 
         let trim = MediaSupport.sanitizedTrim(start: -5, end: 3, assetDuration: 10)

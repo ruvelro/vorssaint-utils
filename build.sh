@@ -267,6 +267,7 @@ if (( TEST )); then
         Sources/Vorssaint/Core/SnippetStrings.swift \
         Sources/Vorssaint/Core/BrightnessStrings.swift \
         Sources/Vorssaint/Core/MediaImageStrings.swift \
+        Sources/Vorssaint/Core/MediaImageAdvancedStrings.swift \
         Sources/Vorssaint/Core/QuickToggleStrings.swift \
         Sources/Vorssaint/Core/ScreenshotStrings.swift \
         Sources/Vorssaint/Core/RecentCaptureStrings.swift \
@@ -512,6 +513,7 @@ mkdir -p "$STAGE/Contents/Frameworks"
 cp "build/$NOW_PLAYING_ADAPTER" "$STAGE/Contents/Frameworks/$NOW_PLAYING_ADAPTER"
 cp "build/$WEBP_ENCODER" "$STAGE/Contents/Library/Helpers/$WEBP_ENCODER"
 cp Resources/now-playing.pl "$STAGE/Contents/Resources/now-playing.pl"
+cp Resources/ThirdPartyNotices.txt "$STAGE/Contents/Resources/ThirdPartyNotices.txt"
 cp Resources/com.vorssaint.utils.fan-control.plist \
     "$STAGE/Contents/Library/LaunchDaemons/$FAN_HELPER_ID.plist"
 cp Resources/Info.plist "$STAGE/Contents/Info.plist"
