@@ -440,6 +440,7 @@ enum DefaultsKey {
     static let mediaImagePreserveModificationDate = "mediaImagePreserveModificationDate"
     static let mediaImageProfiles = "mediaImageProfiles"
     static let mediaImageSelectedProfileID = "mediaImageSelectedProfileID"
+    static let mediaImageIncludeSubfolders = "mediaImageIncludeSubfolders"
     static let mediaTextAccurate = "mediaTextAccurate"
     static let mediaTextLanguageCorrection = "mediaTextLanguageCorrection"
 
@@ -1187,6 +1188,7 @@ enum Defaults {
         DefaultsKey.mediaImagePreserveModificationDate: false,
         DefaultsKey.mediaImageProfiles: "[]",
         DefaultsKey.mediaImageSelectedProfileID: "",
+        DefaultsKey.mediaImageIncludeSubfolders: true,
         DefaultsKey.mediaTextAccurate: true,
         DefaultsKey.mediaTextLanguageCorrection: true,
         DefaultsKey.clipboardHistoryEnabled: false,

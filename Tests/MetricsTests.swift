@@ -6642,6 +6642,18 @@ struct MetricsTests {
         ])
         expect(orderedDropURLs.map(\.lastPathComponent) == ["First.png", "Second.png", "Third.png"],
                "Concurrent image drops keep the person's provider order")
+        let imageFolder = uniqueDir.appendingPathComponent("Image folder")
+        let nestedImageFolder = imageFolder.appendingPathComponent("Nested")
+        try? FileManager.default.createDirectory(at: nestedImageFolder,
+                                                 withIntermediateDirectories: true)
+        try? Data([0]).write(to: imageFolder.appendingPathComponent("Top.png"))
+        try? Data([0]).write(to: nestedImageFolder.appendingPathComponent("Deep.jpg"))
+        try? Data([0]).write(to: nestedImageFolder.appendingPathComponent("Ignore.txt"))
+        let flatImages = MediaSupport.expandedImageInputURLs([imageFolder], includeSubfolders: false)
+        let recursiveImages = MediaSupport.expandedImageInputURLs([imageFolder], includeSubfolders: true)
+        expect(flatImages.map(\.lastPathComponent) == ["Top.png"]
+               && recursiveImages.map(\.lastPathComponent) == ["Deep.jpg", "Top.png"],
+               "Image folders import supported files and optionally recurse into subfolders")
         let corruptLogo = uniqueDir.appendingPathComponent("Corrupt logo.png")
         try? Data("not an image".utf8).write(to: corruptLogo)
         expect(MediaSupport.watermarkLogo(atPath: corruptLogo.path) == nil,
@@ -6650,7 +6662,7 @@ struct MetricsTests {
         for language in AppLanguage.allCases {
             let strings = MediaImageConverterStrings.localized(language)
             let values = Mirror(reflecting: strings).children.compactMap { $0.value as? String }
-            expect(values.count == 56 && values.allSatisfy { !$0.isEmpty },
+            expect(values.count == 57 && values.allSatisfy { !$0.isEmpty },
                    "every image converter string is set for \(language.rawValue)")
             expect(values.allSatisfy { !$0.contains("—") },
                    "no em-dash in visible image converter strings (\(language.rawValue))")

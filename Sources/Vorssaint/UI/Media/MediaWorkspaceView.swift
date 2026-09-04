@@ -91,10 +91,12 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaImagePreserveModificationDate) private var imagePreserveModificationDate = false
     @AppStorage(DefaultsKey.mediaImageProfiles) private var imageProfilesRaw = "[]"
     @AppStorage(DefaultsKey.mediaImageSelectedProfileID) private var imageSelectedProfileID = ""
+    @AppStorage(DefaultsKey.mediaImageIncludeSubfolders) private var imageIncludeSubfolders = true
 
     @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
 
     @State private var inputURLs: [URL] = []
+    @State private var inputSourceURLs: [URL] = []
     @State private var inputImageSize: CGSize?
     @State private var outputURL: URL?
     @State private var outputWasChosenManually = false
@@ -281,6 +283,15 @@ struct MediaWorkspaceView: View {
             )
             .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
                 acceptDrop(providers)
+            }
+
+            if selectedTool == .imageCompressor {
+                Toggle(imageText.includeSubfolders, isOn: $imageIncludeSubfolders)
+                    .toggleStyle(.checkbox)
+                    .onChange(of: imageIncludeSubfolders) { _, _ in
+                        guard !inputSourceURLs.isEmpty else { return }
+                        setInputs(inputSourceURLs)
+                    }
             }
 
             HStack(spacing: 7) {
@@ -1161,7 +1172,7 @@ struct MediaWorkspaceView: View {
 
     private func chooseInput() {
         let panel = NSOpenPanel()
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = selectedTool == .imageCompressor
         panel.allowsMultipleSelection = selectedTool == .imageCompressor
         panel.allowedContentTypes = inputTypes
         Self.runPanelModal(panel) { response in
@@ -1252,6 +1263,17 @@ struct MediaWorkspaceView: View {
         }
         group.notify(queue: .main) {
             let urls = MediaSupport.urlsInProviderOrder(indexedURLs)
+            if selectedTool == .imageCompressor {
+                let accepted = MediaSupport.expandedImageInputURLs(
+                    urls, includeSubfolders: imageIncludeSubfolders
+                )
+                if accepted.isEmpty {
+                    media.rejectUnsupportedInput()
+                } else {
+                    setInputs(urls)
+                }
+                return
+            }
             let accepted = urls.filter { url in
                 let contentType = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType
                 return MediaSupport.inputMatchesTool(contentType: contentType, inputTypes: inputTypes)
@@ -1271,7 +1293,10 @@ struct MediaWorkspaceView: View {
 
     private func setInputs(_ urls: [URL]) {
         cancelVideoImport()
-        inputURLs = selectedTool == .imageCompressor ? urls : Array(urls.prefix(1))
+        inputSourceURLs = urls
+        inputURLs = selectedTool == .imageCompressor
+            ? MediaSupport.expandedImageInputURLs(urls, includeSubfolders: imageIncludeSubfolders)
+            : Array(urls.prefix(1))
         inputImageSize = selectedTool == .imageCompressor
             ? inputURL.flatMap { MediaSupport.imageDisplaySize(at: $0) }
             : nil
@@ -1286,6 +1311,7 @@ struct MediaWorkspaceView: View {
         mediaDefaultsTask?.cancel()
         cancelVideoImport()
         inputURLs = []
+        inputSourceURLs = []
         inputImageSize = nil
         outputURL = nil
         outputWasChosenManually = false

@@ -846,6 +846,56 @@ enum MediaSupport {
         return inputTypes.contains { contentType.conforms(to: $0) }
     }
 
+    /// Expands files and folders into a stable, duplicate-free image list.
+    /// Folder contents are sorted so batch indices and rename templates stay
+    /// deterministic regardless of the file system's enumeration order.
+    static func expandedImageInputURLs(_ urls: [URL],
+                                       includeSubfolders: Bool,
+                                       fileManager: FileManager = .default) -> [URL] {
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isRegularFileKey,
+                                         .isPackageKey, .contentTypeKey]
+        var result: [URL] = []
+        var seen = Set<String>()
+
+        func appendImage(_ url: URL) {
+            let values = try? url.resourceValues(forKeys: keys)
+            guard values?.isRegularFile == true,
+                  values?.contentType?.conforms(to: .image) == true else { return }
+            let path = url.standardizedFileURL.path
+            guard seen.insert(path).inserted else { return }
+            result.append(url.standardizedFileURL)
+        }
+
+        for url in urls {
+            let values = try? url.resourceValues(forKeys: keys)
+            guard values?.isDirectory == true else {
+                appendImage(url)
+                continue
+            }
+            let candidates: [URL]
+            if includeSubfolders {
+                let enumerator = fileManager.enumerator(
+                    at: url,
+                    includingPropertiesForKeys: Array(keys),
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                )
+                candidates = enumerator?.compactMap { $0 as? URL } ?? []
+            } else {
+                candidates = (try? fileManager.contentsOfDirectory(
+                    at: url,
+                    includingPropertiesForKeys: Array(keys),
+                    options: [.skipsHiddenFiles]
+                )) ?? []
+            }
+            for candidate in candidates.sorted(by: {
+                $0.path.localizedStandardCompare($1.path) == .orderedAscending
+            }) {
+                appendImage(candidate)
+            }
+        }
+        return result
+    }
+
     /// Whether the result deserves the "came out larger" caption: growth is
     /// normal (PDF wraps the image, high quality can beat the source) but a
     /// "compressor" should say so instead of looking broken. Unknown sizes
