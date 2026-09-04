@@ -6293,6 +6293,10 @@ struct MetricsTests {
         expect(MediaImageBackground.sanitized("black") == .black
                && MediaImageBackground.sanitized("mystery") == .transparent,
                "Image backgrounds sanitize known values and fall back to transparent")
+        expect(MediaImageResampling.sanitized("nearest") == .nearest
+               && MediaImageResampling.sanitized("unknown") == .high
+               && MediaImageResampling.medium.interpolationQuality == .medium,
+               "Image resampling selects and sanitizes all renderer quality levels")
         let squareTransform = MediaImageTransform(rotation: .clockwise90,
                                                   flipHorizontal: true,
                                                   crop: .square)
@@ -6407,7 +6411,8 @@ struct MetricsTests {
                                                renamePattern: MediaImageRenamePattern("{name}-{index}"),
                                                transform: MediaImageTransform(rotation: .clockwise270,
                                                                               flipVertical: true,
-                                                                              crop: .fourThree))
+                                                                              crop: .fourThree),
+                                               resampling: .nearest)
         let encodedProfile = try? JSONEncoder().encode([MediaImageProfile(id: "profile-1",
                                                                            name: "PNG web",
                                                                            options: profileOptions)])

@@ -643,6 +643,7 @@ final class MediaService: ObservableObject {
                                       watermark: options.watermark,
                                       watermarkLogo: watermarkLogo,
                                       background: options.background,
+                                      resampling: options.resampling,
                                       forceOpaque: options.format == .jpeg || options.format == .pdf) else {
             throw MediaFailureBox(.unsupported)
         }
@@ -776,6 +777,7 @@ final class MediaService: ObservableObject {
                              watermark: MediaImageWatermark,
                              watermarkLogo: CGImage?,
                              background: MediaImageBackground,
+                             resampling: MediaImageResampling,
                              forceOpaque: Bool) -> CGImage? {
         let width = max(1, Int(targetSize.width.rounded()))
         let height = max(1, Int(targetSize.height.rounded()))
@@ -795,7 +797,15 @@ final class MediaService: ObservableObject {
 
         let previous = NSGraphicsContext.current
         NSGraphicsContext.current = context
-        context.imageInterpolation = .high
+        let interpolation: NSImageInterpolation
+        switch resampling {
+        case .nearest: interpolation = .none
+        case .low: interpolation = .low
+        case .medium: interpolation = .medium
+        case .high: interpolation = .high
+        }
+        context.imageInterpolation = interpolation
+        context.cgContext.interpolationQuality = resampling.interpolationQuality
         let size = NSSize(width: CGFloat(width), height: CGFloat(height))
         let rect = NSRect(origin: .zero, size: size)
         if let fill = backgroundColor(background, forceOpaque: forceOpaque) {
@@ -810,7 +820,7 @@ final class MediaService: ObservableObject {
                                                  operation: .sourceOver,
                                                  fraction: 1,
                                                  respectFlipped: false,
-                                                 hints: [.interpolation: NSImageInterpolation.high.rawValue])
+                                                 hints: [.interpolation: interpolation.rawValue])
         drawWatermark(watermark, logo: watermarkLogo, canvasSize: size)
         NSGraphicsContext.current = previous
         return rep.cgImage

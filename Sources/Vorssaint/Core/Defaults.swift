@@ -448,6 +448,7 @@ enum DefaultsKey {
     static let mediaImageResizePercentage = "mediaImageResizePercentage"
     static let mediaImageResizeShortestSide = "mediaImageResizeShortestSide"
     static let mediaImageAllowUpscaling = "mediaImageAllowUpscaling"
+    static let mediaImageResampling = "mediaImageResampling"
     static let mediaTextAccurate = "mediaTextAccurate"
     static let mediaTextLanguageCorrection = "mediaTextLanguageCorrection"
 
@@ -1203,6 +1204,7 @@ enum Defaults {
         DefaultsKey.mediaImageResizePercentage: 100,
         DefaultsKey.mediaImageResizeShortestSide: 1200,
         DefaultsKey.mediaImageAllowUpscaling: true,
+        DefaultsKey.mediaImageResampling: MediaImageResampling.high.rawValue,
         DefaultsKey.mediaTextAccurate: true,
         DefaultsKey.mediaTextLanguageCorrection: true,
         DefaultsKey.clipboardHistoryEnabled: false,

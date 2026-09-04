@@ -99,6 +99,7 @@ struct MediaWorkspaceView: View {
     @AppStorage(DefaultsKey.mediaImageResizePercentage) private var imageResizePercentage = 100
     @AppStorage(DefaultsKey.mediaImageResizeShortestSide) private var imageResizeShortestSide = 1200
     @AppStorage(DefaultsKey.mediaImageAllowUpscaling) private var imageAllowUpscaling = true
+    @AppStorage(DefaultsKey.mediaImageResampling) private var imageResamplingRaw = MediaImageResampling.high.rawValue
 
     @AppStorage(DefaultsKey.mediaTextAccurate) private var textAccurate = true
 
@@ -373,6 +374,13 @@ struct MediaWorkspaceView: View {
                 .pickerStyle(.menu)
                 compressionRow(value: $imageQuality)
                 imageResizeSection
+                Picker(advancedImageText.resampling, selection: $imageResamplingRaw) {
+                    Text(advancedImageText.nearest).tag(MediaImageResampling.nearest.rawValue)
+                    Text(l10n.s.mediaCompressionLow).tag(MediaImageResampling.low.rawValue)
+                    Text(l10n.s.mediaCompressionMedium).tag(MediaImageResampling.medium.rawValue)
+                    Text(l10n.s.mediaCompressionHigh).tag(MediaImageResampling.high.rawValue)
+                }
+                .pickerStyle(.menu)
                 DisclosureHeaderRow(isExpanded: $imageMoreOptionsExpanded) {
                     Text(imageText.moreOptions)
                     Spacer()
@@ -1121,7 +1129,8 @@ struct MediaWorkspaceView: View {
                           renamePattern: MediaImageRenamePattern(imageRenamePattern),
                           background: MediaImageBackground.sanitized(imageBackgroundRaw),
                           preserveModificationDate: imagePreserveModificationDate,
-                          transform: currentTransform)
+                          transform: currentTransform,
+                          resampling: MediaImageResampling.sanitized(imageResamplingRaw))
     }
 
     private var imageProfiles: [MediaImageProfile] {
@@ -1669,6 +1678,7 @@ struct MediaWorkspaceView: View {
         imageFlipHorizontal = options.transform.flipHorizontal
         imageFlipVertical = options.transform.flipVertical
         imageCropRaw = options.transform.crop.rawValue
+        imageResamplingRaw = options.resampling.rawValue
     }
 
     private func copy(_ text: String) {

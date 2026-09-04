@@ -278,6 +278,25 @@ struct MediaImageTransform: Codable, Equatable {
     }
 }
 
+enum MediaImageResampling: String, CaseIterable, Codable, Identifiable {
+    case nearest, low, medium, high
+
+    var id: String { rawValue }
+
+    static func sanitized(_ value: String) -> MediaImageResampling {
+        MediaImageResampling(rawValue: value) ?? .high
+    }
+
+    var interpolationQuality: CGInterpolationQuality {
+        switch self {
+        case .nearest: return .none
+        case .low: return .low
+        case .medium: return .medium
+        case .high: return .high
+        }
+    }
+}
+
 struct MediaImageWatermark: Codable, Equatable {
     var kind: MediaImageWatermarkKind
     var text: String
@@ -392,6 +411,7 @@ struct MediaImageOptions: Codable, Equatable {
     var background: MediaImageBackground
     var preserveModificationDate: Bool
     var transform: MediaImageTransform
+    var resampling: MediaImageResampling
 
     init(quality: Double,
          maxDimension: Int,
@@ -402,7 +422,8 @@ struct MediaImageOptions: Codable, Equatable {
          renamePattern: MediaImageRenamePattern = .automatic,
          background: MediaImageBackground = .transparent,
          preserveModificationDate: Bool = false,
-         transform: MediaImageTransform = .none) {
+         transform: MediaImageTransform = .none,
+         resampling: MediaImageResampling = .high) {
         self.quality = MediaSupport.sanitizedQuality(quality)
         // Image profiles and their resize mode share one range. Keeping this
         // legacy field on the video-oriented even/7680 sanitizer let the two
@@ -416,11 +437,12 @@ struct MediaImageOptions: Codable, Equatable {
         self.background = background
         self.preserveModificationDate = preserveModificationDate
         self.transform = transform
+        self.resampling = resampling
     }
 
     private enum CodingKeys: String, CodingKey {
         case quality, maxDimension, format, stripMetadata, resizeMode, watermark
-        case renamePattern, background, preserveModificationDate, transform
+        case renamePattern, background, preserveModificationDate, transform, resampling
     }
 
     init(from decoder: Decoder) throws {
@@ -440,7 +462,8 @@ struct MediaImageOptions: Codable, Equatable {
                 ?? .transparent,
             preserveModificationDate: try container.decodeIfPresent(Bool.self,
                                                                       forKey: .preserveModificationDate) ?? false,
-            transform: try container.decodeIfPresent(MediaImageTransform.self, forKey: .transform) ?? .none
+            transform: try container.decodeIfPresent(MediaImageTransform.self, forKey: .transform) ?? .none,
+            resampling: try container.decodeIfPresent(MediaImageResampling.self, forKey: .resampling) ?? .high
         )
     }
 
@@ -456,6 +479,7 @@ struct MediaImageOptions: Codable, Equatable {
         try container.encode(background, forKey: .background)
         try container.encode(preserveModificationDate, forKey: .preserveModificationDate)
         try container.encode(transform, forKey: .transform)
+        try container.encode(resampling, forKey: .resampling)
     }
 }
 
