@@ -6726,6 +6726,10 @@ struct MetricsTests {
         ])
         expect(orderedDropURLs.map(\.lastPathComponent) == ["First.png", "Second.png", "Third.png"],
                "Concurrent image drops keep the person's provider order")
+        expect(MediaSupport.imageBatchConcurrency(inputCount: 20, activeProcessorCount: 12) == 4
+               && MediaSupport.imageBatchConcurrency(inputCount: 2, activeProcessorCount: 12) == 2
+               && MediaSupport.imageBatchConcurrency(inputCount: 20, activeProcessorCount: 1) == 1,
+               "Image batches use bounded parallelism without exceeding files or available processors")
         let imageFolder = uniqueDir.appendingPathComponent("Image folder")
         let nestedImageFolder = imageFolder.appendingPathComponent("Nested")
         try? FileManager.default.createDirectory(at: nestedImageFolder,

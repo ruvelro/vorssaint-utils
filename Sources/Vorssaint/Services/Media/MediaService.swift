@@ -509,11 +509,8 @@ final class MediaService: ObservableObject {
             try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
         }
 
-        var itemResults: [MediaImageBatchItemResult] = []
-        var outputURLs: [URL] = []
+        var plannedOutputURLs: [URL] = []
         var reservedOutputPaths = Set<String>()
-        var originalBytes: Int64 = 0
-        var outputBytes: Int64 = 0
         let watermarkLogo: CGImage?
         if options.watermark.usesLogo {
             guard let logo = MediaSupport.watermarkLogo(atPath: options.watermark.logoPath) else {
@@ -525,57 +522,96 @@ final class MediaService: ObservableObject {
         }
 
         for (offset, inputURL) in inputs.enumerated() {
-            try checkCancellation(token)
-            let inputBytes = fileSize(inputURL)
-            do {
-                let prepared = try makeProcessedImage(inputURL: inputURL,
-                                                      options: options,
-                                                      watermarkLogo: watermarkLogo,
-                                                      token: token)
-                let outputURL = explicitOutputURL ?? MediaSupport.imageOutputURL(for: inputURL,
-                                                                                 outputDirectory: outputDirectory,
-                                                                                 options: options,
-                                                                                 index: offset + 1,
-                                                                                 outputSize: prepared.size,
-                                                                                 properties: prepared.properties,
-                                                                                 reservedPaths: reservedOutputPaths)
-                reservedOutputPaths.insert(outputURL.standardizedFileURL.path)
-                let stagedOutputURL = try stagedOutput(inputURL: inputURL, outputURL: outputURL)
-                defer { MediaSupport.discardStagedOutput(stagedOutputURL) }
-                try writeImage(prepared.image,
-                               properties: prepared.properties,
-                               outputURL: stagedOutputURL,
-                               options: options)
-                try commit(stagedOutputURL, at: outputURL, operationID: operationID, token: token)
-                MediaSupport.makeVisibleIfNeeded(outputURL)
-                preserveModificationDateIfNeeded(from: inputURL, to: outputURL, options: options)
-                let itemOutputBytes = fileSize(outputURL)
-                originalBytes += inputBytes
-                outputBytes += itemOutputBytes
-                outputURLs.append(outputURL)
-                itemResults.append(MediaImageBatchItemResult(inputURL: inputURL,
-                                                             outputURL: outputURL,
-                                                             originalBytes: inputBytes,
-                                                             outputBytes: itemOutputBytes,
-                                                             failure: nil))
-            } catch let failure as MediaFailureBox {
-                if inputs.count == 1 { throw failure }
-                itemResults.append(MediaImageBatchItemResult(inputURL: inputURL,
-                                                             outputURL: nil,
-                                                             originalBytes: inputBytes,
-                                                             outputBytes: 0,
-                                                             failure: failure.failure))
-            } catch {
-                if inputs.count == 1 { throw error }
-                itemResults.append(MediaImageBatchItemResult(inputURL: inputURL,
-                                                             outputURL: nil,
-                                                             originalBytes: inputBytes,
-                                                             outputBytes: 0,
-                                                             failure: .failed(error.localizedDescription)))
+            if let explicitOutputURL {
+                plannedOutputURLs.append(explicitOutputURL)
+                continue
             }
-            publish(.running(progress: Double(offset + 1) / Double(inputs.count), message: "image"),
-                    operationID: operationID)
+            let properties = MediaSupport.imageProperties(at: inputURL) ?? [:]
+            let sourceSize = MediaSupport.imageDisplaySize(properties: properties)
+                ?? CGSize(width: 1, height: 1)
+            let outputSize = options.resizeMode.targetSize(
+                for: options.transform.outputSize(for: sourceSize)
+            )
+            let outputURL = MediaSupport.imageOutputURL(for: inputURL,
+                                                        outputDirectory: outputDirectory,
+                                                        options: options,
+                                                        index: offset + 1,
+                                                        outputSize: outputSize,
+                                                        properties: properties,
+                                                        reservedPaths: reservedOutputPaths)
+            reservedOutputPaths.insert(outputURL.standardizedFileURL.path)
+            plannedOutputURLs.append(outputURL)
         }
+
+        let workerQueue = OperationQueue()
+        workerQueue.name = "com.vorssaint.media.images"
+        workerQueue.qualityOfService = .userInitiated
+        workerQueue.maxConcurrentOperationCount = MediaSupport.imageBatchConcurrency(inputCount: inputs.count)
+        let resultLock = NSLock()
+        var completedCount = 0
+        var indexedResults = [MediaImageBatchItemResult?](repeating: nil, count: inputs.count)
+        let completionGroup = DispatchGroup()
+
+        for (offset, inputURL) in inputs.enumerated() {
+            let outputURL = plannedOutputURLs[offset]
+            completionGroup.enter()
+            workerQueue.addOperation { [self] in
+                defer { completionGroup.leave() }
+                let inputBytes = fileSize(inputURL)
+                let itemResult: MediaImageBatchItemResult
+                do {
+                    try checkCancellation(token)
+                    let prepared = try makeProcessedImage(inputURL: inputURL,
+                                                          options: options,
+                                                          watermarkLogo: watermarkLogo,
+                                                          token: token)
+                    let stagedOutputURL = try stagedOutput(inputURL: inputURL, outputURL: outputURL)
+                    defer { MediaSupport.discardStagedOutput(stagedOutputURL) }
+                    try writeImage(prepared.image,
+                                   properties: prepared.properties,
+                                   outputURL: stagedOutputURL,
+                                   options: options)
+                    try commit(stagedOutputURL, at: outputURL, operationID: operationID, token: token)
+                    MediaSupport.makeVisibleIfNeeded(outputURL)
+                    preserveModificationDateIfNeeded(from: inputURL, to: outputURL, options: options)
+                    itemResult = MediaImageBatchItemResult(inputURL: inputURL,
+                                                           outputURL: outputURL,
+                                                           originalBytes: inputBytes,
+                                                           outputBytes: fileSize(outputURL),
+                                                           failure: nil)
+                } catch let failure as MediaFailureBox {
+                    itemResult = MediaImageBatchItemResult(inputURL: inputURL,
+                                                           outputURL: nil,
+                                                           originalBytes: inputBytes,
+                                                           outputBytes: 0,
+                                                           failure: failure.failure)
+                } catch {
+                    itemResult = MediaImageBatchItemResult(inputURL: inputURL,
+                                                           outputURL: nil,
+                                                           originalBytes: inputBytes,
+                                                           outputBytes: 0,
+                                                           failure: .failed(error.localizedDescription))
+                }
+                resultLock.lock()
+                indexedResults[offset] = itemResult
+                completedCount += 1
+                let progress = Double(completedCount) / Double(inputs.count)
+                resultLock.unlock()
+                publish(.running(progress: progress, message: "image"), operationID: operationID)
+            }
+        }
+        while completionGroup.wait(timeout: .now() + .milliseconds(50)) == .timedOut {
+            if token.isCancelled { workerQueue.cancelAllOperations() }
+        }
+        try checkCancellation(token)
+
+        let itemResults = indexedResults.compactMap { $0 }
+        if inputs.count == 1, let failure = itemResults.first?.failure {
+            throw MediaFailureBox(failure)
+        }
+        let outputURLs = itemResults.compactMap(\.outputURL)
+        let originalBytes = itemResults.reduce(Int64(0)) { $0 + $1.originalBytes }
+        let outputBytes = itemResults.reduce(Int64(0)) { $0 + $1.outputBytes }
 
         guard !outputURLs.isEmpty else {
             throw MediaFailureBox(itemResults.compactMap(\.failure).first ?? .unsupported)

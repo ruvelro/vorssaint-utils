@@ -1223,6 +1223,11 @@ enum MediaSupport {
         originalBytes > 0 && outputBytes > originalBytes
     }
 
+    static func imageBatchConcurrency(inputCount: Int,
+                                      activeProcessorCount: Int = ProcessInfo.processInfo.activeProcessorCount) -> Int {
+        min(max(1, inputCount), min(4, max(1, activeProcessorCount)))
+    }
+
     static func recognitionLanguages(for languageRawValue: String) -> [String] {
         switch languageRawValue {
         case "pt-BR": return ["pt-BR", "en-US"]
