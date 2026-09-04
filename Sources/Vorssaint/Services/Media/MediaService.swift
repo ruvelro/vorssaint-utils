@@ -135,6 +135,7 @@ final class MediaService: ObservableObject {
     private var operationID: UUID?
     private var token: MediaCancellationToken?
     private var activeProcess: Process?
+    private var activeImageProcesses: [ObjectIdentifier: Process] = [:]
     private var activeVisionRequest: VNRequest?
 
     private init() {}
@@ -148,9 +149,13 @@ final class MediaService: ObservableObject {
         lock.lock()
         token?.cancel()
         activeProcess?.terminate()
+        for process in activeImageProcesses.values where process.isRunning {
+            process.terminate()
+        }
         activeVisionRequest?.cancel()
         operationID = nil
         activeProcess = nil
+        activeImageProcesses.removeAll()
         activeVisionRequest = nil
         lock.unlock()
         publish(.cancelled)
@@ -206,10 +211,14 @@ final class MediaService: ObservableObject {
         lock.lock()
         self.token?.cancel()
         self.activeProcess?.terminate()
+        for process in self.activeImageProcesses.values where process.isRunning {
+            process.terminate()
+        }
         self.activeVisionRequest?.cancel()
         self.operationID = id
         self.token = token
         self.activeProcess = nil
+        self.activeImageProcesses.removeAll()
         self.activeVisionRequest = nil
         lock.unlock()
         publish(.running(progress: 0, message: tool.rawValue), operationID: id)
@@ -570,7 +579,9 @@ final class MediaService: ObservableObject {
                     try writeImage(prepared.image,
                                    properties: prepared.properties,
                                    outputURL: stagedOutputURL,
-                                   options: options)
+                                   options: options,
+                                   operationID: operationID,
+                                   token: token)
                     try commit(stagedOutputURL, at: outputURL, operationID: operationID, token: token)
                     MediaSupport.makeVisibleIfNeeded(outputURL)
                     preserveModificationDateIfNeeded(from: inputURL, to: outputURL, options: options)
@@ -693,11 +704,15 @@ final class MediaService: ObservableObject {
     private func writeImage(_ image: CGImage,
                             properties: [CFString: Any],
                             outputURL: URL,
-                            options: MediaImageOptions) throws {
+                            options: MediaImageOptions,
+                            operationID: UUID,
+                            token: MediaCancellationToken) throws {
         if options.format == .webp {
             try writeWebP(image: image,
                           outputURL: outputURL,
-                          quality: MediaSupport.sanitizedQuality(options.quality))
+                          quality: MediaSupport.sanitizedQuality(options.quality),
+                          operationID: operationID,
+                          token: token)
         } else if options.format == .pdf {
             try writePDF(image: image, outputURL: outputURL,
                          quality: MediaSupport.sanitizedQuality(options.quality))
@@ -1152,7 +1167,11 @@ final class MediaService: ObservableObject {
         pdf.closePDF()
     }
 
-    private func writeWebP(image: CGImage, outputURL: URL, quality: Double) throws {
+    private func writeWebP(image: CGImage,
+                           outputURL: URL,
+                           quality: Double,
+                           operationID: UUID,
+                           token: MediaCancellationToken) throws {
         let intermediateURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("vorssaint-webp-\(UUID().uuidString)")
             .appendingPathExtension("png")
@@ -1178,11 +1197,14 @@ final class MediaService: ObservableObject {
         process.arguments = [intermediateURL.path, outputURL.path, "\(quality * 100)"]
         process.standardError = errors
         do {
-            try process.run()
+            try launchImageProcess(process, operationID: operationID, token: token)
+            defer { clearImageProcess(process) }
             process.waitUntilExit()
         } catch {
+            if token.isCancelled { throw MediaFailureBox(.cancelled) }
             throw MediaFailureBox(.failed(error.localizedDescription))
         }
+        try checkCancellation(token)
         guard process.terminationStatus == 0 else {
             let detail = String(data: errors.fileHandleForReading.readDataToEndOfFile(),
                                 encoding: .utf8)?
@@ -1237,6 +1259,27 @@ final class MediaService: ObservableObject {
         activeProcess = process
     }
 
+    /// Image batches may have several WebP helpers at once. Register each one
+    /// under the same lock used by cancel(), so none can escape between launch
+    /// and becoming cancellable.
+    private func launchImageProcess(_ process: Process,
+                                    operationID: UUID,
+                                    token: MediaCancellationToken) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        guard self.operationID == operationID, !token.isCancelled else {
+            throw MediaFailureBox(.cancelled)
+        }
+        try process.run()
+        activeImageProcesses[ObjectIdentifier(process)] = process
+    }
+
+    private func clearImageProcess(_ process: Process) {
+        lock.lock()
+        activeImageProcesses.removeValue(forKey: ObjectIdentifier(process))
+        lock.unlock()
+    }
+
     private func setActiveVisionRequest(_ request: VNRequest,
                                         operationID: UUID,
                                         token: MediaCancellationToken) throws {
@@ -1254,6 +1297,7 @@ final class MediaService: ObservableObject {
             operationID = nil
             token = nil
             activeProcess = nil
+            activeImageProcesses.removeAll()
             activeVisionRequest = nil
         }
         lock.unlock()
