@@ -202,6 +202,7 @@ final class SmoothScrollService: ObservableObject {
         // glide, including when Option temporarily swaps the two modes.
         if ScreenshotSelectionController.steppedLoupeNeedsRawWheel(
             optionPressed: event.flags.contains(.maskAlternate)) {
+            stopGlide()
             return Unmanaged.passUnretained(event)
         }
         // Touch devices are already smooth; only mouse wheels glide. The

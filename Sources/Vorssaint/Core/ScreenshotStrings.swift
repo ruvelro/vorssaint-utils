@@ -316,7 +316,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Wheel zoom",
         loupeZoomFast: "Fast",
         loupeZoomStepped: "Step by step",
-        loupeZoomOptionCaption: "Hold ⌥/Alt to temporarily use the other mode."
+        loupeZoomOptionCaption: "Hold ⌥ to temporarily use the other mode."
     )
 
     static let ptBR = ScreenshotFeatureStrings(
@@ -463,7 +463,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Zoom com a roda",
         loupeZoomFast: "Rápido",
         loupeZoomStepped: "Passo a passo",
-        loupeZoomOptionCaption: "Mantenha ⌥/Alt pressionado para usar temporariamente o outro modo."
+        loupeZoomOptionCaption: "Mantenha ⌥ pressionado para usar temporariamente o outro modo."
     )
 
     static let tr = ScreenshotFeatureStrings(
@@ -610,7 +610,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Tekerlekle yakınlaştırma",
         loupeZoomFast: "Hızlı",
         loupeZoomStepped: "Adım adım",
-        loupeZoomOptionCaption: "Diğer modu geçici olarak kullanmak için ⌥/Alt tuşunu basılı tutun."
+        loupeZoomOptionCaption: "Diğer modu geçici olarak kullanmak için ⌥ tuşunu basılı tutun."
     )
 
     static let ru = ScreenshotFeatureStrings(
@@ -757,7 +757,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Масштабирование колёсиком",
         loupeZoomFast: "Быстро",
         loupeZoomStepped: "Пошагово",
-        loupeZoomOptionCaption: "Удерживайте ⌥/Alt, чтобы временно использовать другой режим."
+        loupeZoomOptionCaption: "Удерживайте ⌥, чтобы временно использовать другой режим."
     )
 
     static let es = ScreenshotFeatureStrings(
@@ -904,7 +904,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Zoom con la rueda",
         loupeZoomFast: "Rápido",
         loupeZoomStepped: "Por pasos",
-        loupeZoomOptionCaption: "Mantén pulsado ⌥/Alt para usar temporalmente el otro modo."
+        loupeZoomOptionCaption: "Mantén pulsado ⌥ para usar temporalmente el otro modo."
     )
 
     static let de = ScreenshotFeatureStrings(
@@ -1051,7 +1051,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Zoom mit dem Mausrad",
         loupeZoomFast: "Schnell",
         loupeZoomStepped: "Schrittweise",
-        loupeZoomOptionCaption: "Halte ⌥/Alt gedrückt, um vorübergehend den anderen Modus zu verwenden."
+        loupeZoomOptionCaption: "Halte ⌥ gedrückt, um vorübergehend den anderen Modus zu verwenden."
     )
 
     static let fr = ScreenshotFeatureStrings(
@@ -1198,7 +1198,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Zoom à la molette",
         loupeZoomFast: "Rapide",
         loupeZoomStepped: "Pas à pas",
-        loupeZoomOptionCaption: "Maintenez ⌥/Alt pour utiliser temporairement l’autre mode."
+        loupeZoomOptionCaption: "Maintenez ⌥ pour utiliser temporairement l’autre mode."
     )
 
     static let it = ScreenshotFeatureStrings(
@@ -1345,7 +1345,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "Zoom con la rotella",
         loupeZoomFast: "Rapido",
         loupeZoomStepped: "Passo per passo",
-        loupeZoomOptionCaption: "Tieni premuto ⌥/Alt per usare temporaneamente l’altra modalità."
+        loupeZoomOptionCaption: "Tieni premuto ⌥ per usare temporaneamente l’altra modalità."
     )
 
     static let ja = ScreenshotFeatureStrings(
@@ -1492,7 +1492,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "ホイールズーム",
         loupeZoomFast: "高速",
         loupeZoomStepped: "段階的",
-        loupeZoomOptionCaption: "⌥/Altを押している間は一時的にもう一方のモードを使用します。"
+        loupeZoomOptionCaption: "⌥を押している間は一時的にもう一方のモードを使用します。"
     )
 
     static let ko = ScreenshotFeatureStrings(
@@ -1639,7 +1639,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "휠 확대",
         loupeZoomFast: "빠르게",
         loupeZoomStepped: "단계별",
-        loupeZoomOptionCaption: "⌥/Alt를 누르는 동안 다른 모드를 임시로 사용합니다."
+        loupeZoomOptionCaption: "⌥를 누르는 동안 다른 모드를 임시로 사용합니다."
     )
 
     static let zhHans = ScreenshotFeatureStrings(
@@ -1786,7 +1786,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "滚轮缩放",
         loupeZoomFast: "快速",
         loupeZoomStepped: "逐步",
-        loupeZoomOptionCaption: "按住 ⌥/Alt 可暂时使用另一种模式。"
+        loupeZoomOptionCaption: "按住 ⌥ 可暂时使用另一种模式。"
     )
 
     static let zhTW = ScreenshotFeatureStrings(
@@ -1933,7 +1933,7 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "滾輪縮放",
         loupeZoomFast: "快速",
         loupeZoomStepped: "逐步",
-        loupeZoomOptionCaption: "按住 ⌥/Alt 可暫時使用另一種模式。"
+        loupeZoomOptionCaption: "按住 ⌥ 可暫時使用另一種模式。"
     )
 
     static let zhHK = ScreenshotFeatureStrings(
@@ -2080,6 +2080,6 @@ extension ScreenshotFeatureStrings {
         loupeWheelZoomLabel: "滾輪縮放",
         loupeZoomFast: "快速",
         loupeZoomStepped: "逐步",
-        loupeZoomOptionCaption: "撳住 ⌥/Alt 可暫時使用另一個模式。"
+        loupeZoomOptionCaption: "撳住 ⌥ 可暫時使用另一個模式。"
     )
 }

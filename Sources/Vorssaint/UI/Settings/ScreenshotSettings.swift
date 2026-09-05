@@ -133,28 +133,32 @@ struct ScreenshotCaptureSettings: View {
                 .pickerStyle(.segmented)
                 Toggle(strings.pointerToggle, isOn: $includePointer)
                 Toggle(strings.lastRegionToggle, isOn: $showLastRegion)
-                Toggle(strings.loupeStartsOnToggle, isOn: $loupeStartsOn)
-                Toggle(strings.loupeRememberZoomToggle, isOn: $rememberLoupeZoom)
-                if !rememberLoupeZoom {
-                    Picker(strings.loupeDefaultZoomLabel, selection: $loupeDefaultZoom) {
-                        ForEach(ScreenshotSupport.captureLoupeDefaultZooms, id: \.self) { zoom in
-                            Text(zoom.formatted(
-                                .number.precision(.fractionLength(0...1))) + "×")
-                                .tag(zoom)
+                DisclosureGroup {
+                    Toggle(strings.loupeStartsOnToggle, isOn: $loupeStartsOn)
+                    Toggle(strings.loupeRememberZoomToggle, isOn: $rememberLoupeZoom)
+                    if !rememberLoupeZoom {
+                        Picker(strings.loupeDefaultZoomLabel, selection: $loupeDefaultZoom) {
+                            ForEach(ScreenshotSupport.captureLoupeDefaultZooms, id: \.self) { zoom in
+                                Text(zoom.formatted(
+                                    .number.precision(.fractionLength(0...1))) + "×")
+                                    .tag(zoom)
+                            }
                         }
                     }
+                    Picker(strings.loupeWheelZoomLabel,
+                           selection: $steppedLoupeZoomByDefault) {
+                        Text(strings.loupeZoomFast).tag(false)
+                        Text(strings.loupeZoomStepped).tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    Text(strings.loupeZoomOptionCaption)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    previewPositionRow
+                    defaultActionRow
+                } label: {
+                    Text(FeatureStrings.recorder(l10n.language).moreOptions)
                 }
-                Picker(strings.loupeWheelZoomLabel,
-                       selection: $steppedLoupeZoomByDefault) {
-                    Text(strings.loupeZoomFast).tag(false)
-                    Text(strings.loupeZoomStepped).tag(true)
-                }
-                .pickerStyle(.segmented)
-                Text(strings.loupeZoomOptionCaption)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                previewPositionRow
-                defaultActionRow
             }
 
             Section {

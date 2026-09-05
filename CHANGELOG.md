@@ -7,9 +7,10 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 ### Summary
-Vorssaint adds edge snap controls and shortcuts for recent captures and keyboard brightness, and refines the radial menu. It improves color picking, app icons, readability, localization, mouse reconnection, system shortcut handling and build checks.
+Vorssaint adds edge snap controls and shortcuts for recent captures and keyboard brightness, and refines the radial menu. It adds magnifier zoom choices and improves color picking, app icons, readability, localization, mouse reconnection, system shortcut handling and build checks.
 
 ### Added
+- The capture magnifier offers a remembered or chosen starting zoom and step-by-step wheel control. Thanks to @ruvelro.
 - Optional keyboard backlight shortcuts adjust brightness one step at a time, available in Keyboard shortcuts. Thanks to @EugeneCarldotme.
 - Switching Spaces by dragging a button can follow your hand, the way a trackpad swipe does, in Mouse settings.
 - Recent captures can open from their own assignable shortcut without returning to the menu bar panel.
@@ -46,7 +47,6 @@ Vorssaint adds edge snap controls and shortcuts for recent captures and keyboard
 - The disk monitor no longer asks a mounted image how much it could free, a question it answered with an error every sample.
 - The recording editor's look presets carry one name each instead of repeating it, and sizes use a proper multiplication sign.
 - The zoom panel's button says what it does instead of borrowing the timeline's hint to click somewhere else.
-- The capture magnifier can remember its last zoom or start at a chosen level, and its wheel can zoom quickly or step by step with Option temporarily switching modes.
 - Slider labels shrink instead of being cut where Turkish and Spanish run past the column, in the backdrop and recording panels.
 - Clicks and scrolling no longer lag in full-screen apps and games while the three-finger middle click or the reversed scroll direction is on.
 - Tapping Super key for Escape no longer carries a modifier still reported by the keyboard. Thanks to @gatzifratzi, @PathGao and @hash00.
