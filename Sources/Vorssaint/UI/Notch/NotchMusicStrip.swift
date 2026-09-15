@@ -11,8 +11,12 @@ struct NotchMusicStrip: View {
 
     private var geometry: NotchGeometry { service.compactActivityGeometry }
 
+    private var outerInset: CGFloat {
+        max(12, min(NotchLayout.shoulder, geometry.compactActivityContentHeight * 0.28) + 4)
+    }
+
     private var artworkSide: CGFloat {
-        max(0, min(26, geometry.menuBarHeight - 6, geometry.compactActivityWingWidth - 20))
+        max(0, min(26, geometry.menuBarHeight - 6, geometry.compactActivityWingWidth - outerInset - 8))
     }
 
     private var title: String { music.playback?.track.title ?? FeatureStrings.radialMenu(l10n.language).mediaNowPlaying }
@@ -45,11 +49,9 @@ struct NotchMusicStrip: View {
                         }
                     }
                 }
-                .padding(.leading, 12)
+                .padding(.leading, outerInset)
                 .padding(.trailing, 8)
-                // Wings anchor their content to the outer edges, so a wider
-                // strip spreads the artwork and the bars apart instead of
-                // leaving them huddled around the cutout.
+                // Keep the wings spread out while clearing the curved edges.
                 .frame(width: geometry.compactActivityWingWidth, alignment: .leading)
                 .clipped()
                 Group {
@@ -66,7 +68,7 @@ struct NotchMusicStrip: View {
                     }
                 }
                 .padding(.leading, 8)
-                .padding(.trailing, 12)
+                .padding(.trailing, outerInset)
                 .frame(width: geometry.compactActivityWingWidth, alignment: .trailing)
             }
             .frame(height: geometry.compactActivityContentHeight)
