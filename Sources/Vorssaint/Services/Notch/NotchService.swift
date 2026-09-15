@@ -86,6 +86,7 @@ final class NotchService: ObservableObject {
     private var menuSpaceTimer: Timer?
     private var menuSpaceReading = false
     private var menuSpaceGeneration = 0
+    private var menuBarMeasurements = NotchMenuBarMeasurements()
     private var screenRefreshWork: DispatchWorkItem?
     private let menuSpaceQueue = DispatchQueue(label: "com.vorssaint.notch-menu-space", qos: .utility)
 
@@ -571,11 +572,6 @@ final class NotchService: ObservableObject {
         notice = nil
         hoverWork?.cancel()
         removeEventMonitors()
-        // The island is part of the capture interface now, sized by the tool
-        // rather than by free menu space. Measuring the bar every second would
-        // keep sweeping the window list and the front app's menus over
-        // Accessibility while the selection surface redraws under the pointer.
-        syncMenuSpaceMonitoring()
         panel?.acceptsKeyFocus = true
         panel?.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
         refreshPresentation()
@@ -770,7 +766,7 @@ final class NotchService: ObservableObject {
 
     func refreshPresentation(animated: Bool = true, transitionContent: NotchContentTransition = .none) {
         let open = expanded || peeking || notice != nil || dragPlaceholder || captureControls != nil
-        guard open || geometry.isNotched || geometry.sideRoom != nil else {
+        guard open || geometry.isNotched || geometry.compactSideRoom != nil else {
             panel?.orderOut(nil)
             removeScreenEdgeClickMonitors()
             return
@@ -877,7 +873,7 @@ final class NotchService: ObservableObject {
             }
             return
         }
-        let wanted = running && !suspended && !expanded && captureControls == nil && geometry.compactWidth == nil
+        let wanted = running && !suspended && !expanded && captureControls == nil
             && (idleContent != .none || compactActivity != nil || !geometry.isNotched)
         guard wanted else { stopMenuSpaceMonitoring(); return }
         guard menuSpaceTimer == nil else { return }
@@ -951,6 +947,7 @@ final class NotchService: ObservableObject {
 
     private func updateScreen() {
         let screens = NSScreen.screens
+        menuBarMeasurements.retainDisplays(screens.map(\.notchDisplayID))
         let builtIn = screens.map { CGDisplayIsBuiltin($0.notchDisplayID) != 0 }
         let index = NotchSupport.screenIndex(
             preference: NotchDisplay(rawValue: UserDefaults.standard.string(
@@ -966,15 +963,14 @@ final class NotchService: ObservableObject {
         var next = NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaInsets.top,
                                  cameraWidth: cameraWidth,
                                  layout: NotchSize(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.notchSize) ?? "") ?? .compact,
-                                 menuBarHeight: NotchSupport.menuBarHeight(
-                                    screenTop: screen.frame.maxY, visibleTop: screen.visibleFrame.maxY,
-                                    mainMenuHeight: NSApp.mainMenu?.menuBarHeight,
+                                 menuBarHeight: menuBarMeasurements.height(
+                                    displayID: screen.notchDisplayID, frame: screen.frame,
+                                    visibleTop: screen.visibleFrame.maxY, scale: screen.backingScaleFactor,
                                     statusBarThickness: NSStatusBar.system.thickness),
                                  customWidth: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomWidth),
                                  customHeight: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomHeight))
         if next.hasSameMenuBar(as: geometry) { next.compactSideRoom = geometry.compactSideRoom }
         next.quickAccessBottomInset = NotchQuickAccessConfiguration.current().hasBottom ? NotchQuickAccessLayout.gutter : 0
-        next.compactWidth = NotchSupport.manualCompactWidth()
         if next != geometry { menuSpaceGeneration += 1; geometry = next }
         if windowHost == nil {
             windowHost = NotchWindowHost(content: AnyView(NotchView(service: self)), geometry: geometry, size: surfaceSize,

@@ -53,10 +53,8 @@ struct NotchEqualizerBars: View {
     private var width: CGFloat { CGFloat(count) * barWidth + CGFloat(count - 1) * spacing }
 
     var body: some View {
-        // Each tick redraws a fixed-size canvas instead of resizing capsule
-        // views. Views whose heights change thirty times a second invalidate
-        // layout in the hosting window every time, which kept the main thread
-        // busy for as long as anything played.
+        // Keep the drawing surface fixed while bar heights change, so ticks
+        // redraw the contents without resizing individual views.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animates)) { context in
             let phase = context.date.timeIntervalSinceReferenceDate
             Canvas { canvas, size in
@@ -75,7 +73,7 @@ struct NotchEqualizerBars: View {
 
     private func barHeight(_ index: Int, at phase: Double) -> CGFloat {
         guard animates else { return barWidth }
-        let center = Double(max(1, bars) - 1) / 2
+        let center = Double(count - 1) / 2
         let distance = abs(Double(index) - center) / max(1, center)
         let envelope = pow(1 - distance, 1.5)
         let wave = (sin(phase * (5.2 + Double(index) * 0.61) + Double(index) * 1.7) + 1) / 2

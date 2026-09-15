@@ -108,10 +108,81 @@ enum NotchTests {
         }
     }
 
+    private static func menuBarHeightContracts(expect: (Bool, String) -> Void) {
+        var measurements = NotchMenuBarMeasurements()
+        let screen = CGRect(x: -1440, y: -900, width: 1440, height: 900)
+        func read(_ id: UInt32, gap: CGFloat, frame: CGRect = CGRect(x: -1440, y: -900, width: 1440, height: 900),
+                  scale: CGFloat = 2, fallback: CGFloat = 22) -> CGFloat {
+            measurements.height(displayID: id, frame: frame, visibleTop: frame.maxY - gap,
+                                scale: scale, statusBarThickness: fallback)
+        }
+        for height: CGFloat in [16, 22, 24, 28, 30, 32, 33, 37, 64] {
+            expect(read(1, gap: height) == height, "the selected display's current visible bar supplies its height")
+            let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: height)
+            expect(geometry.collapsed.height == height && geometry.compactMusicGeometry.compactActivitySize.height == height,
+                   "the simulated cutout and music strip stay within the measured bar")
+            for gap: CGFloat in [0, 1, -10, 15, 65, 600, .nan, .infinity] {
+                expect(read(1, gap: gap) == height, "hiding or an unavailable reading retains this display's measured height")
+            }
+        }
+        expect(read(1, gap: 24) == 24 && read(2, gap: 33) == 33,
+               "displays with different menu bars keep independent measurements")
+        for _ in 0..<3 {
+            expect(read(1, gap: 0) == 24 && read(2, gap: 0) == 33,
+                   "switching displays and changing other preferences while bars are hidden preserves both heights")
+        }
+        expect(read(3, gap: 0) == 22 && read(3, gap: 0, fallback: .nan) == 24,
+               "a display first seen with a hidden bar uses a safe native fallback, never another display's height")
+        expect(read(3, gap: 30) == 30 && read(3, gap: 0) == 30,
+               "revealing a previously unknown bar replaces the fallback and survives hiding again")
+        expect(read(1, gap: 0, frame: screen.offsetBy(dx: 1440, dy: 1800)) == 24,
+               "moving a display in the arrangement preserves its mode's measured height")
+        expect(read(1, gap: 0, scale: 1) == 22 && read(1, gap: 0, scale: 2) == 22,
+               "a scale change invalidates the old height even after changing back while the bar stays hidden")
+        _ = read(1, gap: 30)
+        expect(read(1, gap: 0, frame: CGRect(x: 0, y: 0, width: 1920, height: 1080)) == 22,
+               "a new screen resolution cannot inherit a previous mode's height")
+        measurements.retainDisplays([1, 3])
+        expect(read(2, gap: 0) == 22 && read(3, gap: 0) == 30,
+               "disconnecting a display drops its history without affecting the remaining display")
+        expect(read(0, gap: 37) == 37 && read(0, gap: 0) == 22,
+               "an unknown display identity can use its current reading but cannot share remembered measurements")
+        _ = read(1, gap: 30, scale: .nan)
+        expect(read(1, gap: 0) == 22, "an invalid display mode cannot seed remembered height")
+        var fresh = NotchMenuBarMeasurements()
+        for invalid: CGFloat in [0, -1, 15, 65, .nan, .infinity] {
+            expect(fresh.height(displayID: 1, frame: screen, visibleTop: screen.maxY,
+                                scale: 2, statusBarThickness: invalid) == 24,
+                   "invalid fallback heights never escape the safe range")
+        }
+    }
+
+    private static func musicLabelContracts(expect: (Bool, String) -> Void) {
+        let screen = CGRect(x: 0, y: 0, width: 1440, height: 900)
+        for height: CGFloat in [16, 22, 24, 28, 30, 33, 37, 64] {
+            for room: CGFloat? in [nil, 0, 43, 44, 56, 0, 56] {
+                let geometry = NotchGeometry(screen: screen, safeAreaTop: 0, cameraWidth: 0,
+                                             menuBarHeight: height, compactSideRoom: room).compactMusicGeometry
+                let contentLeft = geometry.compactActivityWingWidth + geometry.compactMusicLabelInset
+                let bottomCurveEnd = min(NotchLayout.shoulder, height * 0.28) + min(28, height / 2)
+                expect(contentLeft >= bottomCurveEnd + 4,
+                       "center text clears the entire curved silhouette even after the music wings disappear")
+                expect(geometry.compactActivityCameraGap - geometry.compactMusicLabelInset * 2 >= 50,
+                       "protecting the curves still leaves useful room for a truncated track name")
+                if geometry.compactActivityWingWidth >= 44 {
+                    expect(geometry.compactMusicLabelInset == 4,
+                           "available music wings preserve the original center text budget")
+                }
+            }
+        }
+    }
+
     static func run(expect: (Bool, String) -> Void) {
         simulatedMenuBoundsContracts(expect: expect)
         simulatedDisplayContracts(expect: expect)
         menuSpaceReuseContracts(expect: expect)
+        menuBarHeightContracts(expect: expect)
+        musicLabelContracts(expect: expect)
         NotchScreenEdgeClickTests.run(expect: expect)
         NotchPresentationRefreshContract.run(expect: expect)
         NotchScreenRefreshContract.run(expect: expect)
@@ -806,53 +877,6 @@ enum NotchTests {
                                        notched: [false], main: 0) == 0, "closed-lid mode falls back to an attached screen")
         expect(NotchSupport.screenIndex(preference: .main, builtIn: [], notched: [], main: 0) == nil,
                "no connected displays means no panel")
-        expect(NotchSupport.menuBarHeight(screenTop: 1440, visibleTop: 1410, mainMenuHeight: 24, statusBarThickness: 22) == 30,
-               "the island fills the menu bar as drawn rather than the fixed status bar constant")
-        expect(NotchSupport.menuBarHeight(screenTop: 1440, visibleTop: 1440, mainMenuHeight: 24, statusBarThickness: 22) == 24,
-               "an auto-hidden menu bar leaves no gap, so the app menu's height stands in")
-        expect(NotchSupport.menuBarHeight(screenTop: 1440, visibleTop: 1440, mainMenuHeight: nil, statusBarThickness: 22) == 22,
-               "without an app menu the status bar constant remains the last resort")
-        expect(NotchSupport.menuBarHeight(screenTop: 900, visibleTop: 300, mainMenuHeight: 0, statusBarThickness: .nan) == 24,
-               "implausible measurements never size the island")
-        expect(NotchSupport.manualCompactWidth(mode: "automatic", width: 300) == nil
-               && NotchSupport.manualCompactWidth(mode: "", width: 300) == nil
-               && NotchSupport.manualCompactWidth(mode: "manual", width: 300) == 300
-               && NotchSupport.manualCompactWidth(mode: "manual", width: 40) == 260
-               && NotchSupport.manualCompactWidth(mode: "manual", width: .nan) == 320,
-               "a manual width applies only in manual mode and stays within its range")
-        for frame in frames {
-            var manual = NotchGeometry(screen: frame, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 30, compactSideRoom: nil)
-            manual.compactWidth = 400
-            let camera = manual.cameraWidth
-            let room = ((400 - camera) / 2).rounded(.down)
-            let music = manual.compactMusicGeometry
-            expect(manual.sideRoom == room && manual.restingWingWidth == 44 && manual.musicStrip.width == camera + room * 2
-                   && !music.compactActivityUsesFooter && music.compactActivitySize.width == camera + room * 2
-                   && music.compactActivityWingWidth == room && music.compactActivitySize.height == 30,
-                   "a manual width sizes the music strip and the resting island without any menu measurement")
-            let timer = manual.compactTimerGeometry(showsDownloads: false)
-            expect(timer.compactActivitySize.width == camera + 72 * 2,
-                   "timers keep their own compact limit and only borrow the manual room")
-            manual.compactWidth = 5000
-            expect(manual.musicStrip.width <= frame.width - 24, "a manual width never leaves the screen")
-            manual.compactWidth = 1
-            expect(manual.musicStrip.width == camera + 88 && manual.compactMusicGeometry.compactActivityWingWidth == 44,
-                   "a manual width never drops below the cutout with the smallest usable wings")
-            var measured = manual
-            measured.compactWidth = nil
-            measured.compactSideRoom = 20
-            expect(measured.sideRoom == 20 && measured.compactMusicGeometry.compactActivityWingWidth == 0,
-                   "clearing the manual width returns to the measured room")
-        }
-        for (screenTop, visibleTop) in [(-200.0, -224.0), (1440.0, 1403.0)] {
-            let height = NotchSupport.menuBarHeight(screenTop: screenTop, visibleTop: visibleTop,
-                                                    mainMenuHeight: 24, statusBarThickness: 22)
-            let frame = CGRect(x: -1000, y: screenTop - 900, width: 1600, height: 900)
-            let geometry = NotchGeometry(screen: frame, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: height)
-            expect(geometry.collapsed.height == screenTop - visibleTop
-                   && geometry.compactMusicGeometry.compactActivitySize.height == screenTop - visibleTop,
-                   "the collapsed island and the music strip span the whole bar in any screen quadrant")
-        }
         expect(NotchSupport.shouldReplace(.volume, with: .brightness), "continuous controls can replace each other")
         expect(!NotchSupport.shouldReplace(.volume, with: .clipboard), "copy does not interrupt a volume adjustment")
         expect(NotchSupport.shouldReplace(.battery, with: .capture), "a capture takes precedence over passive battery status")

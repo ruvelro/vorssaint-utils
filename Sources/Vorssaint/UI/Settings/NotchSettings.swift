@@ -45,8 +45,6 @@ struct NotchSettings: View {
     @AppStorage(DefaultsKey.notchSize) private var size = NotchSize.spacious.rawValue
     @AppStorage(DefaultsKey.notchCustomWidth) private var customWidth = NotchSize.defaultWidth
     @AppStorage(DefaultsKey.notchCustomHeight) private var customHeight = NotchSize.defaultHeight
-    @AppStorage(DefaultsKey.notchCompactWidthMode) private var compactWidthMode = NotchCompactWidthMode.automatic.rawValue
-    @AppStorage(DefaultsKey.notchCompactWidth) private var compactWidth = NotchCompactWidthMode.defaultWidth
     @AppStorage(DefaultsKey.notchHapticFeedback) private var hapticFeedback = true
     @AppStorage(DefaultsKey.notchShelf) private var shelfWindow = true
     @AppStorage(DefaultsKey.notchDragReveal) private var dragReveal = true
@@ -64,7 +62,7 @@ struct NotchSettings: View {
 
     private var configuration: [String] {
         [String(enabled), String(calendarEnabled), String(notificationsEnabled), String(dismissNativeNotifications), String(gesturesEnabled), String(lyricsEnabled), String(lyricsOnline), String(queueEnabled), String(showPlayingMusic), idle, hiddenControls, controlOrder, size,
-         String(timerEnabled), String(timerSoundEnabled), String(cameraEnabled), String(accessoriesEnabled), String(customWidth), String(customHeight), compactWidthMode, String(compactWidth), String(hapticFeedback), String(shelfWindow), String(dragReveal), String(captureControls), String(quickPanel), String(appPanel), String(hoverExpand), display, String(hover), hidden, order, String(volume),
+         String(timerEnabled), String(timerSoundEnabled), String(cameraEnabled), String(accessoriesEnabled), String(customWidth), String(customHeight), String(hapticFeedback), String(shelfWindow), String(dragReveal), String(captureControls), String(quickPanel), String(appPanel), String(hoverExpand), display, String(hover), hidden, order, String(volume),
          String(brightness), String(keyboardLight), String(battery), String(clipboard), String(clipboardWindow), String(capture), captureAction, String(showInCaptures)]
     }
 
@@ -147,19 +145,6 @@ struct NotchSettings: View {
                     dimensionSlider(text.maximumHeight, value: $customHeight, range: NotchSize.heightRange, fallback: NotchSize.defaultHeight)
                     Text(text.sizeHint).font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            section(text.compactWidth) {
-                HStack(spacing: 10) {
-                    choice(text.compactWidthAutomatic, symbol: "wand.and.stars",
-                           selected: compactWidthMode != NotchCompactWidthMode.manual.rawValue) { compactWidthMode = NotchCompactWidthMode.automatic.rawValue }
-                    choice(text.compactWidthManual, symbol: "arrow.left.and.right",
-                           selected: compactWidthMode == NotchCompactWidthMode.manual.rawValue) { compactWidthMode = NotchCompactWidthMode.manual.rawValue }
-                }
-                if compactWidthMode == NotchCompactWidthMode.manual.rawValue {
-                    dimensionSlider(text.width, value: $compactWidth, range: NotchCompactWidthMode.widthRange,
-                                    fallback: NotchCompactWidthMode.defaultWidth)
-                }
-                Text(text.compactWidthHint).font(.caption).foregroundStyle(.secondary)
             }
         }
     }

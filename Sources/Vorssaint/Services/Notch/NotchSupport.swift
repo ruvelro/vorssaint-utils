@@ -88,16 +88,6 @@ enum NotchSize: String, CaseIterable {
     }
 }
 
-/// How wide the one-row island is. Automatic measures the free menu bar
-/// beside the camera, which needs Accessibility and hides the wings when
-/// space is tight. Manual keeps the width the user chose, menus or not.
-enum NotchCompactWidthMode: String, CaseIterable {
-    case automatic, manual
-
-    static let widthRange = 260.0...600.0
-    static let defaultWidth = 320.0
-}
-
 /// Shared measurements keep the window's content budget and its SwiftUI
 /// layout in agreement, including small screens and custom sizes.
 enum NotchLayout {
@@ -612,31 +602,6 @@ enum NotchSupport {
         return min(1, max(0, current + Double(direction.signum()) / (fine ? 64 : 16)))
     }
 
-    /// The height the menu bar really occupies on a display. The status bar
-    /// constant is a fixed 22 points, which undershoots the taller bars recent
-    /// macOS releases draw, so a collapsed island built on it floats short of
-    /// the bar's bottom edge. The gap between a screen's frame and its visible
-    /// frame is the bar as drawn. An auto-hidden bar leaves no gap, so the app
-    /// menu's own height stands in, then the status bar constant.
-    static func menuBarHeight(screenTop: CGFloat, visibleTop: CGFloat,
-                              mainMenuHeight: CGFloat?, statusBarThickness: CGFloat) -> CGFloat {
-        let range: ClosedRange<CGFloat> = 16...64
-        let gap = screenTop - visibleTop
-        if gap.isFinite, range.contains(gap) { return gap }
-        if let mainMenuHeight, mainMenuHeight.isFinite, range.contains(mainMenuHeight) { return mainMenuHeight }
-        return statusBarThickness.isFinite && range.contains(statusBarThickness) ? statusBarThickness : 24
-    }
-
-    static func manualCompactWidth(in defaults: UserDefaults = .standard) -> CGFloat? {
-        manualCompactWidth(mode: defaults.string(forKey: DefaultsKey.notchCompactWidthMode) ?? "",
-                           width: defaults.double(forKey: DefaultsKey.notchCompactWidth))
-    }
-
-    static func manualCompactWidth(mode: String, width: Double) -> CGFloat? {
-        guard NotchCompactWidthMode(rawValue: mode) == .manual else { return nil }
-        return NotchSize.clamped(width, to: NotchCompactWidthMode.widthRange, fallback: NotchCompactWidthMode.defaultWidth)
-    }
-
     static func screenIndex(preference: NotchDisplay, builtIn: [Bool], notched: [Bool], main: Int) -> Int? {
         guard !builtIn.isEmpty, builtIn.count == notched.count else { return nil }
         let fallback = builtIn.indices.contains(main) ? main : 0
@@ -647,6 +612,38 @@ enum NotchSupport {
             return builtIn.indices.first { builtIn[$0] && notched[$0] }
                 ?? notched.firstIndex(of: true) ?? fallback
         }
+    }
+}
+
+/// A hidden menu bar retains only a measurement from the same display and mode.
+/// Until that display has a visible bar, use the native fallback rather than
+/// borrowing the application's main-menu height from another display.
+struct NotchMenuBarMeasurements {
+    private struct Reading {
+        let size: CGSize
+        let scale: CGFloat
+        let height: CGFloat
+    }
+    private var readings: [UInt32: Reading] = [:]
+
+    mutating func retainDisplays(_ ids: [UInt32]) {
+        readings = readings.filter { ids.contains($0.key) }
+    }
+
+    mutating func height(displayID: UInt32, frame: CGRect, visibleTop: CGFloat,
+                         scale: CGFloat, statusBarThickness: CGFloat) -> CGFloat {
+        let range: ClosedRange<CGFloat> = 16...64
+        let gap = frame.maxY - visibleTop
+        let canRemember = displayID != 0 && scale.isFinite && scale > 0
+        if let previous = readings[displayID], previous.size != frame.size || previous.scale != scale {
+            readings[displayID] = nil
+        }
+        if gap.isFinite, range.contains(gap) {
+            if canRemember { readings[displayID] = Reading(size: frame.size, scale: scale, height: gap) }
+            return gap
+        }
+        if canRemember, let previous = readings[displayID] { return previous.height }
+        return statusBarThickness.isFinite && range.contains(statusBarThickness) ? statusBarThickness : 24
     }
 }
 
@@ -662,9 +659,6 @@ struct NotchGeometry: Equatable {
     let customHeight: CGFloat
     let menuBarHeight: CGFloat
     var compactSideRoom: CGFloat?
-    /// A width chosen by hand for the one-row island. It replaces the
-    /// measured menu space, so the wings never depend on Accessibility.
-    var compactWidth: CGFloat?
     var quickAccessBottomInset: CGFloat = 0
     private var allowsActivityFooter = true
     private var minimumCompactWidth: CGFloat = 0
@@ -697,21 +691,8 @@ struct NotchGeometry: Equatable {
         return CGRect(x: (size.width - width) / 2, y: 0, width: width, height: height)
     }
 
-    /// The chosen width, never narrower than the cutout with the smallest
-    /// wings that can hold content, and never wider than the screen.
-    private var manualCompactWidth: CGFloat? {
-        guard let compactWidth, compactWidth.isFinite else { return nil }
-        return min(max(compactWidth, cameraWidth + 88), screen.width - 24)
-    }
-    private var manualSideRoom: CGFloat? {
-        manualCompactWidth.map { max(0, (($0 - cameraWidth) / 2).rounded(.down)) }
-    }
-    /// Room beside the camera that content may use: the manual choice first,
-    /// otherwise what the menu bar measurement found.
-    var sideRoom: CGFloat? { manualSideRoom ?? compactSideRoom }
-
     var restingWingWidth: CGFloat {
-        let available = min(44, max(0, sideRoom ?? 0)).rounded(.down)
+        let available = min(44, max(0, compactSideRoom ?? 0)).rounded(.down)
         return available >= 44 ? available : 0
     }
     var collapsed: CGSize {
@@ -724,20 +705,25 @@ struct NotchGeometry: Equatable {
     /// Insufficient menu space hides the wings instead of growing below the camera.
     var compactMusicGeometry: NotchGeometry {
         var compact = self
-        let room = sideRoom ?? 0
-        compact.compactSideRoom = room.isFinite && room >= 44 ? (manualSideRoom == nil ? min(56, room) : room) : 0
+        let room = compactSideRoom ?? 0
+        compact.compactSideRoom = room.isFinite && room >= 44 ? min(56, room) : 0
         compact.allowsActivityFooter = false
         return compact
     }
     var musicCameraGap: CGFloat { cameraWidth }
-    /// Timers and downloads carry little, so they keep their own limits and
-    /// only borrow the manual choice as the room they may use.
+    var compactMusicLabelInset: CGFloat {
+        let height = compactActivityContentHeight
+        let shoulder = min(NotchLayout.shoulder, height * 0.28)
+        let bottom = min(28, height / 2)
+        // Wings normally provide this room. When menus hide them, the center
+        // text must also clear the silhouette's shoulders and bottom corners.
+        return max(4, shoulder + bottom + 4 - compactActivityWingWidth)
+    }
     func compactTimerGeometry(showsDownloads: Bool) -> NotchGeometry {
         var compact = self
-        let room = sideRoom ?? 0
+        let room = compactSideRoom ?? 0
         let wing: CGFloat = showsDownloads ? 80 : 72
         compact.compactSideRoom = room.isFinite && room >= 72 ? min(wing, room) : 0
-        compact.compactWidth = nil
         // A wider simulated camera must not consume the timer's text budget.
         compact.minimumCompactWidth = cameraWidth + wing * 2
         // Menu changes, including full-screen transitions, must not push the
@@ -746,9 +732,8 @@ struct NotchGeometry: Equatable {
         return compact
     }
     var musicStrip: CGSize {
-        let preferred = min(manualCompactWidth ?? max(layout == .spacious ? 520 : 440, cameraWidth + 88, minimumCompactWidth),
-                            screen.width - 24)
-        let measuredRoom = sideRoom ?? 0
+        let preferred = min(max(layout == .spacious ? 520 : 440, cameraWidth + 88, minimumCompactWidth), screen.width - 24)
+        let measuredRoom = compactSideRoom ?? 0
         let room = measuredRoom.isFinite ? max(0, measuredRoom).rounded(.down) : 0
         let wings = min(max(0, preferred - cameraWidth), room * 2)
         return CGSize(width: cameraWidth + (wings >= 88 ? wings : 0), height: menuBarHeight)
