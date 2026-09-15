@@ -770,7 +770,7 @@ final class NotchService: ObservableObject {
 
     func refreshPresentation(animated: Bool = true, transitionContent: NotchContentTransition = .none) {
         let open = expanded || peeking || notice != nil || dragPlaceholder || captureControls != nil
-        guard open || geometry.isNotched || geometry.compactSideRoom != nil else {
+        guard open || geometry.isNotched || geometry.sideRoom != nil else {
             panel?.orderOut(nil)
             removeScreenEdgeClickMonitors()
             return
@@ -877,7 +877,7 @@ final class NotchService: ObservableObject {
             }
             return
         }
-        let wanted = running && !suspended && !expanded && captureControls == nil
+        let wanted = running && !suspended && !expanded && captureControls == nil && geometry.compactWidth == nil
             && (idleContent != .none || compactActivity != nil || !geometry.isNotched)
         guard wanted else { stopMenuSpaceMonitoring(); return }
         guard menuSpaceTimer == nil else { return }
@@ -974,6 +974,7 @@ final class NotchService: ObservableObject {
                                  customHeight: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomHeight))
         if next.hasSameMenuBar(as: geometry) { next.compactSideRoom = geometry.compactSideRoom }
         next.quickAccessBottomInset = NotchQuickAccessConfiguration.current().hasBottom ? NotchQuickAccessLayout.gutter : 0
+        next.compactWidth = NotchSupport.manualCompactWidth()
         if next != geometry { menuSpaceGeneration += 1; geometry = next }
         if windowHost == nil {
             windowHost = NotchWindowHost(content: AnyView(NotchView(service: self)), geometry: geometry, size: surfaceSize,

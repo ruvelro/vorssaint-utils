@@ -814,6 +814,36 @@ enum NotchTests {
                "without an app menu the status bar constant remains the last resort")
         expect(NotchSupport.menuBarHeight(screenTop: 900, visibleTop: 300, mainMenuHeight: 0, statusBarThickness: .nan) == 24,
                "implausible measurements never size the island")
+        expect(NotchSupport.manualCompactWidth(mode: "automatic", width: 300) == nil
+               && NotchSupport.manualCompactWidth(mode: "", width: 300) == nil
+               && NotchSupport.manualCompactWidth(mode: "manual", width: 300) == 300
+               && NotchSupport.manualCompactWidth(mode: "manual", width: 40) == 260
+               && NotchSupport.manualCompactWidth(mode: "manual", width: .nan) == 320,
+               "a manual width applies only in manual mode and stays within its range")
+        for frame in frames {
+            var manual = NotchGeometry(screen: frame, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: 30, compactSideRoom: nil)
+            manual.compactWidth = 400
+            let camera = manual.cameraWidth
+            let room = ((400 - camera) / 2).rounded(.down)
+            let music = manual.compactMusicGeometry
+            expect(manual.sideRoom == room && manual.restingWingWidth == 44 && manual.musicStrip.width == camera + room * 2
+                   && !music.compactActivityUsesFooter && music.compactActivitySize.width == camera + room * 2
+                   && music.compactActivityWingWidth == room && music.compactActivitySize.height == 30,
+                   "a manual width sizes the music strip and the resting island without any menu measurement")
+            let timer = manual.compactTimerGeometry(showsDownloads: false)
+            expect(timer.compactActivitySize.width == camera + 72 * 2,
+                   "timers keep their own compact limit and only borrow the manual room")
+            manual.compactWidth = 5000
+            expect(manual.musicStrip.width <= frame.width - 24, "a manual width never leaves the screen")
+            manual.compactWidth = 1
+            expect(manual.musicStrip.width == camera + 88 && manual.compactMusicGeometry.compactActivityWingWidth == 44,
+                   "a manual width never drops below the cutout with the smallest usable wings")
+            var measured = manual
+            measured.compactWidth = nil
+            measured.compactSideRoom = 20
+            expect(measured.sideRoom == 20 && measured.compactMusicGeometry.compactActivityWingWidth == 0,
+                   "clearing the manual width returns to the measured room")
+        }
         for (screenTop, visibleTop) in [(-200.0, -224.0), (1440.0, 1403.0)] {
             let height = NotchSupport.menuBarHeight(screenTop: screenTop, visibleTop: visibleTop,
                                                     mainMenuHeight: 24, statusBarThickness: 22)

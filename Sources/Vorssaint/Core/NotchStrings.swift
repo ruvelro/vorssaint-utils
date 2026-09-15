@@ -70,6 +70,10 @@ struct NotchStrings {
     let sectionKeyboardHint: String
     let quickAccessLeft: String
     let quickAccessRight: String
+    let compactWidth: String
+    let compactWidthAutomatic: String
+    let compactWidthManual: String
+    let compactWidthHint: String
 }
 
 extension FeatureStrings {
@@ -159,7 +163,11 @@ extension NotchStrings {
         searchSections: "Find a section",
         sectionKeyboardHint: "Use the arrow keys, then press Return",
         quickAccessLeft: "Left",
-        quickAccessRight: "Right"
+        quickAccessRight: "Right",
+        compactWidth: "Compact width",
+        compactWidthAutomatic: "Automatic",
+        compactWidthManual: "Manual",
+        compactWidthHint: "Automatic measures the free space in the menu bar, which needs Accessibility, and hides the sides when space is tight. Manual keeps a fixed width and may cover menu items."
     )
 
     static let ptBR = NotchStrings(
@@ -228,7 +236,11 @@ extension NotchStrings {
         searchSections: "Encontrar uma seção",
         sectionKeyboardHint: "Use as setas e pressione Return",
         quickAccessLeft: "Esquerdo",
-        quickAccessRight: "Direito"
+        quickAccessRight: "Direito",
+        compactWidth: "Largura compacta",
+        compactWidthAutomatic: "Automática",
+        compactWidthManual: "Manual",
+        compactWidthHint: "Automática mede o espaço livre na barra de menus, o que exige Acessibilidade, e esconde as laterais quando falta espaço. Manual mantém uma largura fixa e pode cobrir itens do menu."
     )
 
     static let es = NotchStrings(
@@ -297,7 +309,11 @@ extension NotchStrings {
         searchSections: "Buscar una sección",
         sectionKeyboardHint: "Usa las flechas y pulsa Intro",
         quickAccessLeft: "Izquierdo",
-        quickAccessRight: "Derecho"
+        quickAccessRight: "Derecho",
+        compactWidth: "Ancho compacto",
+        compactWidthAutomatic: "Automático",
+        compactWidthManual: "Manual",
+        compactWidthHint: "Automático mide el espacio libre en la barra de menús, lo que requiere Accesibilidad, y oculta los laterales cuando falta sitio. Manual mantiene un ancho fijo y puede tapar elementos del menú."
     )
 
     static let de = NotchStrings(
@@ -366,7 +382,11 @@ extension NotchStrings {
         searchSections: "Bereich finden",
         sectionKeyboardHint: "Mit den Pfeiltasten wählen, mit Eingabe öffnen",
         quickAccessLeft: "Links",
-        quickAccessRight: "Rechts"
+        quickAccessRight: "Rechts",
+        compactWidth: "Kompakte Breite",
+        compactWidthAutomatic: "Automatisch",
+        compactWidthManual: "Manuell",
+        compactWidthHint: "Automatisch misst den freien Platz in der Menüleiste, was Bedienungshilfen erfordert, und blendet die Seiten aus, wenn es eng wird. Manuell behält eine feste Breite bei und kann Menüeinträge verdecken."
     )
 
     static let fr = NotchStrings(
@@ -435,7 +455,11 @@ extension NotchStrings {
         searchSections: "Rechercher une section",
         sectionKeyboardHint: "Utilisez les flèches, puis appuyez sur Retour",
         quickAccessLeft: "Gauche",
-        quickAccessRight: "Droite"
+        quickAccessRight: "Droite",
+        compactWidth: "Largeur compacte",
+        compactWidthAutomatic: "Automatique",
+        compactWidthManual: "Manuelle",
+        compactWidthHint: "Automatique mesure l’espace libre dans la barre des menus, ce qui nécessite l’Accessibilité, et masque les côtés quand la place manque. Manuelle conserve une largeur fixe et peut recouvrir des menus."
     )
 
     static let it = NotchStrings(
@@ -504,7 +528,11 @@ extension NotchStrings {
         searchSections: "Trova una sezione",
         sectionKeyboardHint: "Usa le frecce, poi premi Invio",
         quickAccessLeft: "Sinistra",
-        quickAccessRight: "Destra"
+        quickAccessRight: "Destra",
+        compactWidth: "Larghezza compatta",
+        compactWidthAutomatic: "Automatica",
+        compactWidthManual: "Manuale",
+        compactWidthHint: "Automatica misura lo spazio libero nella barra dei menu, che richiede Accessibilità, e nasconde i lati quando manca spazio. Manuale mantiene una larghezza fissa e può coprire voci di menu."
     )
 
     static let ru = NotchStrings(
@@ -573,7 +601,11 @@ extension NotchStrings {
         searchSections: "Найти раздел",
         sectionKeyboardHint: "Выберите стрелками и нажмите Return",
         quickAccessLeft: "Слева",
-        quickAccessRight: "Справа"
+        quickAccessRight: "Справа",
+        compactWidth: "Компактная ширина",
+        compactWidthAutomatic: "Автоматически",
+        compactWidthManual: "Вручную",
+        compactWidthHint: "Автоматически измеряет свободное место в строке меню, для чего нужен Универсальный доступ, и скрывает боковые части, когда места мало. Вручную сохраняет фиксированную ширину и может перекрывать пункты меню."
     )
 
     static let tr = NotchStrings(
@@ -642,7 +674,11 @@ extension NotchStrings {
         searchSections: "Bölüm bul",
         sectionKeyboardHint: "Ok tuşlarıyla seçin, Return ile açın",
         quickAccessLeft: "Sol",
-        quickAccessRight: "Sağ"
+        quickAccessRight: "Sağ",
+        compactWidth: "Kompakt genişlik",
+        compactWidthAutomatic: "Otomatik",
+        compactWidthManual: "Elle",
+        compactWidthHint: "Otomatik, menü çubuğundaki boş alanı ölçer, bunun için Erişilebilirlik gerekir ve alan darsa yanları gizler. Elle sabit bir genişlik kullanır ve menü öğelerini örtebilir."
     )
 
     static let ja = NotchStrings(
@@ -711,7 +747,11 @@ extension NotchStrings {
         searchSections: "セクションを検索",
         sectionKeyboardHint: "矢印キーで選び、Returnキーで開きます",
         quickAccessLeft: "左",
-        quickAccessRight: "右"
+        quickAccessRight: "右",
+        compactWidth: "コンパクト時の幅",
+        compactWidthAutomatic: "自動",
+        compactWidthManual: "手動",
+        compactWidthHint: "自動はメニューバーの空きスペースを測定します。アクセシビリティが必要で、狭い場合は両側を隠します。手動は固定幅を保ち、メニュー項目を覆うことがあります。"
     )
 
     static let ko = NotchStrings(
@@ -780,7 +820,11 @@ extension NotchStrings {
         searchSections: "섹션 찾기",
         sectionKeyboardHint: "방향키로 선택하고 Return 키로 열기",
         quickAccessLeft: "왼쪽",
-        quickAccessRight: "오른쪽"
+        quickAccessRight: "오른쪽",
+        compactWidth: "컴팩트 너비",
+        compactWidthAutomatic: "자동",
+        compactWidthManual: "수동",
+        compactWidthHint: "자동은 메뉴 막대의 빈 공간을 측정하며 손쉬운 사용 권한이 필요하고, 공간이 부족하면 양쪽을 숨깁니다. 수동은 고정 너비를 유지하며 메뉴 항목을 가릴 수 있습니다."
     )
 
     static let zhHans = NotchStrings(
@@ -849,7 +893,11 @@ extension NotchStrings {
         searchSections: "查找分区",
         sectionKeyboardHint: "使用方向键选择，然后按回车键打开",
         quickAccessLeft: "左侧",
-        quickAccessRight: "右侧"
+        quickAccessRight: "右侧",
+        compactWidth: "紧凑宽度",
+        compactWidthAutomatic: "自动",
+        compactWidthManual: "手动",
+        compactWidthHint: "自动会测量菜单栏的空余空间，需要辅助功能权限，空间不足时隐藏两侧。手动保持固定宽度，可能会遮挡菜单项。"
     )
 
     static let zhTW = NotchStrings(
@@ -918,7 +966,11 @@ extension NotchStrings {
         searchSections: "尋找區域",
         sectionKeyboardHint: "使用方向鍵選取，再按 Return 鍵開啟",
         quickAccessLeft: "左側",
-        quickAccessRight: "右側"
+        quickAccessRight: "右側",
+        compactWidth: "精簡寬度",
+        compactWidthAutomatic: "自動",
+        compactWidthManual: "手動",
+        compactWidthHint: "自動會測量選單列的可用空間，需要輔助使用權限，空間不足時隱藏兩側。手動維持固定寬度，可能會遮住選單項目。"
     )
 
     static let zhHK = NotchStrings(
@@ -987,7 +1039,11 @@ extension NotchStrings {
         searchSections: "尋找區域",
         sectionKeyboardHint: "使用方向鍵選取，再按 Return 鍵開啟",
         quickAccessLeft: "左側",
-        quickAccessRight: "右側"
+        quickAccessRight: "右側",
+        compactWidth: "精簡寬度",
+        compactWidthAutomatic: "自動",
+        compactWidthManual: "手動",
+        compactWidthHint: "自動會測量選單列的可用空間，需要輔助使用權限，空間不足時隱藏兩側。手動維持固定寬度，可能會遮住選單項目。"
     )
 
 }
