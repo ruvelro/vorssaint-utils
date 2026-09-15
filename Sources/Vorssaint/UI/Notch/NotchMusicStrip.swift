@@ -47,7 +47,10 @@ struct NotchMusicStrip: View {
                 }
                 .padding(.leading, 12)
                 .padding(.trailing, 8)
-                .frame(width: geometry.compactActivityWingWidth, alignment: .trailing)
+                // Wings anchor their content to the outer edges, so a wider
+                // strip spreads the artwork and the bars apart instead of
+                // leaving them huddled around the cutout.
+                .frame(width: geometry.compactActivityWingWidth, alignment: .leading)
                 .clipped()
                 Group {
                     if fillsCameraGap { trackLabel } else { Color.clear }
@@ -64,7 +67,7 @@ struct NotchMusicStrip: View {
                 }
                 .padding(.leading, 8)
                 .padding(.trailing, 12)
-                .frame(width: geometry.compactActivityWingWidth, alignment: .leading)
+                .frame(width: geometry.compactActivityWingWidth, alignment: .trailing)
             }
             .frame(height: geometry.compactActivityContentHeight)
             .contentShape(Rectangle())
