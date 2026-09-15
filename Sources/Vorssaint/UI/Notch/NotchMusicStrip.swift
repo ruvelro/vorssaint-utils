@@ -16,6 +16,17 @@ struct NotchMusicStrip: View {
     }
 
     private var title: String { music.playback?.track.title ?? FeatureStrings.radialMenu(l10n.language).mediaNowPlaying }
+    private var artist: String? {
+        guard let artist = music.playback?.track.artist?.trimmingCharacters(in: .whitespaces), !artist.isEmpty else { return nil }
+        return artist
+    }
+    /// A screen without a camera keeps the same middle spacer so the island's
+    /// width and click zones do not depend on the display, but nothing physical
+    /// sits there. Naming the track fills that space instead of leaving a hole
+    /// between the artwork and the bars.
+    private var fillsCameraGap: Bool { !geometry.isNotched && geometry.compactActivityCameraGap >= 56 }
+    private var showsArtist: Bool { geometry.compactActivityContentHeight >= 28 }
+    private var barHeight: CGFloat { min(16, max(8, geometry.compactActivityContentHeight - 12)) }
 
     var body: some View {
         Button { service.open(.music) } label: {
@@ -30,19 +41,27 @@ struct NotchMusicStrip: View {
                             }
                         }
                         .frame(width: artworkSide, height: artworkSide)
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
+                        .clipShape(RoundedRectangle(cornerRadius: artworkSide * 0.28, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: artworkSide * 0.28, style: .continuous)
+                                .strokeBorder(.white.opacity(0.14), lineWidth: 0.5)
+                        }
                     }
                 }
                 .padding(.leading, 12)
                 .padding(.trailing, 8)
                 .frame(width: geometry.compactActivityWingWidth, alignment: .trailing)
                 .clipped()
-                Color.clear.frame(width: geometry.compactActivityCameraGap)
+                Group {
+                    if fillsCameraGap { trackLabel } else { Color.clear }
+                }
+                .frame(width: geometry.compactActivityCameraGap, height: geometry.compactActivityContentHeight)
+                .clipped()
                 HStack {
                     if geometry.compactActivityWingWidth >= 44 {
                         NotchEqualizerBars(isPlaying: music.playback?.isPlaying == true,
                                            bars: 7, barWidth: 1.8,
-                                           height: min(15, max(8, geometry.menuBarHeight - 9)),
+                                           height: barHeight,
                                            tint: music.artworkTint?.color ?? .white)
                     }
                 }
@@ -57,5 +76,24 @@ struct NotchMusicStrip: View {
         .accessibilityLabel([title, music.playback?.track.artist].compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint(FeatureStrings.notch(l10n.language).open)
         .help(title)
+    }
+
+    private var trackLabel: some View {
+        VStack(spacing: 1) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+            if showsArtist, let artist {
+                Text(artist)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.62))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
     }
 }

@@ -806,6 +806,23 @@ enum NotchTests {
                                        notched: [false], main: 0) == 0, "closed-lid mode falls back to an attached screen")
         expect(NotchSupport.screenIndex(preference: .main, builtIn: [], notched: [], main: 0) == nil,
                "no connected displays means no panel")
+        expect(NotchSupport.menuBarHeight(screenTop: 1440, visibleTop: 1410, mainMenuHeight: 24, statusBarThickness: 22) == 30,
+               "the island fills the menu bar as drawn rather than the fixed status bar constant")
+        expect(NotchSupport.menuBarHeight(screenTop: 1440, visibleTop: 1440, mainMenuHeight: 24, statusBarThickness: 22) == 24,
+               "an auto-hidden menu bar leaves no gap, so the app menu's height stands in")
+        expect(NotchSupport.menuBarHeight(screenTop: 1440, visibleTop: 1440, mainMenuHeight: nil, statusBarThickness: 22) == 22,
+               "without an app menu the status bar constant remains the last resort")
+        expect(NotchSupport.menuBarHeight(screenTop: 900, visibleTop: 300, mainMenuHeight: 0, statusBarThickness: .nan) == 24,
+               "implausible measurements never size the island")
+        for (screenTop, visibleTop) in [(-200.0, -224.0), (1440.0, 1403.0)] {
+            let height = NotchSupport.menuBarHeight(screenTop: screenTop, visibleTop: visibleTop,
+                                                    mainMenuHeight: 24, statusBarThickness: 22)
+            let frame = CGRect(x: -1000, y: screenTop - 900, width: 1600, height: 900)
+            let geometry = NotchGeometry(screen: frame, safeAreaTop: 0, cameraWidth: 0, menuBarHeight: height)
+            expect(geometry.collapsed.height == screenTop - visibleTop
+                   && geometry.compactMusicGeometry.compactActivitySize.height == screenTop - visibleTop,
+                   "the collapsed island and the music strip span the whole bar in any screen quadrant")
+        }
         expect(NotchSupport.shouldReplace(.volume, with: .brightness), "continuous controls can replace each other")
         expect(!NotchSupport.shouldReplace(.volume, with: .clipboard), "copy does not interrupt a volume adjustment")
         expect(NotchSupport.shouldReplace(.battery, with: .capture), "a capture takes precedence over passive battery status")

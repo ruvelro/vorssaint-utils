@@ -571,6 +571,11 @@ final class NotchService: ObservableObject {
         notice = nil
         hoverWork?.cancel()
         removeEventMonitors()
+        // The island is part of the capture interface now, sized by the tool
+        // rather than by free menu space. Measuring the bar every second would
+        // keep sweeping the window list and the front app's menus over
+        // Accessibility while the selection surface redraws under the pointer.
+        syncMenuSpaceMonitoring()
         panel?.acceptsKeyFocus = true
         panel?.level = NSWindow.Level(rawValue: Int(CGShieldingWindowLevel()) + 1)
         refreshPresentation()
@@ -961,7 +966,10 @@ final class NotchService: ObservableObject {
         var next = NotchGeometry(screen: screen.frame, safeAreaTop: screen.safeAreaInsets.top,
                                  cameraWidth: cameraWidth,
                                  layout: NotchSize(rawValue: UserDefaults.standard.string(forKey: DefaultsKey.notchSize) ?? "") ?? .compact,
-                                 menuBarHeight: NSStatusBar.system.thickness,
+                                 menuBarHeight: NotchSupport.menuBarHeight(
+                                    screenTop: screen.frame.maxY, visibleTop: screen.visibleFrame.maxY,
+                                    mainMenuHeight: NSApp.mainMenu?.menuBarHeight,
+                                    statusBarThickness: NSStatusBar.system.thickness),
                                  customWidth: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomWidth),
                                  customHeight: UserDefaults.standard.double(forKey: DefaultsKey.notchCustomHeight))
         if next.hasSameMenuBar(as: geometry) { next.compactSideRoom = geometry.compactSideRoom }

@@ -602,6 +602,21 @@ enum NotchSupport {
         return min(1, max(0, current + Double(direction.signum()) / (fine ? 64 : 16)))
     }
 
+    /// The height the menu bar really occupies on a display. The status bar
+    /// constant is a fixed 22 points, which undershoots the taller bars recent
+    /// macOS releases draw, so a collapsed island built on it floats short of
+    /// the bar's bottom edge. The gap between a screen's frame and its visible
+    /// frame is the bar as drawn. An auto-hidden bar leaves no gap, so the app
+    /// menu's own height stands in, then the status bar constant.
+    static func menuBarHeight(screenTop: CGFloat, visibleTop: CGFloat,
+                              mainMenuHeight: CGFloat?, statusBarThickness: CGFloat) -> CGFloat {
+        let range: ClosedRange<CGFloat> = 16...64
+        let gap = screenTop - visibleTop
+        if gap.isFinite, range.contains(gap) { return gap }
+        if let mainMenuHeight, mainMenuHeight.isFinite, range.contains(mainMenuHeight) { return mainMenuHeight }
+        return statusBarThickness.isFinite && range.contains(statusBarThickness) ? statusBarThickness : 24
+    }
+
     static func screenIndex(preference: NotchDisplay, builtIn: [Bool], notched: [Bool], main: Int) -> Int? {
         guard !builtIn.isEmpty, builtIn.count == notched.count else { return nil }
         let fallback = builtIn.indices.contains(main) ? main : 0

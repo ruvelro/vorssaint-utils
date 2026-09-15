@@ -48,19 +48,28 @@ struct NotchEqualizerBars: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var animates: Bool { isPlaying && !reduceMotion }
+    private var count: Int { max(1, bars) }
+    private var spacing: CGFloat { barWidth * 0.85 }
+    private var width: CGFloat { CGFloat(count) * barWidth + CGFloat(count - 1) * spacing }
 
     var body: some View {
+        // Each tick redraws a fixed-size canvas instead of resizing capsule
+        // views. Views whose heights change thirty times a second invalidate
+        // layout in the hosting window every time, which kept the main thread
+        // busy for as long as anything played.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !animates)) { context in
-            HStack(alignment: .center, spacing: barWidth * 0.85) {
-                ForEach(0..<max(1, bars), id: \.self) { index in
-                    Capsule(style: .continuous)
-                        .fill(tint)
-                        .frame(width: barWidth,
-                               height: barHeight(index, at: context.date.timeIntervalSinceReferenceDate))
+            let phase = context.date.timeIntervalSinceReferenceDate
+            Canvas { canvas, size in
+                for index in 0..<count {
+                    let bar = barHeight(index, at: phase)
+                    let rect = CGRect(x: CGFloat(index) * (barWidth + spacing), y: (size.height - bar) / 2,
+                                      width: barWidth, height: bar)
+                    canvas.fill(Path(roundedRect: rect, cornerRadius: barWidth / 2, style: .continuous),
+                                with: .color(tint))
                 }
             }
-            .frame(height: height)
         }
+        .frame(width: width, height: height)
         .accessibilityHidden(true)
     }
 
