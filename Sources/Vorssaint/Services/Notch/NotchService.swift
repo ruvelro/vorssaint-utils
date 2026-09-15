@@ -629,14 +629,14 @@ final class NotchService: ObservableObject {
 
     private func installCaptureControlsClickThrough() {
         guard captureControlsMonitors.isEmpty else { return }
-        // Posting moved events lets the click-through state settle before the
-        // pointer reaches a control, so the controls stay clickable.
-        panel?.acceptsMouseMovedEvents = true
+        // The selection surface below is this app's own window and already
+        // tracks the pointer, so a local monitor sees every move that could
+        // reach a control. A global monitor would add a second, system-wide
+        // stream of every move at the mouse's full rate, and asking the key
+        // panel for moved events on top of that starved the selector: with
+        // both installed it received fewer events and trailed the pointer.
         let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged,
                                             .rightMouseDragged, .otherMouseDragged]
-        if let token = NSEvent.addGlobalMonitorForEvents(matching: moves, handler: { [weak self] _ in
-            self?.updateCaptureControlsClickThrough()
-        }) { captureControlsMonitors.append(token) }
         if let token = NSEvent.addLocalMonitorForEvents(matching: moves, handler: { [weak self] event in
             self?.updateCaptureControlsClickThrough(); return event
         }) { captureControlsMonitors.append(token) }
@@ -647,7 +647,6 @@ final class NotchService: ObservableObject {
         captureControlsMonitors.forEach(NSEvent.removeMonitor)
         captureControlsMonitors.removeAll()
         panel?.ignoresMouseEvents = false
-        panel?.acceptsMouseMovedEvents = false
     }
 
     func endCaptureControls() {
