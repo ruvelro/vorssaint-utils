@@ -250,6 +250,7 @@ enum NotchTests {
         NotchDownloadProgressTests.run(expect: expect)
         NotchSliderEditingTests.run(expect: expect)
         NotchFileToolsTests.run(expect: expect)
+        NotchAudioLevelTests.run(expect: expect)
         calendarContracts(expect: expect)
         NotchNotificationTests.run(expect: expect)
         NotchNotificationReaderTests.run(expect: expect)

@@ -45,9 +45,12 @@ struct NotchEqualizerBars: View {
     var barWidth: CGFloat = 2.5
     var height: CGFloat = 14
     var tint: Color = .white
+    /// Band levels from 0 to 1 read from the player's audio. When present the
+    /// bars follow them instead of the synthetic wave.
+    var live: [Double]? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var animates: Bool { isPlaying && !reduceMotion }
+    private var animates: Bool { isPlaying && !reduceMotion && live == nil }
     private var count: Int { max(1, bars) }
     private var spacing: CGFloat { barWidth * 0.85 }
     private var width: CGFloat { CGFloat(count) * barWidth + CGFloat(count - 1) * spacing }
@@ -72,12 +75,32 @@ struct NotchEqualizerBars: View {
     }
 
     private func barHeight(_ index: Int, at phase: Double) -> CGFloat {
+        if let live, !live.isEmpty, isPlaying, !reduceMotion {
+            let level = live[NotchAudioLevelSupport.barIndex(index, of: count, bands: live.count)]
+            return max(barWidth, height * (0.1 + 0.9 * CGFloat(min(1, max(0, level)))))
+        }
         guard animates else { return barWidth }
         let center = Double(count - 1) / 2
         let distance = abs(Double(index) - center) / max(1, center)
         let envelope = pow(1 - distance, 1.5)
         let wave = (sin(phase * (5.2 + Double(index) * 0.61) + Double(index) * 1.7) + 1) / 2
         return max(barWidth, height * (0.12 + envelope * (0.25 + 0.63 * wave)))
+    }
+}
+
+/// The bars with the live levels attached. Only this small view observes the
+/// audio service, so its thirty updates a second never re-render the island.
+struct NotchLiveEqualizerBars: View {
+    var isPlaying = true
+    var bars = 4
+    var barWidth: CGFloat = 2.5
+    var height: CGFloat = 14
+    var tint: Color = .white
+    @ObservedObject private var audio = NotchAudioLevelService.shared
+
+    var body: some View {
+        NotchEqualizerBars(isPlaying: isPlaying, bars: bars, barWidth: barWidth, height: height, tint: tint,
+                           live: audio.levels)
     }
 }
 
