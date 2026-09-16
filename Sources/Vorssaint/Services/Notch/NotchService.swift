@@ -625,6 +625,12 @@ final class NotchService: ObservableObject {
         guard let panel, captureControls != nil else { return }
         let overControls = windowHost?.contains(NSEvent.mouseLocation) == true
         if panel.ignoresMouseEvents != !overControls { panel.ignoresMouseEvents = !overControls }
+        // While the panel catches the mouse it is the window under the pointer
+        // across its whole frame, transparent parts included, so it must be the
+        // one reporting the move that leaves the controls; otherwise the next
+        // click there would be swallowed. Away from the controls the selection
+        // surface reports every move itself, and the panel stays quiet.
+        if panel.acceptsMouseMovedEvents != overControls { panel.acceptsMouseMovedEvents = overControls }
     }
 
     private func installCaptureControlsClickThrough() {
@@ -647,6 +653,7 @@ final class NotchService: ObservableObject {
         captureControlsMonitors.forEach(NSEvent.removeMonitor)
         captureControlsMonitors.removeAll()
         panel?.ignoresMouseEvents = false
+        panel?.acceptsMouseMovedEvents = false
     }
 
     func endCaptureControls() {
