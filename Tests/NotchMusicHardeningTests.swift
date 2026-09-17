@@ -169,8 +169,8 @@ enum NotchMusicHardeningTests {
         expect(choose([idleBrowser, paused]) == paused, "reopening the music surface can still reach paused music")
         expect(choose([browser, paused, other], previous: 10) == other,
                "playing music still outranks a playing browser and a paused music app")
-        // Spotify open but stopped, a video playing in the browser: the island
-        // used to go blank, since paused music outranked everything.
+        // A music app open but stopped, a video playing in the browser: the
+        // island used to go blank, since paused music outranked everything.
         expect(choose([paused, browser], previous: nil, system: 20) == browser,
                "a stopped music app left open never blanks the island over a playing video")
         expect(choose([browser, source(10, music: true, track: false)]) == browser,
