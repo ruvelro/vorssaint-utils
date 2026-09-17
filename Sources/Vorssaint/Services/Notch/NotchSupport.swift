@@ -107,6 +107,8 @@ enum NotchLayout {
     static let sectionSearchHeight: CGFloat = 36
     static let sectionResultHeight: CGFloat = 52
     static var chromeHeight: CGFloat { headerHeight + spacing + bottomInset }
+    /// Bottom corner `NotchShape` draws for a surface of this height.
+    static func surfaceRadius(height: CGFloat) -> CGFloat { min(28, height / 2) }
 }
 
 enum NotchIdleContent: String, CaseIterable {
@@ -721,7 +723,7 @@ struct NotchGeometry: Equatable {
     var compactMusicLabelInset: CGFloat {
         let height = compactActivityContentHeight
         let shoulder = min(NotchLayout.shoulder, height * 0.28)
-        let bottom = min(28, height / 2)
+        let bottom = NotchLayout.surfaceRadius(height: height)
         // Wings normally provide this room. When menus hide them, the center
         // text must also clear the silhouette's shoulders and bottom corners.
         return max(4, shoulder + bottom + 4 - compactActivityWingWidth)
@@ -761,6 +763,26 @@ struct NotchGeometry: Equatable {
     }
     var compactActivityWingWidth: CGFloat {
         max(0, (compactActivitySize.width - compactActivityCameraGap - compactActivityHorizontalPadding * 2) / 2)
+    }
+    /// Inset that keeps a vertically centred box of `boxHeight`, itself rounded
+    /// by `radius`, an even `gap` away from the strip's silhouette.
+    /// A strip is barely taller than its corners, so its lower half is one long
+    /// arc: padding measured against the straight edge still leaves artwork and
+    /// meters grazing the curve. Push the box in until its own corner keeps the
+    /// same distance from the arc that its top keeps from the shoulder.
+    func compactActivityEdgeInset(boxHeight: CGFloat, radius: CGFloat, gap: CGFloat) -> CGFloat {
+        let surface = compactActivitySize.height
+        let shoulder = min(NotchLayout.shoulder, surface * 0.28)
+        let corner = min(NotchLayout.surfaceRadius(height: surface),
+                         (compactActivitySize.width - shoulder * 2) / 2)
+        let flat = shoulder + gap - compactActivityHorizontalPadding
+        let below = (compactActivityContentHeight - boxHeight) / 2
+        // Both corner centres, grown by the gap, decide the horizontal offset.
+        let reach = corner - radius - gap
+        let drop = corner - radius - below
+        guard reach > 0, drop > 0 else { return max(0, flat) }
+        let span = reach > drop ? (reach * reach - drop * drop).squareRoot() : 0
+        return max(0, flat, shoulder + corner - radius - span - compactActivityHorizontalPadding)
     }
     var notice: CGSize {
         noticeSize(wingWidth: 112)
