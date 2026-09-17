@@ -11,8 +11,7 @@ struct NotchMusicStrip: View {
 
     private var geometry: NotchGeometry { service.compactActivityGeometry }
 
-    /// Breathing room kept between the silhouette and everything inside it.
-    private static let edgeGap: CGFloat = 5
+    private static let edgeGap = NotchLayout.compactEdgeGap
     private static let barWidth: CGFloat = 1.8
     private static let barCount = 7
 

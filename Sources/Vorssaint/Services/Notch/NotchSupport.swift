@@ -107,6 +107,8 @@ enum NotchLayout {
     static let sectionSearchHeight: CGFloat = 36
     static let sectionResultHeight: CGFloat = 52
     static var chromeHeight: CGFloat { headerHeight + spacing + bottomInset }
+    /// Breathing room every compact strip keeps from its silhouette.
+    static let compactEdgeGap: CGFloat = 5
     /// Bottom corner `NotchShape` draws for a surface of this height.
     static func surfaceRadius(height: CGFloat) -> CGFloat { min(28, height / 2) }
 }
@@ -770,7 +772,8 @@ struct NotchGeometry: Equatable {
     /// arc: padding measured against the straight edge still leaves artwork and
     /// meters grazing the curve. Push the box in until its own corner keeps the
     /// same distance from the arc that its top keeps from the shoulder.
-    func compactActivityEdgeInset(boxHeight: CGFloat, radius: CGFloat, gap: CGFloat) -> CGFloat {
+    func compactActivityEdgeInset(boxHeight: CGFloat, radius: CGFloat,
+                                  gap: CGFloat = NotchLayout.compactEdgeGap) -> CGFloat {
         let surface = compactActivitySize.height
         let shoulder = min(NotchLayout.shoulder, surface * 0.28)
         let corner = min(NotchLayout.surfaceRadius(height: surface),
