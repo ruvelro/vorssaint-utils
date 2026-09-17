@@ -22,19 +22,17 @@ final class NotchAudioLevelService: ObservableObject {
     private var subscription: AnyCancellable?
     private var reader: NotchAudioLevelReader?
     private var readerPID: pid_t = 0
-    /// A player whose tap stayed silent, most likely because the permission
-    /// was declined. Its bars keep the synthetic motion until the option is
-    /// switched off and on again.
-    private var silentPID: pid_t = 0
+    private var silence = NotchAudioLevelSupport.SilenceMemory()
     private var stopWork: DispatchWorkItem?
 
     private init() {}
 
     func syncWithPreferences() {
-        enabled = NotchSupport.isEnabled() && NotchAudioLevelSupport.isSupported && NotchAudioLevelSupport.isEnabled()
+        enabled = AppFeature.notchLiveEqualizer.isAvailable && NotchSupport.isEnabled()
+            && NotchAudioLevelSupport.isSupported && NotchAudioLevelSupport.isEnabled()
         if enabled {
             if subscription == nil {
-                silentPID = 0
+                silence.rearm()
                 subscription = NotchMusicService.shared.$playback
                     .receive(on: DispatchQueue.main)
                     .sink { [weak self] playback in self?.playbackChanged(playback) }
@@ -56,27 +54,40 @@ final class NotchAudioLevelService: ObservableObject {
     private func playbackChanged(_ playback: NotchPlayback?) {
         guard enabled, let playback, playback.isPlaying,
               let pid = playback.track.appPID, pid > 0 else {
+            // Pausing or stopping arms the next play to read again.
+            silence.rearm()
             scheduleStop()
             return
         }
         stopWork?.cancel(); stopWork = nil
-        if reader != nil, readerPID == pid { return }
-        guard pid != silentPID else { return }
-        reader?.stop()
-        reader = nil
+        guard readerPID != pid else { return }
+        // Release the previous player before deciding about this one, or its
+        // reader would keep the bars on somebody else's levels.
+        stop()
+        let identity = NotchMusicIdentity(playback)
+        guard silence.reads(identity) else { return }
         readerPID = pid
         let created = NotchAudioLevelReader(pid: pid, onLevels: { [weak self] next in
             DispatchQueue.main.async { self?.receive(next, from: pid) }
         }, onSilence: { [weak self] in
-            DispatchQueue.main.async { self?.fallBack(from: pid) }
+            DispatchQueue.main.async { self?.giveUp(pid, on: identity) }
+        }, onUnavailable: { [weak self] in
+            DispatchQueue.main.async { self?.release(pid) }
         })
-        guard let created, created.start() else { readerPID = 0; return }
         reader = created
+        created.start()
     }
 
-    private func fallBack(from pid: pid_t) {
+    private func giveUp(_ pid: pid_t, on identity: NotchMusicIdentity) {
         guard readerPID == pid else { return }
-        silentPID = pid
+        silence.giveUp(on: identity)
+        stop()
+    }
+
+    /// No tap could be created, or the one there lost its device for good.
+    /// Nothing is marked, so the next change is free to try again.
+    private func release(_ pid: pid_t) {
+        guard readerPID == pid else { return }
         stop()
     }
 
@@ -98,14 +109,20 @@ final class NotchAudioLevelService: ObservableObject {
     }
 }
 
-/// One process tap read through a private aggregate device on the default
-/// output, the same shape the recorder uses, feeding a ring of mono samples
-/// that a timer analyses off the audio thread.
+/// The player's process taps, read through a private aggregate device on the
+/// default output, the same shape the recorder uses, feeding a ring of mono
+/// samples that a timer analyses off the audio thread.
+///
+/// Every Core Audio call runs on this object's own queue. Creating a tap or
+/// starting a device can block for as long as a Bluetooth or USB device takes
+/// to reconnect, and the island must never wait on that.
 private final class NotchAudioLevelReader {
     private let queue = DispatchQueue(label: "com.vorssaint.notch-audio-levels", qos: .utility)
     private static let teardownQueue = DispatchQueue(label: "com.vorssaint.notch-audio-levels.teardown", qos: .utility)
+    private let pid: pid_t
     private let onLevels: ([Double]) -> Void
     private let onSilence: () -> Void
+    private let onUnavailable: () -> Void
     private let ring = NotchAudioRing(capacity: 8192)
     private var startedAt: TimeInterval = 0
     private var tapID = AudioObjectID(0)
@@ -117,32 +134,67 @@ private final class NotchAudioLevelReader {
     private var analyzer: NotchAudioAnalyzer?
     private var smoother = NotchAudioLevelSupport.Smoother()
     private var samples: [Float] = []
+    private var hostDeviceUID: String?
+    private var sampleRate: Double = 0
+    private var deviceListener: AudioObjectPropertyListenerBlock?
+    private var rateListener: AudioObjectPropertyListenerBlock?
     private var stopped = false
 
-    init?(pid: pid_t, onLevels: @escaping ([Double]) -> Void, onSilence: @escaping () -> Void) {
-        guard #available(macOS 14.4, *), let object = Self.processObject(for: pid) else { return nil }
+    init(pid: pid_t, onLevels: @escaping ([Double]) -> Void,
+         onSilence: @escaping () -> Void, onUnavailable: @escaping () -> Void) {
+        self.pid = pid
         self.onLevels = onLevels
         self.onSilence = onSilence
-        let description = CATapDescription(stereoMixdownOfProcesses: [object])
-        description.name = "Vorssaint Island Levels"
-        description.isPrivate = true
-        description.muteBehavior = .unmuted
-        var tapID = AudioObjectID(0)
-        guard AudioHardwareCreateProcessTap(description, &tapID) == noErr, tapID != 0 else { return nil }
-        self.tapID = tapID
-        tapUID = description.uuid.uuidString
-        var format = AudioStreamBasicDescription()
-        if Self.read(tapID, kAudioTapPropertyFormat, &format), format.mChannelsPerFrame > 0 {
-            tapChannels = Int(format.mChannelsPerFrame)
-        }
+        self.onUnavailable = onUnavailable
     }
 
     deinit {
         Self.destroy(aggregateID: aggregateID, ioProc: ioProc, tapID: tapID)
     }
 
-    func start() -> Bool {
-        guard aggregateID == 0, let hostUID = Self.hostDeviceUID() else { return false }
+    /// Builds and starts on the reader's queue. A failure is reported through
+    /// `onUnavailable` rather than returned, since the caller is not waiting.
+    func start() {
+        queue.async { [self] in
+            guard !stopped, buildTap(), buildPipeline() else {
+                if !stopped { release(reporting: onUnavailable) }
+                return
+            }
+            watchDefaultOutputDevice()
+            startAnalysis()
+        }
+    }
+
+    func stop() {
+        queue.async { [self] in
+            guard !stopped else { return }
+            release(reporting: nil)
+        }
+    }
+
+    // MARK: - Pipeline
+
+    private func buildTap() -> Bool {
+        guard #available(macOS 14.4, *), tapID == 0 else { return false }
+        let objects = Self.processObjects(for: pid)
+        guard !objects.isEmpty else { return false }
+        let description = CATapDescription(stereoMixdownOfProcesses: objects)
+        description.name = "Vorssaint Island Levels"
+        description.isPrivate = true
+        description.muteBehavior = .unmuted
+        var tapID = AudioObjectID(0)
+        guard AudioHardwareCreateProcessTap(description, &tapID) == noErr, tapID != 0 else { return false }
+        self.tapID = tapID
+        tapUID = description.uuid.uuidString
+        var format = AudioStreamBasicDescription()
+        if Self.read(tapID, kAudioTapPropertyFormat, &format), format.mChannelsPerFrame > 0 {
+            tapChannels = Int(format.mChannelsPerFrame)
+        }
+        return true
+    }
+
+    private func buildPipeline() -> Bool {
+        guard aggregateID == 0, tapID != 0, let hostUID = Self.hostDeviceUID() else { return false }
         let aggregate: [String: Any] = [
             kAudioAggregateDeviceNameKey: "Vorssaint Island Levels",
             kAudioAggregateDeviceUIDKey: UUID().uuidString,
@@ -183,39 +235,109 @@ private final class NotchAudioLevelReader {
         self.aggregateID = aggregateID
         self.ioProc = ioProc
         self.analyzer = analyzer
+        self.hostDeviceUID = hostUID
+        self.sampleRate = sampleRate
         samples = [Float](repeating: 0, count: analyzer.size)
+        watchSampleRate(of: aggregateID)
+        return true
+    }
+
+    private func teardownPipeline() {
+        let aggregateID = self.aggregateID
+        let ioProc = self.ioProc
+        let rateListener = self.rateListener
+        self.aggregateID = 0
+        self.ioProc = nil
+        self.rateListener = nil
+        analyzer = nil
+        hostDeviceUID = nil
+        guard aggregateID != 0 else { return }
+        if let ioProc { AudioDeviceStop(aggregateID, ioProc) }
+        if let rateListener {
+            var address = Self.address(kAudioDevicePropertyNominalSampleRate)
+            AudioObjectRemovePropertyListenerBlock(aggregateID, &address, queue, rateListener)
+        }
+        Self.destroy(aggregateID: aggregateID, ioProc: ioProc, tapID: 0)
+    }
+
+    /// Gives everything back, optionally saying why. The tap goes too: a
+    /// reader is only ever built once, and the service makes the next one.
+    private func release(reporting callback: (() -> Void)?) {
+        stopped = true
+        stopAnalysis()
+        if let deviceListener {
+            var address = Self.address(kAudioHardwarePropertyDefaultOutputDevice)
+            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject),
+                                                   &address, queue, deviceListener)
+            self.deviceListener = nil
+        }
+        teardownPipeline()
+        let tapID = self.tapID
+        self.tapID = 0
+        Self.destroy(aggregateID: 0, ioProc: nil, tapID: tapID)
+        callback?()
+    }
+
+    /// Headphones that come and go, or a device that changes its rate for a
+    /// call, would otherwise leave the bars still while the music plays on.
+    /// Only a real change rebuilds, so the notifications a rebuild raises
+    /// settle instead of looping.
+    private func rebuildIfDeviceChanged() {
+        guard !stopped, aggregateID != 0 else { return }
+        guard Self.hostDeviceUID() != hostDeviceUID
+                || Self.nominalSampleRate(of: aggregateID) != sampleRate else { return }
+        teardownPipeline()
+        // The ring keeps what it has heard, so a device change does not
+        // restart the silence countdown on a player already known to sound.
+        if !buildPipeline() { release(reporting: onUnavailable) }
+    }
+
+    private func watchDefaultOutputDevice() {
+        guard deviceListener == nil else { return }
+        var address = Self.address(kAudioHardwarePropertyDefaultOutputDevice)
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            self?.rebuildIfDeviceChanged()
+        }
+        if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject),
+                                               &address, queue, listener) == noErr {
+            deviceListener = listener
+        }
+    }
+
+    private func watchSampleRate(of aggregateID: AudioObjectID) {
+        var address = Self.address(kAudioDevicePropertyNominalSampleRate)
+        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+            self?.rebuildIfDeviceChanged()
+        }
+        if AudioObjectAddPropertyListenerBlock(aggregateID, &address, queue, listener) == noErr {
+            rateListener = listener
+        }
+    }
+
+    // MARK: - Analysis
+
+    private func startAnalysis() {
         startedAt = ProcessInfo.processInfo.systemUptime
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(deadline: .now() + 0.1, repeating: 1 / NotchAudioLevelSupport.updatesPerSecond, leeway: .milliseconds(5))
         timer.setEventHandler { [weak self] in self?.analyse() }
         self.timer = timer
         timer.resume()
-        return true
     }
 
-    func stop() {
-        stopped = true
+    private func stopAnalysis() {
         timer?.cancel()
         timer = nil
-        let aggregateID = self.aggregateID
-        let ioProc = self.ioProc
-        let tapID = self.tapID
-        self.aggregateID = 0
-        self.ioProc = nil
-        self.tapID = 0
-        if aggregateID != 0, let ioProc { AudioDeviceStop(aggregateID, ioProc) }
-        Self.destroy(aggregateID: aggregateID, ioProc: ioProc, tapID: tapID)
     }
 
     private func analyse() {
         guard !stopped, let analyzer else { return }
         // Levels are reported only once sound has arrived, so the bars keep
-        // their usual motion while the tap warms up, and give it up for good
+        // their usual motion while the tap warms up, and give this play up
         // when the tap only ever delivers silence.
         guard ring.hasHeard else {
             if NotchAudioLevelSupport.fallsBack(heard: false, elapsed: ProcessInfo.processInfo.systemUptime - startedAt) {
-                stopped = true
-                onSilence()
+                release(reporting: onSilence)
             }
             return
         }
@@ -251,6 +373,25 @@ private final class NotchAudioLevelReader {
         return withUnsafeMutablePointer(to: &value) { pointer in
             AudioObjectGetPropertyData(object, &address, 0, nil, &size, UnsafeMutableRawPointer(pointer)) == noErr
         }
+    }
+
+    /// Every audio process the player is responsible for. Some browsers make
+    /// their sound in a helper process, so a tap on the app's own pid alone
+    /// would never hear them; the mixer gathers its rows the same way.
+    @available(macOS 14.4, *)
+    private static func processObjects(for pid: pid_t) -> [AudioObjectID] {
+        var objects: [AudioObjectID] = []
+        for object in AppVolumeMixer.audioProcessObjects() {
+            var owner: pid_t = -1
+            guard read(object, kAudioProcessPropertyPID, &owner), owner > 0,
+                  owner == pid || ResponsibleProcess.regularAppOwner(of: owner)?.processIdentifier == pid
+            else { continue }
+            objects.append(object)
+        }
+        // A player that holds no audio connection yet still has a process
+        // object of its own, which starts sounding when it does.
+        if objects.isEmpty, let direct = processObject(for: pid) { objects.append(direct) }
+        return objects
     }
 
     private static func processObject(for pid: pid_t) -> AudioObjectID? {

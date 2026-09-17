@@ -275,6 +275,7 @@ final class FeatureRuntime: ObservableObject {
             if !NotchLyricsSupport.isEnabled() { NotchLyricsService.shared.stop() }
         },
         .notchQueue: { NotchMusicService.shared.syncQueuePreference() },
+        .notchLiveEqualizer: { NotchAudioLevelService.shared.syncWithPreferences() },
         .notchNotifications: {
             if AppFeature.notch.isAvailable { NotchService.shared.syncWithPreferences() }
             else { NotchNotificationService.shared.stop() }

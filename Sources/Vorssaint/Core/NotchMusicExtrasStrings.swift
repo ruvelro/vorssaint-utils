@@ -391,7 +391,7 @@ extension FeatureStrings {
             refresh: "새로 고침",
             openPlayer: "플레이어 열기",
             liveEqualizer: "막대가 음악을 따라 움직임",
-            liveEqualizerHint: "플레이어의 오디오 출력을 듣고 막대를 움직입니다. macOS가 시스템 오디오 녹음 권한을 한 번 요청합니다. 아무것도 저장하거나 전송하지 않습니다.권한이 없으면 막대는 평소처럼 움직입니다.",
+            liveEqualizerHint: "플레이어의 오디오 출력을 듣고 막대를 움직입니다. macOS가 시스템 오디오 녹음 권한을 한 번 요청합니다. 아무것도 저장하거나 전송하지 않습니다. 권한이 없으면 막대는 평소처럼 움직입니다.",
             liveEqualizerUnavailable: "macOS 14.4 이상이 필요합니다.")
         case .zhHans: return NotchMusicExtrasStrings(
             lyrics: "歌词",

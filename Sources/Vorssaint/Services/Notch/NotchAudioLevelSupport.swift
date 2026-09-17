@@ -16,13 +16,30 @@ enum NotchAudioLevelSupport {
     /// Updates per second. Enough for motion, few enough to stay cheap.
     static let updatesPerSecond = 30.0
     /// How long a playing tap may stay silent before the bars go back to
-    /// their synthetic motion. Without the system audio recording permission
-    /// a tap is created but only ever delivers silence, and there is no
-    /// direct way to ask; the absence of sound is the answer.
-    static let silenceGrace = 2.5
+    /// their synthetic motion for the rest of this play. Without the system
+    /// audio recording permission a tap is created but only ever delivers
+    /// silence, and there is no direct way to ask; the absence of sound is
+    /// the answer. Long enough to outlast a permission prompt being read and
+    /// a player that buffers before it sounds, and free to be: the bars keep
+    /// their usual motion the whole time either way.
+    static let silenceGrace = 8.0
 
     static func fallsBack(heard: Bool, elapsed: TimeInterval) -> Bool {
         !heard && elapsed >= silenceGrace
+    }
+
+    /// Remembers the single play a silent tap was given up on. A refused
+    /// permission, a prompt still on screen and a player that buffers before
+    /// it sounds are indistinguishable from here, so only that play keeps the
+    /// synthetic motion: the next track, or the next time play is pressed,
+    /// reads again rather than holding the player for the whole session.
+    struct SilenceMemory: Equatable {
+        private var givenUp: NotchMusicIdentity?
+
+        func reads(_ identity: NotchMusicIdentity) -> Bool { identity != givenUp }
+        mutating func giveUp(on identity: NotchMusicIdentity) { givenUp = identity }
+        /// A pause, a stop or switching the feature off arms the next play.
+        mutating func rearm() { givenUp = nil }
     }
 
     static var isSupported: Bool {

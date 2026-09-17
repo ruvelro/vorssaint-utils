@@ -202,7 +202,8 @@ struct NotchSettings: View {
             }
             Toggle(music.enableQueue, isOn: $queueEnabled).disabled(!AppFeature.notchQueue.isAvailable)
             Text(music.queueDescription).font(.caption).foregroundStyle(.secondary)
-            Toggle(music.liveEqualizer, isOn: $liveEqualizer).disabled(!NotchAudioLevelSupport.isSupported)
+            Toggle(music.liveEqualizer, isOn: $liveEqualizer)
+                .disabled(!NotchAudioLevelSupport.isSupported || !AppFeature.notchLiveEqualizer.isAvailable)
             Text(NotchAudioLevelSupport.isSupported ? music.liveEqualizerHint : music.liveEqualizerUnavailable)
                 .font(.caption).foregroundStyle(.secondary)
         case .notifications:

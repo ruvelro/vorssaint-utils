@@ -28,7 +28,7 @@ enum AppFeature: String, CaseIterable {
     // Tools
     case quickLauncher, quickToggles, colorPicker, screenOCR, cleaningMode, mediaTools,
          cleaner, uninstaller, homebrew, appUpdates, screenshot, cameraPreview, radialMenu, scratchpad,
-         commandBar, screenRecorder, killProcess, notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics, notchQueue, notchDownloads
+         commandBar, screenRecorder, killProcess, notch, notchCalendar, notchNotifications, notchGestures, notchTimer, notchAccessories, notchLyrics, notchQueue, notchLiveEqualizer, notchDownloads
     // System monitor, one entry per metric family (temperatures live with
     // their parent metric: CPU temp with CPU, battery temp with power).
     case monitorCPU, monitorGPU, monitorMemory, monitorNetwork, monitorDisk, monitorPower, fanControl
@@ -109,7 +109,7 @@ extension AppFeature {
             return .energyDisplay
         case .quickLauncher, .quickToggles, .colorPicker, .screenOCR, .cleaningMode, .mediaTools,
              .cleaner, .uninstaller, .homebrew, .appUpdates, .screenshot, .cameraPreview, .radialMenu,
-             .scratchpad, .commandBar, .screenRecorder, .killProcess, .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories, .notchLyrics, .notchQueue, .notchDownloads:
+             .scratchpad, .commandBar, .screenRecorder, .killProcess, .notch, .notchCalendar, .notchNotifications, .notchGestures, .notchTimer, .notchAccessories, .notchLyrics, .notchQueue, .notchLiveEqualizer, .notchDownloads:
             return .tools
         case .monitorCPU, .monitorGPU, .monitorMemory, .monitorNetwork, .monitorDisk, .monitorPower,
              .fanControl:
@@ -173,6 +173,7 @@ extension AppFeature {
         case .notchAccessories: return "battery.25percent"
         case .notchLyrics: return "quote.bubble"
         case .notchQueue: return "list.bullet"
+        case .notchLiveEqualizer: return "waveform"
         case .notchDownloads: return "arrow.down.circle"
         case .notchNotifications: return "bell"
         case .notchCalendar: return "calendar"
@@ -238,6 +239,7 @@ extension AppFeature {
         case .notchAccessories: return [DefaultsKey.notchAccessoriesEnabled]
         case .notchLyrics: return [DefaultsKey.notchLyricsEnabled]
         case .notchQueue: return [DefaultsKey.notchQueueEnabled]
+        case .notchLiveEqualizer: return [DefaultsKey.notchLiveEqualizer]
         case .notchDownloads: return [DefaultsKey.notchDownloadsEnabled]
         case .notchNotifications: return [DefaultsKey.notchNotificationsEnabled]
         case .notchCalendar: return [DefaultsKey.notchCalendarEnabled]
@@ -274,6 +276,9 @@ extension AppFeature {
         case .notchGestures: return []
         case .notchTimer, .notchAccessories: return []
         case .notchLyrics, .notchQueue: return []
+        // The bars read the player's own audio output, which macOS gates
+        // behind the same permission the mixer and the recorder ask for.
+        case .notchLiveEqualizer: return [.audioCapture]
         case .notchDownloads: return [.filesAndFolders]
         case .notchNotifications: return [.accessibility]
         case .notchCalendar: return [.calendar]
@@ -415,6 +420,9 @@ extension AppFeature {
                         || boolFor(DefaultsKey.whatsAppOrganizerEnabled))
                     && boolFor(DefaultsKey.whatsAppDownloadsNotify)
                 return cleanerNotifies || whatsAppNotifies
+            case (.notchLiveEqualizer, .audioCapture):
+                return isAvailable(.notch) && boolFor(DefaultsKey.notchEnabled)
+                    && !(stringFor(DefaultsKey.notchHiddenModules) ?? "").split(separator: ",").contains("music")
             case (.screenRecorder, .audioCapture):
                 return boolFor(DefaultsKey.recorderSystemAudio)
             case (.screenRecorder, .microphone):

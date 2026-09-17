@@ -37,5 +37,32 @@ enum NotchAudioLevelTests {
                "a tap that only ever delivers silence hands the bars back to their synthetic motion")
         expect(!NotchAudioLevelSupport.isEnabled(in: UserDefaults(suiteName: "vorssaint.tests.audio-levels")!),
                "the live equalizer stays off until chosen")
+        expect(NotchAudioLevelSupport.silenceGrace >= 5,
+               "a tap outlasts a permission prompt being read and a player that buffers before it sounds")
+        silenceMemoryContracts(expect: expect)
+    }
+
+    /// Giving up on a silent tap must cost one play, never the session.
+    private static func silenceMemoryContracts(expect: (Bool, String) -> Void) {
+        func playback(_ title: String, pid: pid_t) -> NotchPlayback {
+            let track = RadialNowPlayingSnapshot(title: title, artist: "Artist", album: "Album",
+                                                 artworkData: nil, appBundleIdentifier: "org.example.player",
+                                                 appPID: pid)
+            return NotchPlayback(track: track, isPlaying: true, elapsed: 0, duration: 180, rate: 1,
+                                 sampledAt: Date(timeIntervalSinceReferenceDate: 0), canSeek: false,
+                                 itemIdentifier: title, canSendCommandsDirectly: true)
+        }
+        let first = NotchMusicIdentity(playback("First", pid: 42))
+        let second = NotchMusicIdentity(playback("Second", pid: 42))
+        let other = NotchMusicIdentity(playback("First", pid: 43))
+        var memory = NotchAudioLevelSupport.SilenceMemory()
+        expect(memory.reads(first), "a player is read before anything is known about it")
+        memory.giveUp(on: first)
+        expect(!memory.reads(first), "the play a tap stayed silent on keeps the synthetic motion")
+        expect(memory.reads(second) && memory.reads(other),
+               "another track, or another player, is still read")
+        memory.giveUp(on: first)
+        memory.rearm()
+        expect(memory.reads(first), "pressing play again reads the same track once more")
     }
 }

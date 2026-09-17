@@ -11,7 +11,7 @@ App Switcher makes multiple windows easier to see with large icons, and the mixe
 
 ### Added
 - Pin and reorder mixer apps, with positions remembered when apps reopen and included in settings backups.
-- Dynamic Island's music bars can follow the player's actual audio, off by default, on macOS 14.4 or later.
+- Dynamic Island's music bars can follow the player's actual audio, off by default, on macOS 14.4 or later. Thanks to @ruvelro.
 
 ### Changed
 - Compact music, timer and download indicators keep clear of Dynamic Island’s curved edges, with readable percentages in narrow spaces. Thanks to @ruvelro.
