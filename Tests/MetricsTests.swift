@@ -40,7 +40,7 @@ struct MetricsTests {
             ("cleaner", { CleanerEligibilityTests.run(suite) }),
             ("uninstaller", { UninstallerFlowTests.run(suite) }),
             ("launcher", { QuickLauncherContract.run(suite) }),
-            ("switcher", { SwitcherScrollContract.run(suite) }),
+            ("switcher", { SwitcherScrollContract.run(suite); SwitcherActivationTests.run(suite) }),
             ("keep-awake", { KeepAwakeCatalogContract.run(suite) }),
             ("emoji", { CommandBarEmojiContract.run(suite) }),
         ]
@@ -4765,6 +4765,14 @@ struct MetricsTests {
                 && Defaults.registeredDefaults[DefaultsKey.windowLayoutShortcutCenterHalf] as? String
                     == WindowLayoutAction.clearedShortcutStorageValue,
                "center half starts with no combination of its own")
+        expect(WindowLayoutAction.allCases.contains(.centerTwoThirds)
+                && WindowLayoutAction.centerTwoThirds.shortcutID == 56
+                && WindowLayoutAction(shortcutID: 56) == .centerTwoThirds,
+               "center two thirds exists and answers to its own shortcut id")
+        expect(WindowLayoutAction.centerTwoThirds.defaultShortcut == nil
+                && Defaults.registeredDefaults[DefaultsKey.windowLayoutShortcutCenterTwoThirds] as? String
+                    == WindowLayoutAction.clearedShortcutStorageValue,
+               "center two thirds starts with no combination of its own")
         expect(Set(WindowLayoutAction.allCases.map(\.shortcutID)).count
                 == WindowLayoutAction.allCases.count,
                "every layout action keeps a distinct shortcut id")
@@ -4772,7 +4780,8 @@ struct MetricsTests {
             let layoutStrings = FeatureStrings.windowLayout(language)
             expect(!layoutStrings.fullScreen.isEmpty && !layoutStrings.previousDisplay.isEmpty
                     && !layoutStrings.marginMaximize.isEmpty
-                    && !layoutStrings.centerHalf.isEmpty,
+                    && !layoutStrings.centerHalf.isEmpty
+                    && !layoutStrings.centerTwoThirds.isEmpty,
                    "\(language.rawValue) names the latest window layout actions")
         }
         expect(WindowLayoutGeometry.accepts(actualRect: .zero, targetRect: .zero,
@@ -6441,6 +6450,9 @@ struct MetricsTests {
         expect(WindowLayoutGeometry.rect(for: .centerHalf, current: currentWindow, visibleFrame: visibleFrame)
                == CGRect(x: 360, y: 40, width: 720, height: 860),
                "window layout center half sits half wide in the middle of the screen")
+        expect(WindowLayoutGeometry.rect(for: .centerTwoThirds, current: currentWindow, visibleFrame: visibleFrame)
+               == CGRect(x: 240, y: 40, width: 960, height: 860),
+               "window layout center two thirds sits two thirds wide in the middle of the screen")
         expect(WindowLayoutGeometry.rect(for: .leftHalf, current: currentWindow, visibleFrame: visibleFrame,
                                          windowGap: 16)
                == CGRect(x: 0, y: 40, width: 712, height: 860),
@@ -12568,6 +12580,17 @@ struct MetricsTests {
                "App Switcher activates only the selected window when a window target exists")
         expect(SwitcherSupport.shouldActivateAllWindows(targetsSpecificWindow: false),
                "App Switcher can activate the full app for app-only entries")
+        // App-level activation can raise sibling windows, so a window-scoped
+        // plan first asks the window server for the exact window (issue #1503).
+        let windowScopedPlan = SwitcherSupport.activationPlan(targetsSpecificWindow: true)
+        let appScopedPlan = SwitcherSupport.activationPlan(targetsSpecificWindow: false)
+        expect(SwitcherSupport.appActivationRoute(plan: windowScopedPlan, windowID: 77)
+               == .exactWindow(77),
+               "a selected window is fronted by the window server, not by activating its app")
+        expect(SwitcherSupport.appActivationRoute(plan: appScopedPlan, windowID: 77) == .wholeApp,
+               "an app entry still activates the whole app the way Command-Tab does")
+        expect(SwitcherSupport.appActivationRoute(plan: windowScopedPlan, windowID: nil) == .wholeApp,
+               "a window-scoped plan without a window id has only the app to activate")
         expect(SwitcherSupport.shouldRestoreSourceAfterTargetMinimize(targetPID: 10,
                                                                       sourcePID: 20,
                                                                       frontmostPID: 10,
