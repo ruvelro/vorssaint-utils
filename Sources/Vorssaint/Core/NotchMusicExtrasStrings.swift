@@ -36,6 +36,8 @@ struct NotchMusicExtrasStrings {
     let refresh: String
     let openPlayer: String
     let liveEqualizer: String
+    /// One line for the features hub, where the hint below would not fit.
+    let liveEqualizerDescription: String
     let liveEqualizerHint: String
     let liveEqualizerUnavailable: String
 }
@@ -76,6 +78,7 @@ extension FeatureStrings {
             refresh: "Refresh",
             openPlayer: "Open player",
             liveEqualizer: "Bars follow the music",
+            liveEqualizerDescription: "Move the Dynamic Island bars with the sound your player makes.",
             liveEqualizerHint: "Listens to the player’s own audio output to move the bars. macOS asks once to allow system audio recording. Nothing is stored or sent. Without it, the bars keep their usual motion.",
             liveEqualizerUnavailable: "Needs macOS 14.4 or later.")
         case .ptBR: return NotchMusicExtrasStrings(
@@ -111,6 +114,7 @@ extension FeatureStrings {
             refresh: "Atualizar",
             openPlayer: "Abrir reprodutor",
             liveEqualizer: "Barras seguem a música",
+            liveEqualizerDescription: "Mova as barras do Dynamic Island com o som do seu reprodutor.",
             liveEqualizerHint: "Ouve a saída de áudio do próprio player para mover as barras. O macOS pede uma vez permissão para gravar o áudio do sistema. Nada é guardado nem enviado. Sem ela, as barras mantêm o movimento habitual.",
             liveEqualizerUnavailable: "Requer macOS 14.4 ou posterior.")
         case .es: return NotchMusicExtrasStrings(
@@ -146,6 +150,7 @@ extension FeatureStrings {
             refresh: "Actualizar",
             openPlayer: "Abrir reproductor",
             liveEqualizer: "Las barras siguen la música",
+            liveEqualizerDescription: "Mueve las barras del Dynamic Island con el sonido del reproductor.",
             liveEqualizerHint: "Escucha la salida de audio del propio reproductor para mover las barras. macOS pide una vez permiso para grabar el audio del sistema. No se guarda ni se envía nada. Sin él, las barras mantienen su movimiento habitual.",
             liveEqualizerUnavailable: "Necesita macOS 14.4 o posterior.")
         case .de: return NotchMusicExtrasStrings(
@@ -181,6 +186,7 @@ extension FeatureStrings {
             refresh: "Aktualisieren",
             openPlayer: "Player öffnen",
             liveEqualizer: "Balken folgen der Musik",
+            liveEqualizerDescription: "Bewege die Balken im Dynamic Island mit dem Klang deines Players.",
             liveEqualizerHint: "Hört die Audioausgabe des Players ab, um die Balken zu bewegen. macOS fragt einmal nach der Erlaubnis, Systemaudio aufzunehmen. Nichts wird gespeichert oder gesendet. Ohne sie behalten die Balken ihre gewohnte Bewegung.",
             liveEqualizerUnavailable: "Benötigt macOS 14.4 oder neuer.")
         case .fr: return NotchMusicExtrasStrings(
@@ -216,6 +222,7 @@ extension FeatureStrings {
             refresh: "Actualiser",
             openPlayer: "Ouvrir le lecteur",
             liveEqualizer: "Les barres suivent la musique",
+            liveEqualizerDescription: "Animez les barres du Dynamic Island avec le son de votre lecteur.",
             liveEqualizerHint: "Écoute la sortie audio du lecteur pour animer les barres. macOS demande une fois l’autorisation d’enregistrer l’audio du système. Rien n’est conservé ni envoyé. Sans elle, les barres gardent leur mouvement habituel.",
             liveEqualizerUnavailable: "Nécessite macOS 14.4 ou ultérieur.")
         case .it: return NotchMusicExtrasStrings(
@@ -251,6 +258,7 @@ extension FeatureStrings {
             refresh: "Aggiorna",
             openPlayer: "Apri lettore",
             liveEqualizer: "Le barre seguono la musica",
+            liveEqualizerDescription: "Muovi le barre nel Dynamic Island con il suono del lettore.",
             liveEqualizerHint: "Ascolta l’uscita audio del lettore per muovere le barre. macOS chiede una volta il permesso di registrare l’audio di sistema. Nulla viene salvato o inviato. Senza, le barre mantengono il movimento abituale.",
             liveEqualizerUnavailable: "Richiede macOS 14.4 o successivo.")
         case .ru: return NotchMusicExtrasStrings(
@@ -286,6 +294,7 @@ extension FeatureStrings {
             refresh: "Обновить",
             openPlayer: "Открыть плеер",
             liveEqualizer: "Полоски следуют музыке",
+            liveEqualizerDescription: "Двигайте полоски в вырезе звуком самого плеера.",
             liveEqualizerHint: "Слушает вывод звука самого плеера, чтобы двигать полоски. macOS один раз попросит разрешение на запись системного звука. Ничего не сохраняется и не отправляется. Без него полоски двигаются как обычно.",
             liveEqualizerUnavailable: "Требуется macOS 14.4 или новее.")
         case .tr: return NotchMusicExtrasStrings(
@@ -321,6 +330,7 @@ extension FeatureStrings {
             refresh: "Yenile",
             openPlayer: "Oynatıcıyı aç",
             liveEqualizer: "Çubuklar müziği izler",
+            liveEqualizerDescription: "Çentikteki çubukları oynatıcının sesiyle hareket ettirin.",
             liveEqualizerHint: "Çubukları hareket ettirmek için oynatıcının kendi ses çıkışını dinler. macOS sistem sesini kaydetme iznini bir kez sorar. Hiçbir şey saklanmaz veya gönderilmez. İzin verilmezse çubuklar her zamanki hareketini sürdürür.",
             liveEqualizerUnavailable: "macOS 14.4 veya üstü gerekir.")
         case .ja: return NotchMusicExtrasStrings(
@@ -356,6 +366,7 @@ extension FeatureStrings {
             refresh: "更新",
             openPlayer: "プレーヤーを開く",
             liveEqualizer: "バーが音楽に合わせて動く",
+            liveEqualizerDescription: "Dynamic Islandのバーをプレーヤーの音に合わせて動かします。",
             liveEqualizerHint: "プレーヤー自身の音声出力を聞き取ってバーを動かします。macOS はシステム音声の録音許可を一度だけ求めます。何も保存や送信はされません。許可がない場合、バーは通常の動きのままです。",
             liveEqualizerUnavailable: "macOS 14.4 以降が必要です。")
         case .ko: return NotchMusicExtrasStrings(
@@ -391,6 +402,7 @@ extension FeatureStrings {
             refresh: "새로 고침",
             openPlayer: "플레이어 열기",
             liveEqualizer: "막대가 음악을 따라 움직임",
+            liveEqualizerDescription: "Dynamic Island의 막대를 플레이어의 소리에 맞춰 움직입니다.",
             liveEqualizerHint: "플레이어의 오디오 출력을 듣고 막대를 움직입니다. macOS가 시스템 오디오 녹음 권한을 한 번 요청합니다. 아무것도 저장하거나 전송하지 않습니다. 권한이 없으면 막대는 평소처럼 움직입니다.",
             liveEqualizerUnavailable: "macOS 14.4 이상이 필요합니다.")
         case .zhHans: return NotchMusicExtrasStrings(
@@ -426,6 +438,7 @@ extension FeatureStrings {
             refresh: "刷新",
             openPlayer: "打开播放器",
             liveEqualizer: "音柱跟随音乐",
+            liveEqualizerDescription: "让Dynamic Island的音柱随播放器的声音起伏。",
             liveEqualizerHint: "监听播放器自身的音频输出来驱动音柱。macOS 会请求一次系统音频录制权限。不会保存或发送任何内容。未授权时音柱保持原有动画。",
             liveEqualizerUnavailable: "需要 macOS 14.4 或更高版本。")
         case .zhTW: return NotchMusicExtrasStrings(
@@ -461,6 +474,7 @@ extension FeatureStrings {
             refresh: "重新整理",
             openPlayer: "開啟播放器",
             liveEqualizer: "音柱跟隨音樂",
+            liveEqualizerDescription: "讓Dynamic Island的音柱隨播放器的聲音起伏。",
             liveEqualizerHint: "監聽播放器本身的音訊輸出來驅動音柱。macOS 會請求一次系統音訊錄製權限。不會儲存或傳送任何內容。未授權時音柱保持原有動畫。",
             liveEqualizerUnavailable: "需要 macOS 14.4 或更新版本。")
         case .zhHK: return NotchMusicExtrasStrings(
@@ -496,6 +510,7 @@ extension FeatureStrings {
             refresh: "重新整理",
             openPlayer: "開啟播放器",
             liveEqualizer: "音柱跟隨音樂",
+            liveEqualizerDescription: "讓Dynamic Island的音柱隨播放器的聲音起伏。",
             liveEqualizerHint: "監聽播放器本身的音訊輸出來驅動音柱。macOS 會請求一次系統音訊錄製權限。不會儲存或傳送任何內容。未授權時音柱保持原有動畫。",
             liveEqualizerUnavailable: "需要 macOS 14.4 或更新版本。")
         }

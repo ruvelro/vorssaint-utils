@@ -40,6 +40,26 @@ enum NotchAudioLevelTests {
         expect(NotchAudioLevelSupport.silenceGrace >= 5,
                "a tap outlasts a permission prompt being read and a player that buffers before it sounds")
         silenceMemoryContracts(expect: expect)
+        tapChangeContracts(expect: expect)
+    }
+
+    /// What the player's audio processes moving asks of the tap. A browser
+    /// opens and closes the process that makes its sound as tabs come and
+    /// go, and the tap is deaf to every one it was not built from.
+    private static func tapChangeContracts(expect: (Bool, String) -> Void) {
+        let built: Set<Int> = [10, 11]
+        expect(NotchAudioLevelSupport.tapChange(tapped: built, current: built) == .none,
+               "a process list that stirs around the player leaves its tap alone")
+        expect(NotchAudioLevelSupport.tapChange(tapped: built, current: [10, 11, 12]) == .rebuild,
+               "a process the player adds is heard by building the tap again around all of them")
+        expect(NotchAudioLevelSupport.tapChange(tapped: built, current: [10]) == .restart,
+               "a process that leaves takes the tap's ears with it, so the player is read anew")
+        expect(NotchAudioLevelSupport.tapChange(tapped: built, current: [10, 12]) == .restart,
+               "one leaving while another arrives still counts as leaving")
+        expect(NotchAudioLevelSupport.tapChange(tapped: built, current: []) == .restart,
+               "a player with no audio process left is read from scratch, not rebuilt around nothing")
+        expect(NotchAudioLevelSupport.processSettle > 0 && NotchAudioLevelSupport.processSettle < 1,
+               "the player's processes are read once a burst has settled, and within the same play")
     }
 
     /// Giving up on a silent tap must cost one play, never the session.

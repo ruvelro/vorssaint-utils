@@ -826,7 +826,7 @@ extension AppFeature {
         case .notchNotifications: return FeatureStrings.notchNotifications(L10n.shared.language).description
         case .notchLyrics: return FeatureStrings.notchMusicExtras(L10n.shared.language).lyricsDescription
         case .notchQueue: return FeatureStrings.notchMusicExtras(L10n.shared.language).queueDescription
-        case .notchLiveEqualizer: return FeatureStrings.notchMusicExtras(L10n.shared.language).liveEqualizerHint
+        case .notchLiveEqualizer: return FeatureStrings.notchMusicExtras(L10n.shared.language).liveEqualizerDescription
         case .notchDownloads: return FeatureStrings.notchFiles(L10n.shared.language).downloadsDescription
         case .notchCalendar: return FeatureStrings.notchCalendar(L10n.shared.language).description
         case .notch: return FeatureStrings.notch(L10n.shared.language).description

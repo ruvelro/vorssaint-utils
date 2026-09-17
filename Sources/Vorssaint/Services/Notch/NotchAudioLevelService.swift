@@ -125,6 +125,54 @@ final class NotchAudioLevelService: ObservableObject {
     }
 }
 
+/// Names a reader's Core Audio listener registrations.
+///
+/// The registrations use the plain callback and a client pointer, the way
+/// the mixer does. Handing a closure back to be removed never matches the
+/// one that was registered: the call answers that it worked and the listener
+/// stays, so every reader would leave its listeners behind and they would go
+/// on firing for the rest of the session.
+///
+/// That pointer is a number to look up here, never the reader's own address.
+/// A reader lives for one play, and a notification can still be on its way
+/// from a HAL thread when the last one goes away; the entry holds the reader
+/// until it has given its listeners back, and a forgotten number simply
+/// finds nothing.
+private enum NotchAudioLevelListeners {
+    private static let lock = NSLock()
+    private static var readers: [UInt: NotchAudioLevelReader] = [:]
+    private static var counter: UInt = 0
+
+    /// A client pointer no other reader holds. Never dereferenced.
+    static func reserve() -> UnsafeMutableRawPointer {
+        lock.lock()
+        defer { lock.unlock() }
+        counter &+= 1
+        if counter == 0 { counter = 1 }
+        // A counter that never reaches zero always makes a usable value.
+        return UnsafeMutableRawPointer(bitPattern: counter).unsafelyUnwrapped
+    }
+
+    static func attach(_ reader: NotchAudioLevelReader, to client: UnsafeMutableRawPointer) {
+        lock.lock()
+        defer { lock.unlock() }
+        readers[UInt(bitPattern: client)] = reader
+    }
+
+    static func forget(_ client: UnsafeMutableRawPointer) {
+        lock.lock()
+        defer { lock.unlock() }
+        readers[UInt(bitPattern: client)] = nil
+    }
+
+    static func reader(for client: UnsafeMutableRawPointer?) -> NotchAudioLevelReader? {
+        guard let client else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return readers[UInt(bitPattern: client)]
+    }
+}
+
 /// The player's process taps, read through a private aggregate device on the
 /// default output, the same shape the recorder uses, feeding a ring of mono
 /// samples that a timer analyses off the audio thread.
@@ -154,9 +202,12 @@ private final class NotchAudioLevelReader {
     private var hostDeviceUID: String?
     private var sampleRate: Double = 0
     private var tapped: [AudioObjectID] = []
-    private var deviceListener: AudioObjectPropertyListenerBlock?
-    private var processListener: AudioObjectPropertyListenerBlock?
-    private var rateListener: AudioObjectPropertyListenerBlock?
+    /// Names this reader's listener registrations. See `NotchAudioLevelListeners`.
+    private let listenerClient = NotchAudioLevelListeners.reserve()
+    private var deviceListening = false
+    private var processListening = false
+    private var rateListenerDevice = AudioObjectID(0)
+    private var processCheck: DispatchWorkItem?
     private var stopped = false
 
     init(pid: pid_t, onLevels: @escaping ([Double]) -> Void,
@@ -177,8 +228,10 @@ private final class NotchAudioLevelReader {
     /// `onUnavailable` rather than returned, since the caller is not waiting.
     func start() {
         queue.async { [self] in
-            guard !stopped, buildTap(), buildPipeline() else {
-                if !stopped { release(reporting: onUnavailable) }
+            guard !stopped else { return }
+            NotchAudioLevelListeners.attach(self, to: listenerClient)
+            guard buildTap(), buildPipeline() else {
+                release(reporting: onUnavailable)
                 return
             }
             watchDefaultOutputDevice()
@@ -268,43 +321,48 @@ private final class NotchAudioLevelReader {
     private func teardownPipeline() {
         let aggregateID = self.aggregateID
         let ioProc = self.ioProc
-        let rateListener = self.rateListener
+        let rateDevice = rateListenerDevice
         self.aggregateID = 0
         self.ioProc = nil
-        self.rateListener = nil
+        rateListenerDevice = 0
         analyzer = nil
         hostDeviceUID = nil
+        if rateDevice != 0 {
+            var address = Self.address(kAudioDevicePropertyNominalSampleRate)
+            AudioObjectRemovePropertyListener(rateDevice, &address, Self.deviceCallback, listenerClient)
+        }
         guard aggregateID != 0 else { return }
         if let ioProc { AudioDeviceStop(aggregateID, ioProc) }
-        if let rateListener {
-            var address = Self.address(kAudioDevicePropertyNominalSampleRate)
-            AudioObjectRemovePropertyListenerBlock(aggregateID, &address, queue, rateListener)
-        }
         Self.destroy(aggregateID: aggregateID, ioProc: ioProc, tapID: 0)
     }
 
-    /// Gives everything back, optionally saying why. The tap goes too: a
-    /// reader is only ever built once, and the service makes the next one.
+    /// Gives everything back for good, optionally saying why. The tap goes
+    /// too, and this reader builds no other: the service makes the next one.
     private func release(reporting callback: (() -> Void)?) {
         stopped = true
         stopAnalysis()
-        if let deviceListener {
+        processCheck?.cancel()
+        processCheck = nil
+        if deviceListening {
             var address = Self.address(kAudioHardwarePropertyDefaultOutputDevice)
-            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject),
-                                                   &address, queue, deviceListener)
-            self.deviceListener = nil
+            AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &address,
+                                              Self.deviceCallback, listenerClient)
+            deviceListening = false
         }
-        if let processListener {
+        if processListening {
             var address = Self.address(kAudioHardwarePropertyProcessObjectList)
-            AudioObjectRemovePropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject),
-                                                   &address, queue, processListener)
-            self.processListener = nil
+            AudioObjectRemovePropertyListener(AudioObjectID(kAudioObjectSystemObject), &address,
+                                              Self.processCallback, listenerClient)
+            processListening = false
         }
         tapped = []
         teardownPipeline()
         let tapID = self.tapID
         self.tapID = 0
         Self.destroy(aggregateID: 0, ioProc: nil, tapID: tapID)
+        // The last reference to this reader may be the registry's, so the
+        // caller's own strong capture is what keeps it alive to here.
+        NotchAudioLevelListeners.forget(listenerClient)
         callback?()
     }
 
@@ -323,49 +381,89 @@ private final class NotchAudioLevelReader {
     }
 
     private func watchDefaultOutputDevice() {
-        guard deviceListener == nil else { return }
+        guard !deviceListening else { return }
         var address = Self.address(kAudioHardwarePropertyDefaultOutputDevice)
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            self?.rebuildIfDeviceChanged()
-        }
-        if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject),
-                                               &address, queue, listener) == noErr {
-            deviceListener = listener
-        }
-    }
-
-    /// A browser shuts its audio process down after a while idle and opens
-    /// another one for the next sound, and the tap it was built from then
-    /// hears nothing at all. Only a process leaving is worth a new tap: one
-    /// arriving is the ordinary churn of a browser opening tabs, and the tap
-    /// in place keeps working through it.
-    private func restartIfTappedProcessLeft() {
-        guard !stopped, !tapped.isEmpty else { return }
-        let current = Set(AppVolumeMixer.audioProcessObjects())
-        guard !tapped.allSatisfy(current.contains) else { return }
-        release(reporting: onProcessesLeft)
+        deviceListening = AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &address,
+                                                         Self.deviceCallback, listenerClient) == noErr
     }
 
     private func watchProcessList() {
-        guard processListener == nil else { return }
+        guard !processListening else { return }
         var address = Self.address(kAudioHardwarePropertyProcessObjectList)
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            self?.restartIfTappedProcessLeft()
-        }
-        if AudioObjectAddPropertyListenerBlock(AudioObjectID(kAudioObjectSystemObject),
-                                               &address, queue, listener) == noErr {
-            processListener = listener
-        }
+        processListening = AudioObjectAddPropertyListener(AudioObjectID(kAudioObjectSystemObject), &address,
+                                                          Self.processCallback, listenerClient) == noErr
     }
 
     private func watchSampleRate(of aggregateID: AudioObjectID) {
         var address = Self.address(kAudioDevicePropertyNominalSampleRate)
-        let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-            self?.rebuildIfDeviceChanged()
+        if AudioObjectAddPropertyListener(aggregateID, &address,
+                                          Self.deviceCallback, listenerClient) == noErr {
+            rateListenerDevice = aggregateID
         }
-        if AudioObjectAddPropertyListenerBlock(aggregateID, &address, queue, listener) == noErr {
-            rateListener = listener
+    }
+
+    /// A browser makes its sound in a helper process that it opens and shuts
+    /// as tabs come and go. One that leaves takes the tap's ears with it;
+    /// one that arrives is a part of the player the tap cannot hear, such as
+    /// a tab that starts playing a moment after the tap was built. Either
+    /// way the tap has to be made again from the player's processes as they
+    /// are now, and `TapChange` says what that costs the bars.
+    private func tappedProcessesChanged() {
+        processCheck = nil
+        guard !stopped, !tapped.isEmpty else { return }
+        guard #available(macOS 14.4, *) else { return }
+        switch NotchAudioLevelSupport.tapChange(tapped: Set(tapped),
+                                                current: Set(Self.processObjects(for: pid))) {
+        case .none: return
+        case .restart: release(reporting: onProcessesLeft)
+        case .rebuild: rebuildTap()
         }
+    }
+
+    /// Builds the tap again around the player's processes as they are now,
+    /// keeping the ring: the processes already heard never stopped, so the
+    /// bars carry on and the wait for sound is not started over.
+    private func rebuildTap() {
+        teardownPipeline()
+        let previous = tapID
+        tapID = 0
+        tapped = []
+        Self.destroy(aggregateID: 0, ioProc: nil, tapID: previous)
+        if !buildTap() || !buildPipeline() { release(reporting: onProcessesLeft) }
+    }
+
+    /// One app launching stirs the whole process list. The player's own
+    /// processes are read once the burst has settled, not on each of them.
+    private func scheduleProcessCheck() {
+        guard !stopped, !tapped.isEmpty else { return }
+        processCheck?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.tappedProcessesChanged() }
+        processCheck = work
+        queue.asyncAfter(deadline: .now() + NotchAudioLevelSupport.processSettle, execute: work)
+    }
+
+    // MARK: - Listeners
+
+    /// The default output device and the aggregate's sample rate ask the
+    /// same question: is the tap still reading the device the music comes
+    /// out of. Both notifications arrive on a HAL thread, so each one hops
+    /// to the reader's queue before touching anything.
+    private static let deviceCallback: AudioObjectPropertyListenerProc = { _, _, _, client in
+        NotchAudioLevelListeners.reader(for: client)?.deviceChanged()
+        return noErr
+    }
+
+    private static let processCallback: AudioObjectPropertyListenerProc = { _, _, _, client in
+        NotchAudioLevelListeners.reader(for: client)?.processListChanged()
+        return noErr
+    }
+
+    fileprivate func deviceChanged() {
+        queue.async { [self] in rebuildIfDeviceChanged() }
+    }
+
+    fileprivate func processListChanged() {
+        queue.async { [self] in scheduleProcessCheck() }
     }
 
     // MARK: - Analysis

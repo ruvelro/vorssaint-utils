@@ -24,8 +24,34 @@ enum NotchAudioLevelSupport {
     /// their usual motion the whole time either way.
     static let silenceGrace = 8.0
 
+    /// How long the player's own processes are left to settle before they
+    /// are read again. One app launching stirs the whole list, and reading a
+    /// process list is not free.
+    static let processSettle = 0.25
+
     static func fallsBack(heard: Bool, elapsed: TimeInterval) -> Bool {
         !heard && elapsed >= silenceGrace
+    }
+
+    /// What a change in the player's audio processes asks of its tap.
+    enum TapChange: Equatable {
+        /// Nothing the tap was built from moved.
+        case none
+        /// Only new processes. The ones already heard are still playing, so
+        /// the tap is built again around all of them and what has been heard
+        /// is kept, which spares the bars a drop to their usual motion.
+        case rebuild
+        /// Something left, taking the tap's ears with it: no buffer arrives
+        /// again and the ring would keep answering with the last samples it
+        /// heard, freezing the bars on those levels. The player is read from
+        /// scratch instead, waiting for sound anew.
+        case restart
+    }
+
+    static func tapChange<Process: Hashable>(tapped: Set<Process>, current: Set<Process>) -> TapChange {
+        if current == tapped { return .none }
+        if !tapped.isSubset(of: current) { return .restart }
+        return .rebuild
     }
 
     /// Remembers the single play a silent tap was given up on. A refused
