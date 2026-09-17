@@ -42,6 +42,15 @@ def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     uninstall = "Sources/Vorssaint/Services/Uninstall/AppUninstaller.swift"
     bar = "Sources/Vorssaint/Services/CommandBar/CommandBarService.swift"
+    write("CommandBarEmojiBodies.swift", "import Foundation\n"
+          + "extension CommandBarEmojiContract.Catalog {\n"
+          + declaration("Sources/Vorssaint/Services/CommandBar/CommandBarCatalog.swift",
+                        "    static func emojiEntries(")
+          + "}\nextension CommandBarEmojiContract.Service {\n"
+          + "".join(declaration(bar, prefix).replace("private func", "func", 1)
+                    for prefix in ["    struct RowAction:", "    private func skinToneActions(",
+                                   "    private func recordUsage(", "    private func finish("])
+          + "}\n")
     write("UninstallerFlow.swift", "import AppKit\nimport Carbon.HIToolbox\nimport Combine\n"
           + "extension UninstallerFlowTests {\n"
           + declaration(uninstall, "    enum Phase:")
@@ -368,6 +377,8 @@ def main():
     write("ScreenshotSelectionRefresh.swift", "import Foundation\nimport AppKit\n"
           + "extension ScreenshotSelectionRefreshContract.Chooser {\n"
           + declaration(selection, "    fileprivate var acceptsCaptureInput:").replace("fileprivate var", "var", 1)
+          + declaration(selection, "    private var repeatTargetPanel:").replace("private var", "var", 1)
+          + declaration(selection, "    fileprivate var offersRepeatLastRegion:").replace("fileprivate var", "var", 1)
           + "".join(declaration(selection, prefix).replace("fileprivate func", "func", 1)
                     .replace("private func", "func", 1).replace("UserDefaults.standard", "ReviewDefaults.current")
                     for prefix in refresh_methods)
@@ -402,6 +413,8 @@ def main():
           + "static func isNudgeKey(_ event: NSEvent) -> Bool { false }\n"
           + "func toggleScrollingCapture() {}\nfunc toggleLoupe() {}\nfunc copyLoupeColor() {}\n"
           + "func nudgePointer(keyCode: Int, fast: Bool) {}\nfunc attach() { installKeyMonitor() }\n"
+          + declaration(selection, "    private static func isRepeatRegionKey(")
+          + declaration(selection, "    private static func matchesShortcutKey(")
           + declaration(selection, "    private func installKeyMonitor()")
           + "}\n}\n")
 
