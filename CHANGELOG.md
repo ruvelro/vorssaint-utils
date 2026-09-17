@@ -17,6 +17,7 @@ App Switcher makes multiple windows easier to see with large icons, and the mixe
 - Dynamic Island opens and closes smoothly at the top edge when set to hide until hover.
 
 ### Fixed
+- Dynamic Island shows a video playing in a browser even when a music app is open but stopped. Thanks to @ruvelro.
 - App Switcher shows two window previews side by side when space allows, even with only one app in the icon row.
 - Dynamic Island offers playback controls when a music app is recognized and updates them after permission is granted.
 
