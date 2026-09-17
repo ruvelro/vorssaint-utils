@@ -121,13 +121,12 @@ struct NotchDownloadStrip: View {
     @ObservedObject private var downloads = NotchDownloadService.shared
     @ObservedObject private var l10n = L10n.shared
 
-    private static let iconSize: CGFloat = 17
-    private var iconInset: CGFloat {
-        service.geometry.compactActivityEdgeInset(boxHeight: Self.iconSize, radius: Self.iconSize / 2)
+    /// The arrow keeps the shared gap from the top and bottom edges too.
+    private var iconSize: CGFloat {
+        min(17, service.geometry.compactActivityContentHeight - NotchLayout.compactEdgeGap * 2)
     }
-    private var percentInset: CGFloat {
-        // Digits carry no descenders, so their ink is about the cap height.
-        service.geometry.compactActivityEdgeInset(boxHeight: 10 * 0.72, radius: 0)
+    private var iconInset: CGFloat {
+        service.geometry.compactActivityEdgeInset(boxHeight: iconSize, radius: iconSize / 2)
     }
 
     var body: some View {
@@ -136,7 +135,7 @@ struct NotchDownloadStrip: View {
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
                     if service.geometry.compactActivityWingWidth >= 40 {
-                        Image(systemName: "arrow.down.circle.fill").font(.system(size: Self.iconSize))
+                        Image(systemName: "arrow.down.circle.fill").font(.system(size: iconSize))
                         if service.geometry.compactActivityWingWidth >= 94 {
                             Text(item?.name ?? FeatureStrings.notchFiles(l10n.language).downloadsTitle)
                                 .font(.system(size: 11, weight: .medium)).lineLimit(1).truncationMode(.middle)
@@ -153,14 +152,17 @@ struct NotchDownloadStrip: View {
                     Spacer(minLength: 0)
                     if service.geometry.compactActivityWingWidth >= 36 {
                         if let fraction = item?.fraction {
-                            Text(fraction, format: .percent.precision(.fractionLength(0)))
-                                .font(.system(size: 10, weight: .medium)).monospacedDigit()
+                            Text(fraction, format: NotchDownloadSupport.percentFormat(l10n.language))
+                                .font(.system(size: NotchDownloadSupport.percentSize, weight: .medium))
+                                .monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(NotchDownloadSupport.percentMinimumScale)
                         } else {
                             ProgressView().controlSize(.mini)
                         }
                     }
                 }
-                .padding(.trailing, service.geometry.compactActivityWingWidth >= 36 ? percentInset : 0)
+                .padding(.trailing, service.geometry.compactActivityWingWidth >= 36
+                                    ? NotchDownloadSupport.percentInset(in: service.geometry) : 0)
                 .frame(width: service.geometry.compactActivityWingWidth, alignment: .trailing).clipped()
             }
             .frame(height: service.geometry.compactActivityContentHeight)

@@ -766,6 +766,10 @@ struct NotchGeometry: Equatable {
     var compactActivityWingWidth: CGFloat {
         max(0, (compactActivitySize.width - compactActivityCameraGap - compactActivityHorizontalPadding * 2) / 2)
     }
+    /// Where the silhouette's straight edge sits, once its shoulder has flared.
+    var compactActivityShoulder: CGFloat {
+        min(NotchLayout.shoulder, compactActivitySize.height * 0.28)
+    }
     /// Inset that keeps a vertically centred box of `boxHeight`, itself rounded
     /// by `radius`, an even `gap` away from the strip's silhouette.
     /// A strip is barely taller than its corners, so its lower half is one long
@@ -774,9 +778,8 @@ struct NotchGeometry: Equatable {
     /// same distance from the arc that its top keeps from the shoulder.
     func compactActivityEdgeInset(boxHeight: CGFloat, radius: CGFloat,
                                   gap: CGFloat = NotchLayout.compactEdgeGap) -> CGFloat {
-        let surface = compactActivitySize.height
-        let shoulder = min(NotchLayout.shoulder, surface * 0.28)
-        let corner = min(NotchLayout.surfaceRadius(height: surface),
+        let shoulder = compactActivityShoulder
+        let corner = min(NotchLayout.surfaceRadius(height: compactActivitySize.height),
                          (compactActivitySize.width - shoulder * 2) / 2)
         let flat = shoulder + gap - compactActivityHorizontalPadding
         let below = (compactActivityContentHeight - boxHeight) / 2

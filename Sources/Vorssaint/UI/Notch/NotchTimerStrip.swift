@@ -10,9 +10,9 @@ struct NotchTimerStrip: View {
     @ObservedObject private var l10n = L10n.shared
 
     private var geometry: NotchGeometry { service.compactActivityGeometry }
-    private var iconSize: CGFloat {
-        service.hasDownloadActivity ? 13 : min(20, geometry.compactActivityContentHeight - 6)
-    }
+    /// Height the strip can give away once both edges keep their gap.
+    private var budget: CGFloat { geometry.compactActivityContentHeight - NotchLayout.compactEdgeGap * 2 }
+    private var iconSize: CGFloat { min(service.hasDownloadActivity ? 13 : 20, budget) }
     private var textSize: CGFloat { min(16, geometry.compactActivityContentHeight - 6) }
     private var iconInset: CGFloat {
         guard !geometry.compactActivityUsesFooter else { return 0 }

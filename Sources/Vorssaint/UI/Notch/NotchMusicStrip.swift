@@ -50,7 +50,9 @@ struct NotchMusicStrip: View {
     /// A simulated camera has room for the track even when its wings disappear.
     private var fillsCameraGap: Bool { !geometry.isNotched && geometry.compactActivityCameraGap >= 56 }
     private var showsArtist: Bool { geometry.compactActivityContentHeight >= 28 }
-    private var barHeight: CGFloat { min(16, max(8, geometry.compactActivityContentHeight - 12)) }
+    private var barHeight: CGFloat {
+        min(16, max(6, geometry.compactActivityContentHeight - Self.edgeGap * 2))
+    }
 
     var body: some View {
         Button { service.open(.music) } label: {
