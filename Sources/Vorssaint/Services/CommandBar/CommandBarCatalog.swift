@@ -199,6 +199,7 @@ enum CommandBarCatalog {
         case .sound: return hub.groupSound
         case .energyDisplay: return hub.groupEnergyDisplay
         case .tools: return hub.groupTools
+        case .dynamicIsland: return FeatureStrings.notch(L10n.shared.language).title
         case .monitor: return hub.groupMonitor
         }
     }
@@ -1560,10 +1561,14 @@ enum CommandBarCatalog {
     /// Enter copies it.
     static func answerEntry(for query: String, bar: CommandBarFeatureStrings) -> CommandBarEntry? {
         if let result = CommandBarMath.evaluate(query) {
+            var expression = query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if expression.hasSuffix("=") { expression.removeLast() }
+            let completed = result.closingBrackets.isEmpty ? ""
+                : expression.trimmingCharacters(in: .whitespaces) + result.closingBrackets + " · "
             return CommandBarEntry(
                 id: "math.result",
                 title: result.formatted,
-                subtitle: bar.copyHint,
+                subtitle: completed + bar.copyHint,
                 icon: .symbol("equal.square"),
                 isAnswer: true,
                 countsUsage: false,
