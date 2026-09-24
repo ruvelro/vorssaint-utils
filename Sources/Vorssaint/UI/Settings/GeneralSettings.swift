@@ -18,6 +18,7 @@ struct GeneralSettings: View {
     @AppStorage(DefaultsKey.hotkeyEnabled) private var hotkeyEnabled = true
     @AppStorage(DefaultsKey.musicBlockEnabled) private var musicBlockEnabled = false
     @AppStorage(DefaultsKey.musicBlockReplacementPath) private var musicBlockReplacementPath = ""
+    @AppStorage(DefaultsKey.mediaKeysPlayerOnly) private var mediaKeysPlayerOnly = false
 
     private var text: GeneralSettingsStrings { FeatureStrings.generalSettings(l10n.language) }
     private var appearanceStrings: AppearanceStrings { FeatureStrings.appearance(l10n.language) }
@@ -196,6 +197,21 @@ struct GeneralSettings: View {
                     }
                 }
                 .padding(.leading, settingsRowTextInset)
+            }
+            let mediaKeys = FeatureStrings.mediaKeys(l10n.language)
+            SettingsRow(symbol: "music.note", title: mediaKeys.playerOnlyTitle,
+                        caption: mediaKeys.playerOnlyCaption) {
+                Toggle(mediaKeys.playerOnlyTitle, isOn: $mediaKeysPlayerOnly)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .onChange(of: mediaKeysPlayerOnly) { _, enabled in
+                        if enabled { permissions.requestAccessibility() }
+                        MediaKeyPlayerRouter.shared.syncWithPreferences()
+                    }
+            }
+            if mediaKeysPlayerOnly, !musicBlockEnabled, !permissions.accessibility {
+                PermissionRow(kind: .accessibility)
+                    .padding(.leading, settingsRowTextInset)
             }
         }
     }
