@@ -120,6 +120,9 @@ final class NotchWindowHost: NSObject, CAAnimationDelegate {
         let changesFrame = revealing || (hideWhenSettled && !canAnimate) || size != targetSize
             || frame != previousFrame || (!isAnimating && panel.frame != appliedFrame)
         targetUsesGlass = usesGlass
+        if canvas.backdropPresentation.stripHeight != geometry.stripHeight {
+            canvas.backdropPresentation.stripHeight = geometry.stripHeight
+        }
         if canAnimate && changesFrame && (usesGlass || canvas.usesGlass) {
             // Glass closing into a black strip darkens on the way there, so the
             // material swap on arrival changes nothing on screen; opening out of

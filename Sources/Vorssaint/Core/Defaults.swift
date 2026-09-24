@@ -736,6 +736,7 @@ enum DefaultsKey {
     static let notchCustomWidth = "notchCustomWidth"
     static let notchCustomHeight = "notchCustomHeight"
     static let notchHapticFeedback = "notchHapticFeedback"
+    static let notchTranslucentBackground = "notchTranslucentBackground"
     static let notchShelf = "notchShelf"
     static let notchDragReveal = "notchDragReveal"
     static let notchCaptureControls = "notchCaptureControls"
@@ -1232,6 +1233,7 @@ enum Defaults {
         DefaultsKey.notchCustomWidth: NotchSize.defaultWidth,
         DefaultsKey.notchCustomHeight: NotchSize.defaultHeight,
         DefaultsKey.notchHapticFeedback: true,
+        DefaultsKey.notchTranslucentBackground: false,
         DefaultsKey.notchShelf: true,
         DefaultsKey.notchDragReveal: true,
         DefaultsKey.notchCaptureControls: true,
