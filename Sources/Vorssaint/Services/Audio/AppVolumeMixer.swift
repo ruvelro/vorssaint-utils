@@ -162,8 +162,10 @@ final class AppVolumeMixer: ObservableObject {
     }
     private var pendingOutputAdjustment: OutputAdjustment?
     private var outputWriteInFlight: OutputAdjustment?
+    /// One volume or mute key waiting on the output's own reading. A nil
+    /// `level` toggles mute.
     private struct OutputStep {
-        let level: (Double) -> Double
+        let level: ((Double) -> Double)?
         let completion: (Bool) -> Void
     }
     private var queuedOutputSteps: [OutputStep] = []
@@ -492,11 +494,25 @@ final class AppVolumeMixer: ObservableObject {
     /// (0 while muted) and returns the one to set.
     func requestOutputStep(level: @escaping (Double) -> Double,
                            completion: @escaping (Bool) -> Void = { _ in }) {
-        guard let device = outputControlListenerDevice, systemOutputVolume != nil else {
-            completion(false)
+        enqueueOutputKey(OutputStep(level: level, completion: completion),
+                         isAvailable: systemOutputVolume != nil)
+    }
+
+    /// The mute key rides the same read and queue as the volume keys, so it
+    /// toggles the state the output reports now (a stale reading asked for the
+    /// state already in place and the key did nothing), and a volume key right
+    /// after it steps from the level that one read fetched.
+    func requestOutputMuteToggle(completion: @escaping (Bool) -> Void = { _ in }) {
+        enqueueOutputKey(OutputStep(level: nil, completion: completion),
+                         isAvailable: systemOutputMuted != nil)
+    }
+
+    private func enqueueOutputKey(_ step: OutputStep, isAvailable: Bool) {
+        guard let device = outputControlListenerDevice, isAvailable else {
+            step.completion(false)
             return
         }
-        queuedOutputSteps.append(OutputStep(level: level, completion: completion))
+        queuedOutputSteps.append(step)
         guard !outputStepReadInFlight else { return }
         guard !hasCurrentOutputAdjustment else {
             applyQueuedOutputSteps()
@@ -526,12 +542,8 @@ final class AppVolumeMixer: ObservableObject {
                     if current { self.scheduleListenerRefresh() }
                     return
                 }
-                guard let volume else {
-                    // The default output has no software volume: the system
-                    // keys are the only way to change it.
-                    self.settleQueuedOutputSteps(handled: false)
-                    return
-                }
+                // A control the default output lacks leaves its keys to the
+                // system; the others still apply.
                 if !self.hasCurrentOutputAdjustment {
                     if self.systemOutputVolume != volume { self.systemOutputVolume = volume }
                     if self.systemOutputMuted != muted { self.systemOutputMuted = muted }
@@ -551,12 +563,20 @@ final class AppVolumeMixer: ObservableObject {
         let steps = queuedOutputSteps
         queuedOutputSteps.removeAll()
         for step in steps {
-            guard let volume = systemOutputVolume else {
-                step.completion(false)
-                continue
+            if let level = step.level {
+                guard let volume = systemOutputVolume else {
+                    step.completion(false)
+                    continue
+                }
+                requestOutputAdjustment(volume: level(systemOutputMuted == true ? 0 : volume),
+                                        completion: step.completion)
+            } else {
+                guard let muted = systemOutputMuted else {
+                    step.completion(false)
+                    continue
+                }
+                requestOutputAdjustment(muted: !muted, completion: step.completion)
             }
-            requestOutputAdjustment(volume: step.level(systemOutputMuted == true ? 0 : volume),
-                                    completion: step.completion)
         }
     }
 

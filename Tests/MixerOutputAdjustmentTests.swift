@@ -167,6 +167,53 @@ enum MixerOutputAdjustmentContract {
 
         mixer = make()
         completions = []
+        Hardware.muted = true
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        suite.expect(mixer.systemOutputMuted == false && Hardware.writes.isEmpty,
+                     "the mute key waits for the output's own reading before toggling")
+        finish(mixer)
+        suite.expect(Hardware.writes == [.init(device: 1, volume: nil, muted: false)] && completions == [true],
+                     "the mute key toggles the device's state, not a stale reading from before sleep")
+
+        mixer = make()
+        completions = []
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        finish(mixer)
+        suite.expect(mixer.systemOutputMuted == false && completions == [true, true],
+                     "two quick mute presses cancel out instead of both reading the same state")
+
+        mixer = make()
+        completions = []
+        Hardware.muted = true
+        Hardware.volume = 0.02
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        mixer.requestOutputStep(level: step(0.01)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.compactMap(\.volume).map { ($0 * 100).rounded() } == [3]
+                     && mixer.systemOutputMuted == false && completions == [true, true],
+                     "a volume key right after an unmuting press steps from the level the same read fetched")
+
+        mixer = make()
+        completions = []
+        Hardware.volume = nil
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(completions.count == 2 && completions.filter { $0 }.count == 1 && mixer.systemOutputMuted == true,
+                     "an output with mute but no software volume still toggles mute and leaves volume to the system")
+
+        mixer = make()
+        completions = []
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        Hardware.device = 2
+        finish(mixer)
+        suite.expect(Hardware.writes.isEmpty && completions == [true, true] && mixer.listenerRefreshes == 1,
+                     "mute and volume keys for an output that is no longer the default settle together")
+
+        mixer = make()
+        completions = []
         for value in [Double.nan, .infinity, -.infinity] {
             mixer.requestOutputAdjustment(volume: value) { completions.append($0) }
         }
