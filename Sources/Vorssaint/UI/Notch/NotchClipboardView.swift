@@ -7,7 +7,7 @@ import SwiftUI
 /// and the quick panel offer on each: paste or copy, pin, move, delete, and
 /// the recent ones cleared in one go from the search row.
 struct NotchClipboardView: View {
-    let service: NotchService
+    @ObservedObject var service: NotchService
     let size: CGSize
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var l10n = L10n.shared
