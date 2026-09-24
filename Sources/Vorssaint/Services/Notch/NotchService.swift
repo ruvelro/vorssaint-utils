@@ -81,6 +81,9 @@ final class NotchService: ObservableObject {
     /// Bumped when Command-W asks the Scratchpad page to close its selected
     /// pad, so the confirmation stays in the page as it does in the floating pad.
     @Published private(set) var scratchpadCloseSerial = 0
+    /// The last arrow or Return pressed on the Clipboard page, which the page
+    /// turns into its keyboard selection or a paste.
+    @Published private(set) var clipboardKeyPress: NotchClipboardKeyPress?
     @Published private var captureContentHeight: CGFloat?
     @Published private(set) var power = PowerReading()
     @Published private var musicDetailVisible = false
@@ -797,6 +800,17 @@ final class NotchService: ObservableObject {
         case .closeSelectedPad: scratchpadCloseSerial += 1
         case .hidePad: collapse()
         }
+        return true
+    }
+
+    /// The search field keeps the focus so typing still filters, but the
+    /// arrows and Return belong to the list, as in the quick panel.
+    private func handleClipboardKey(_ event: NSEvent) -> Bool {
+        guard selected == .clipboard, !showingAppPanel, !showingSections, selectedMetric == nil else { return false }
+        if let editor = panel?.firstResponder as? NSTextView, editor.hasMarkedText() { return false }
+        let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        guard let key = NotchClipboardKey(keyCode: event.keyCode, hasModifiers: !modifiers.isEmpty) else { return false }
+        clipboardKeyPress = NotchClipboardKeyPress(serial: (clipboardKeyPress?.serial ?? 0) &+ 1, key: key)
         return true
     }
 
@@ -1747,6 +1761,7 @@ final class NotchService: ObservableObject {
                 }
                 if self.handleSectionKey(event) { return nil }
                 if self.handleScratchpadKey(event) { return nil }
+                if self.handleClipboardKey(event) { return nil }
             }
             if event.type == .keyDown, event.window === self.panel, self.selected == .tools, !self.showingAppPanel, !self.showingSections {
                 let launcher = QuickLauncherService.shared

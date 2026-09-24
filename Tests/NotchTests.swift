@@ -1335,6 +1335,26 @@ enum NotchTests {
                "hardware volume steps clamp to audible limits")
         suite.expect(NotchSupport.volumeLevel(current: 0.5, direction: 1, fine: true) == 0.515625,
                "fine volume preserves the system quarter-step")
+        suite.expect(NotchClipboardKey(keyCode: 125, hasModifiers: false) == .next
+               && NotchClipboardKey(keyCode: 126, hasModifiers: false) == .previous
+               && NotchClipboardKey(keyCode: 36, hasModifiers: false) == .paste
+               && NotchClipboardKey(keyCode: 76, hasModifiers: false) == .paste
+               && NotchClipboardKey(keyCode: 125, hasModifiers: true) == nil
+               && NotchClipboardKey(keyCode: 0, hasModifiers: false) == nil,
+               "the clipboard page claims only the bare arrows and Return")
+        let clipboardIDs = [1, 2, 3]
+        suite.expect(NotchClipboardKey.next.selection(from: nil, in: clipboardIDs) == 1
+               && NotchClipboardKey.previous.selection(from: nil, in: clipboardIDs) == 1
+               && NotchClipboardKey.paste.selection(from: nil, in: clipboardIDs) == 1,
+               "the first key lands on the newest clipboard entry")
+        suite.expect(NotchClipboardKey.next.selection(from: 1, in: clipboardIDs) == 2
+               && NotchClipboardKey.next.selection(from: 3, in: clipboardIDs) == 3
+               && NotchClipboardKey.previous.selection(from: 1, in: clipboardIDs) == 1
+               && NotchClipboardKey.paste.selection(from: 2, in: clipboardIDs) == 2,
+               "clipboard arrows walk the list and stop at its ends")
+        suite.expect(NotchClipboardKey.next.selection(from: 9, in: clipboardIDs) == 1
+               && NotchClipboardKey.next.selection(from: 1, in: [Int]()) == nil,
+               "a filtered-out clipboard selection starts over, and an empty list selects nothing")
 
         var session = NotchSessionState()
         session.locked = true

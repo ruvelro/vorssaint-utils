@@ -16,6 +16,8 @@ struct NotchClipboardView: View {
     @State private var query = ""
     @State private var copiedID: UUID?
     @State private var pinnedOnly = false
+    /// The entry the arrow keys chose; nil until the first arrow.
+    @State private var keyboardSelection: UUID?
     @FocusState private var searching: Bool
     @Environment(\.notchSettingsPreview) private var preview
     private var text: ClipboardFeatureStrings { FeatureStrings.clipboard(l10n.language) }
@@ -75,17 +77,30 @@ struct NotchClipboardView: View {
                                message: query.isEmpty && !pinnedOnly ? text.empty : text.noResults)
                     .frame(maxHeight: .infinity)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(entries) { entry in
-                            card(entry).frame(height: NotchLayout.clipboardCardHeight)
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(entries) { entry in
+                                card(entry).frame(height: NotchLayout.clipboardCardHeight).id(entry.id)
+                            }
                         }
                     }
+                    .scrollIndicators(.automatic)
+                    .onChange(of: keyboardSelection) { _, id in
+                        guard let id else { return }
+                        proxy.scrollTo(id)
+                    }
                 }
-                .scrollIndicators(.automatic)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: service.clipboardKeyPress) { _, press in
+            guard let press, !preview else { return }
+            handle(press.key)
+        }
+        // A new filter starts the arrows over from its first result.
+        .onChange(of: query) { _, _ in keyboardSelection = nil }
+        .onChange(of: pinnedOnly) { _, _ in keyboardSelection = nil }
         .task(id: copiedID) {
             // The tick confirms one copy; leaving it on the row forever would
             // read as a permanent state instead of an answer.
@@ -128,6 +143,11 @@ struct NotchClipboardView: View {
         }
         .padding(.horizontal, 10).padding(.top, 10).padding(.bottom, 4)
         .modifier(NotchControlSurface(cornerRadius: 14, selected: entry.isPinned))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(.white.opacity(keyboardSelection == entry.id ? 0.5 : 0), lineWidth: 1.5)
+                .allowsHitTesting(false)
+        }
         .clipped()
         .contextMenu { actions(entry) }
         .accessibilityAction(named: Text(text.moveUp)) { move(entry, .up) }
@@ -149,6 +169,22 @@ struct NotchClipboardView: View {
             .disabled(!canReorder || !history.canMove(entry, .down))
         Divider()
         Button(text.delete, role: .destructive) { remove(entry) }
+    }
+
+    /// Return without an arrow first pastes the newest entry, as the quick
+    /// panel does.
+    private func handle(_ key: NotchClipboardKey) {
+        let ids = entries.map(\.id)
+        let target = key.selection(from: keyboardSelection, in: ids)
+        guard key == .paste else {
+            keyboardSelection = target
+            return
+        }
+        guard let target, let entry = entries.first(where: { $0.id == target }) else {
+            NSSound.beep()
+            return
+        }
+        activate(entry)
     }
 
     private func activate(_ entry: ClipboardHistoryEntry) {

@@ -79,6 +79,41 @@ enum NotchModule: String, CaseIterable, Identifiable {
     }
 }
 
+/// The arrow keys and Return in the island's clipboard page, as in the quick
+/// panel: the arrows walk the history and Return pastes the chosen entry.
+enum NotchClipboardKey: Equatable {
+    case previous, next, paste
+
+    init?(keyCode: UInt16, hasModifiers: Bool) {
+        guard !hasModifiers else { return nil }
+        switch keyCode {
+        case 126: self = .previous
+        case 125: self = .next
+        case 36, 76: self = .paste
+        default: return nil
+        }
+    }
+
+    /// The first arrow lands on the newest entry; later ones stop at the ends.
+    /// A selection the list no longer shows starts over from the top.
+    func selection<ID: Equatable>(from current: ID?, in ids: [ID]) -> ID? {
+        guard !ids.isEmpty else { return nil }
+        guard let current, let index = ids.firstIndex(of: current) else { return ids[0] }
+        switch self {
+        case .previous: return ids[max(index - 1, 0)]
+        case .next: return ids[min(index + 1, ids.count - 1)]
+        case .paste: return current
+        }
+    }
+}
+
+/// One clipboard key handed from the island's key monitor to the page. The
+/// serial tells two presses of the same key apart.
+struct NotchClipboardKeyPress: Equatable {
+    let serial: Int
+    let key: NotchClipboardKey
+}
+
 enum NotchDisplay: String, CaseIterable {
     case automatic, builtIn, main
 }
