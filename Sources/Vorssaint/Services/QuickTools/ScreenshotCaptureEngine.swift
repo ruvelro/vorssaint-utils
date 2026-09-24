@@ -155,6 +155,14 @@ enum ScreenshotCaptureEngine {
                let composited = await captureAttached(plan) {
                 return composited
             }
+            // A window spanning two displays has no single display image to
+            // crop from; draw each window's own buffer at its place instead
+            // of dropping the dialog on it.
+            if let plan,
+               let composited = composeAttached(plan, frames: Dictionary(
+                   onScreen.map { ($0.id, $0.frame) }, uniquingKeysWith: { first, _ in first })) {
+                return composited
+            }
         }
         var clippedFallback: CGImage?
         if let image = WindowPreviewProvider.captureViaWindowServer(windowID) {
@@ -339,6 +347,39 @@ enum ScreenshotCaptureEngine {
             return true
         }
         return drawn ? ScreenshotSupport.AlphaCoverage(alpha: alpha, width: width, height: height) : nil
+    }
+
+    /// The clicked window and what the app stacked on it, each from its own
+    /// window-server buffer, layered back to front on a canvas the size of the
+    /// clicked window. `nil` when any of them cannot be captured whole.
+    private static func composeAttached(_ plan: ScreenshotCapturePolicy.AttachedCapturePlan,
+                                        frames: [CGWindowID: CGRect]) -> CGImage? {
+        var layers: [(image: CGImage, frame: CGRect)] = []
+        for id in plan.windowIDs {
+            guard let frame = frames[id],
+                  let image = WindowPreviewProvider.captureViaWindowServer(id),
+                  SwitcherSupport.captureCoversWindow(imageWidth: image.width,
+                                                      imageHeight: image.height,
+                                                      windowSize: frame.size)
+            else { return nil }
+            layers.append((image, frame))
+        }
+        guard let base = layers.first, plan.bounds.width > 0 else { return nil }
+        let scale = CGFloat(base.image.width) / plan.bounds.width
+        let width = base.image.width
+        let height = max(1, Int((plan.bounds.height * scale).rounded()))
+        guard let context = CGContext(data: nil, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)
+                                          ?? CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.interpolationQuality = .high
+        for layer in layers {
+            context.draw(layer.image, in: ScreenshotCapturePolicy.compositeRect(
+                for: layer.frame, in: plan.bounds, scale: scale))
+        }
+        return context.makeImage()
     }
 
     /// The window's size as the window server knows it, used to tell a whole

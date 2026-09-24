@@ -177,6 +177,13 @@ enum ScreenshotFeatureTests {
             placed: CGRect(x: 4, y: 2, width: 8, height: 6), packed: packedWindow,
             coverage: attachedCoverage(windowAt: CGPoint(x: 4, y: 2))) == CGRect(x: 4, y: 2, width: 8, height: 6),
                "an overlapping placement still follows where the window was drawn")
+        let straddlingParent = CGRect(x: 1200, y: 100, width: 800, height: 600)
+        suite.expect(ScreenshotCapturePolicy.compositeRect(for: straddlingParent, in: straddlingParent, scale: 2)
+                == CGRect(x: 0, y: 0, width: 1600, height: 1200)
+                && ScreenshotCapturePolicy.compositeRect(
+                    for: CGRect(x: 1400, y: 128, width: 400, height: 200), in: straddlingParent, scale: 2)
+                == CGRect(x: 400, y: 744, width: 800, height: 400),
+               "a sheet on a window spanning two displays lands at its place under the title bar")
         suite.expect(ScreenshotCapturePolicy.attachedCapturePlan(
             target: capturedWindow, frontToBack: [sheet, capturedWindow])
             == ScreenshotCapturePolicy.AttachedCapturePlan(

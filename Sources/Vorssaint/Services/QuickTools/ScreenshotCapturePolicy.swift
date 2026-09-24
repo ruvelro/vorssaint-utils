@@ -125,6 +125,17 @@ enum ScreenshotCapturePolicy {
                                    bounds: target.frame)
     }
 
+    /// Where one window of an attached plan lands on a canvas drawn at
+    /// `scale` pixels per point over the clicked window's `bounds`, in the
+    /// canvas's bottom-left coordinates. Frames are window-server points,
+    /// top-left origin.
+    static func compositeRect(for frame: CGRect, in bounds: CGRect, scale: CGFloat) -> CGRect {
+        CGRect(x: (frame.minX - bounds.minX) * scale,
+               y: (bounds.maxY - frame.maxY) * scale,
+               width: frame.width * scale,
+               height: frame.height * scale)
+    }
+
     /// Narrows a geometric plan to the attached windows Accessibility named.
     /// A missing answer leaves geometry alone; an answer with no matches leaves
     /// the ordinary single-window capture to answer.
