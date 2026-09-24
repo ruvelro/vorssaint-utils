@@ -515,13 +515,21 @@ final class AppVolumeMixer: ObservableObject {
                 self.outputStepReadInFlight = false
                 let current = self.outputControlListenerDevice == device
                     && self.outputControlLock.withLock { self.outputControlLifetime == lifetime }
-                guard current, let volume else {
-                    // The subscribed output is no longer the default one: let
-                    // the native keys act and resubscribe to what now plays.
-                    let steps = self.queuedOutputSteps
-                    self.queuedOutputSteps.removeAll()
-                    for step in steps { step.completion(false) }
-                    self.scheduleListenerRefresh()
+                guard current, isDefault else {
+                    // The keys were meant for an output that has since been
+                    // replaced, as headphones taking over. Replaying each one
+                    // natively would step the new output a full step per
+                    // press, so they settle as handled, the way a pending
+                    // adjustment does when its output changes, and the
+                    // mixer resubscribes to what now plays.
+                    self.settleQueuedOutputSteps(handled: true)
+                    if current { self.scheduleListenerRefresh() }
+                    return
+                }
+                guard let volume else {
+                    // The default output has no software volume: the system
+                    // keys are the only way to change it.
+                    self.settleQueuedOutputSteps(handled: false)
                     return
                 }
                 if !self.hasCurrentOutputAdjustment {
@@ -531,6 +539,12 @@ final class AppVolumeMixer: ObservableObject {
                 self.applyQueuedOutputSteps()
             }
         }
+    }
+
+    private func settleQueuedOutputSteps(handled: Bool) {
+        let steps = queuedOutputSteps
+        queuedOutputSteps.removeAll()
+        for step in steps { step.completion(handled) }
     }
 
     private func applyQueuedOutputSteps() {

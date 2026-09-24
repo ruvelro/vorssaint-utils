@@ -142,11 +142,28 @@ enum MixerOutputAdjustmentContract {
 
         mixer = make()
         completions = []
-        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        for _ in 0..<3 { mixer.requestOutputStep(level: step(0.1)) { completions.append($0) } }
         Hardware.device = 2
         finish(mixer)
-        suite.expect(Hardware.writes.isEmpty && completions == [false] && mixer.listenerRefreshes == 1,
-                     "a key on an output that is no longer the default falls back and resubscribes")
+        suite.expect(Hardware.writes.isEmpty && completions == [true, true, true] && mixer.listenerRefreshes == 1,
+                     "keys piled up for an output that is no longer the default settle instead of replaying natively")
+
+        mixer = make()
+        completions = []
+        for _ in 0..<3 { mixer.requestOutputStep(level: step(0.1)) { completions.append($0) } }
+        Hardware.device = 2
+        mixer.selectOutput(2, volume: 0.1, muted: false)
+        finish(mixer)
+        suite.expect(Hardware.writes.isEmpty && completions == [true, true, true],
+                     "keys whose output was replaced during the read never step the output that took over")
+
+        mixer = make()
+        completions = []
+        Hardware.volume = nil
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.isEmpty && completions == [false],
+                     "an output without software volume leaves the key to the system")
 
         mixer = make()
         completions = []
