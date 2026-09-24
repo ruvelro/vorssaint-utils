@@ -84,6 +84,10 @@ final class NotchService: ObservableObject {
     /// The last ⌘1–⌘9 pressed on the Clipboard page, which the page turns
     /// into a paste of the entry at that place.
     @Published private(set) var clipboardPastePress: NotchClipboardPastePress?
+    /// Whether the island panel holds the keyboard. Opened by hover, or left
+    /// open while another app is active, it does not, and its shortcuts then
+    /// reach the app in front instead.
+    @Published private(set) var panelIsKey = false
     @Published private var captureContentHeight: CGFloat?
     @Published private(set) var power = PowerReading()
     @Published private var musicDetailVisible = false
@@ -481,6 +485,7 @@ final class NotchService: ObservableObject {
         releaseMonitor()
         windowHost?.close()
         windowHost = nil
+        syncPanelKey()
         hiddenInFullscreen = false
     }
 
@@ -1640,6 +1645,8 @@ final class NotchService: ObservableObject {
             DispatchQueue.main.async { self?.syncWithPreferences() }
         }
         observe(.default, .menuPanelWillShow) { [weak self] in self?.collapse() }
+        observe(.default, NSWindow.didBecomeKeyNotification) { [weak self] in self?.syncPanelKey() }
+        observe(.default, NSWindow.didResignKeyNotification) { [weak self] in self?.syncPanelKey() }
         session.onConsole = SessionActivity.shared.isActive
         session.locked = (CGSessionCopyCurrentDictionary() as? [String: Any])?["CGSSessionScreenIsLocked"] as? Bool ?? false
         let workspace = NSWorkspace.shared.notificationCenter
@@ -1687,6 +1694,11 @@ final class NotchService: ObservableObject {
                                            pointerInside: windowHost?.containsHover(NSEvent.mouseLocation) == true) {
             collapse()
         }
+    }
+
+    private func syncPanelKey() {
+        let isKey = panel?.isKeyWindow == true
+        if panelIsKey != isKey { panelIsKey = isKey }
     }
 
     private func observe(_ center: NotificationCenter, _ name: Notification.Name,

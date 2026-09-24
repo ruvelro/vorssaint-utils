@@ -7,7 +7,7 @@ import SwiftUI
 /// and the quick panel offer on each: paste or copy, pin, move, delete, and
 /// the recent ones cleared in one go from the search row.
 struct NotchClipboardView: View {
-    let service: NotchService
+    @ObservedObject var service: NotchService
     let size: CGSize
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var l10n = L10n.shared
@@ -121,8 +121,9 @@ struct NotchClipboardView: View {
                 Text(entry.copiedAt, style: .time)
                     .font(.system(size: 9.5)).foregroundStyle(.tertiary).lineLimit(1)
                 Spacer(minLength: 0)
-                // The first nine cards name the shortcut that pastes them.
-                if place < 9 {
+                // The first nine cards name the shortcut that pastes them,
+                // only while the island holds the keyboard to receive it.
+                if place < 9, service.panelIsKey {
                     Text("⌘\(place + 1)")
                         .font(.system(size: 9.5, weight: .medium)).monospacedDigit()
                         .foregroundStyle(.tertiary)
