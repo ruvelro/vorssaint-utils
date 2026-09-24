@@ -23,6 +23,8 @@ enum MixerOutputAdjustmentContract {
         static var writes: [Write] = []
         static var succeeds = true
         static var afterVolumeWrite: (() -> Void)?
+        static var volume: Float32? = 0.2
+        static var muted: Bool? = false
     }
 
     static func run(_ suite: TestSuite) {
@@ -32,6 +34,8 @@ enum MixerOutputAdjustmentContract {
             Hardware.writes = []
             Hardware.succeeds = true
             Hardware.afterVolumeWrite = nil
+            Hardware.volume = 0.2
+            Hardware.muted = false
             let mixer = Mixer()
             mixer.selectOutput(1, volume: 0.2, muted: false)
             return mixer
@@ -102,6 +106,47 @@ enum MixerOutputAdjustmentContract {
                                          .init(device: 2, volume: nil, muted: false)],
                      "a switch during a driver write preserves the new mute request and skips stale unmute")
         suite.expect(settled == [true, true], "both in-progress and new-output requests settle once")
+
+        func step(_ delta: Double) -> (Double) -> Double { { $0 + delta } }
+
+        mixer = make()
+        completions = []
+        Hardware.volume = 0.02
+        mixer.requestOutputStep(level: step(0.01)) { completions.append($0) }
+        suite.expect(mixer.systemOutputVolume == 0.2 && Hardware.writes.isEmpty,
+                     "a volume key waits for the output's own reading before stepping")
+        mixer.requestOutputStep(level: step(0.01)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.compactMap(\.volume).map { ($0 * 100).rounded() } == [3, 4]
+                     && completions == [true, true],
+                     "keys step from the device's level, not a stale reading from before sleep")
+
+        mixer = make()
+        completions = []
+        Hardware.volume = 0.5
+        mixer.requestOutputAdjustment(volume: 0.3) { completions.append($0) }
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.compactMap(\.volume).map { ($0 * 10).rounded() } == [3, 4],
+                     "a key during this app's own write continues from the level it requested")
+
+        mixer = make()
+        completions = []
+        Hardware.volume = 0.4
+        Hardware.muted = true
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.first?.volume.map { ($0 * 10).rounded() } == 1
+                     && mixer.systemOutputMuted == false,
+                     "a key on a muted output steps up from silence and unmutes")
+
+        mixer = make()
+        completions = []
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        Hardware.device = 2
+        finish(mixer)
+        suite.expect(Hardware.writes.isEmpty && completions == [false] && mixer.listenerRefreshes == 1,
+                     "a key on an output that is no longer the default falls back and resubscribes")
 
         mixer = make()
         completions = []
