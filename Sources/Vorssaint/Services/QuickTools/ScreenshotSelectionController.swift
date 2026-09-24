@@ -484,10 +484,14 @@ final class ScreenshotSelectionController {
         }
     }
 
-    fileprivate func adjustLoupeZoom(by scrollDelta: CGFloat, stepped: Bool) {
+    fileprivate func adjustLoupeZoom(by scrollDelta: CGFloat,
+                                     stepped: Bool,
+                                     lineDelta: Int64,
+                                     isContinuous: Bool) {
         loupeZoom = stepped
             ? ScreenshotSupport.captureLoupeSteppedZoom(loupeZoom, adjustedBy: scrollDelta)
-            : ScreenshotSupport.captureLoupeZoom(loupeZoom, adjustedBy: scrollDelta)
+            : ScreenshotSupport.captureLoupeFastZoom(loupeZoom, adjustedBy: scrollDelta,
+                                                     lineDelta: lineDelta, isContinuous: isContinuous)
     }
 
     /// C copies the color under the pointer in the configured picker format
@@ -1116,10 +1120,11 @@ private final class ScreenshotOverlayView: NSView {
             steppedByDefault: steppedByDefault,
             optionPressed: event.modifierFlags.contains(.option))
         let wheelDelta: CGFloat
+        let lineDelta = event.cgEvent?.getIntegerValueField(.scrollWheelEventDeltaAxis1) ?? 0
         if let cgEvent = event.cgEvent {
             wheelDelta = ScreenshotSupport.captureLoupeWheelDelta(
                 scrollingDelta: event.scrollingDeltaY,
-                lineDelta: cgEvent.getIntegerValueField(.scrollWheelEventDeltaAxis1),
+                lineDelta: lineDelta,
                 fixedPointDelta: cgEvent.getDoubleValueField(
                     .scrollWheelEventFixedPtDeltaAxis1))
         } else {
@@ -1127,7 +1132,9 @@ private final class ScreenshotOverlayView: NSView {
         }
         controller.adjustLoupeZoom(
             by: wheelDelta,
-            stepped: stepped)
+            stepped: stepped,
+            lineDelta: lineDelta,
+            isContinuous: event.hasPreciseScrollingDeltas)
     }
 
     override func mouseDown(with event: NSEvent) {
