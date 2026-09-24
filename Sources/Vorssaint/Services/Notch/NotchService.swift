@@ -81,6 +81,9 @@ final class NotchService: ObservableObject {
     /// Bumped when Command-W asks the Scratchpad page to close its selected
     /// pad, so the confirmation stays in the page as it does in the floating pad.
     @Published private(set) var scratchpadCloseSerial = 0
+    /// The last ⌘1–⌘9 pressed on the Clipboard page, which the page turns
+    /// into a paste of the entry at that place.
+    @Published private(set) var clipboardPastePress: NotchClipboardPastePress?
     @Published private var captureContentHeight: CGFloat?
     @Published private(set) var power = PowerReading()
     @Published private var musicDetailVisible = false
@@ -797,6 +800,15 @@ final class NotchService: ObservableObject {
         case .closeSelectedPad: scratchpadCloseSerial += 1
         case .hidePad: collapse()
         }
+        return true
+    }
+
+    private func handleClipboardPasteKey(_ event: NSEvent) -> Bool {
+        guard selected == .clipboard, !showingAppPanel, !showingSections, selectedMetric == nil else { return false }
+        let commandOnly = event.modifierFlags.intersection([.command, .control, .option, .shift]) == .command
+        guard let index = NotchClipboardPastePress.index(keyCode: event.keyCode, commandOnly: commandOnly)
+        else { return false }
+        clipboardPastePress = NotchClipboardPastePress(serial: (clipboardPastePress?.serial ?? 0) &+ 1, index: index)
         return true
     }
 
@@ -1747,6 +1759,7 @@ final class NotchService: ObservableObject {
                 }
                 if self.handleSectionKey(event) { return nil }
                 if self.handleScratchpadKey(event) { return nil }
+                if self.handleClipboardPasteKey(event) { return nil }
             }
             if event.type == .keyDown, event.window === self.panel, self.selected == .tools, !self.showingAppPanel, !self.showingSections {
                 let launcher = QuickLauncherService.shared

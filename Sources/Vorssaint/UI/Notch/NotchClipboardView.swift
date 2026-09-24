@@ -77,8 +77,8 @@ struct NotchClipboardView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        ForEach(entries) { entry in
-                            card(entry).frame(height: NotchLayout.clipboardCardHeight)
+                        ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                            card(entry, place: index).frame(height: NotchLayout.clipboardCardHeight)
                         }
                     }
                 }
@@ -86,6 +86,14 @@ struct NotchClipboardView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: service.clipboardPastePress) { _, press in
+            guard let press, !preview else { return }
+            guard entries.indices.contains(press.index) else {
+                NSSound.beep()
+                return
+            }
+            activate(entries[press.index])
+        }
         .task(id: copiedID) {
             // The tick confirms one copy; leaving it on the row forever would
             // read as a permanent state instead of an answer.
@@ -97,7 +105,7 @@ struct NotchClipboardView: View {
     }
 
     /// The entry fills the card; its actions sit in the bottom row.
-    private func card(_ entry: ClipboardHistoryEntry) -> some View {
+    private func card(_ entry: ClipboardHistoryEntry, place: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Button { activate(entry) } label: {
                 preview(entry)
@@ -113,6 +121,13 @@ struct NotchClipboardView: View {
                 Text(entry.copiedAt, style: .time)
                     .font(.system(size: 9.5)).foregroundStyle(.tertiary).lineLimit(1)
                 Spacer(minLength: 0)
+                // The first nine cards name the shortcut that pastes them.
+                if place < 9 {
+                    Text("⌘\(place + 1)")
+                        .font(.system(size: 9.5, weight: .medium)).monospacedDigit()
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
                 if entry.kind == .image, AppFeature.screenshot.isAvailable {
                     NotchIconButton(symbol: "pencil", title: text.edit) { history.editImage(entry) }
                 }
