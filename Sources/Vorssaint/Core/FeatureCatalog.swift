@@ -264,7 +264,7 @@ extension AppFeature {
         case .shelf: return [DefaultsKey.shelfEnabled]
         case .urlCleaner: return [DefaultsKey.urlCleanerEnabled]
         case .soundOutputSwitcher: return [DefaultsKey.soundOutputSwitcherEnabled]
-        case .musicBlock: return [DefaultsKey.musicBlockEnabled]
+        case .musicBlock: return [DefaultsKey.musicBlockEnabled, DefaultsKey.mediaKeysPlayerOnly]
         case .brightness: return [DefaultsKey.brightnessControlEnabled]
         case .extraBrightness: return [DefaultsKey.extraBrightnessEnabled]
         case .bluetoothSleep: return [DefaultsKey.bluetoothSleepEnabled]
