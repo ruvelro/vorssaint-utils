@@ -386,7 +386,7 @@ enum FeatureCatalogTests {
 
         // MARK: Features hub catalog
 
-        suite.expect(AppFeature.allCases.count == 71, "feature catalog has 71 features")
+        suite.expect(AppFeature.allCases.count == 73, "feature catalog has 73 features")
         suite.expect(Set(AppFeature.allCases.map(\.rawValue)).count == AppFeature.allCases.count,
                "feature ids are unique")
         suite.expect(AppFeature.allCases.map(\.rawValue) == [
@@ -395,13 +395,13 @@ enum FeatureCatalogTests {
             "mouseClickDebounce", "keyboardDebounce", "textSnippets", "superKey", "quitWindowProtection",
             "clipboardHistory", "pastePlain", "finderCutPaste", "finderRename", "shelf", "urlCleaner",
             "diskImageInstaller",
-            "mixer", "soundOutputSwitcher", "micMute", "musicBlock",
+            "mixer", "soundOutputSwitcher", "audioPriority", "micMute", "musicBlock",
             "keepAwake", "brightness", "extraBrightness", "bluetoothSleep",
             "quickLauncher", "quickToggles", "colorPicker", "screenOCR", "cleaningMode", "mediaTools",
             "cleaner", "uninstaller", "homebrew", "appUpdates", "screenshot", "cameraPreview",
             "radialMenu", "scratchpad", "commandBar", "screenRecorder", "wallpaper", "killProcess", "portManager", "notch", "notchCalendar", "notchNotifications", "notchGestures", "notchTimer", "notchAccessories", "notchLyrics", "notchQueue", "notchLiveEqualizer", "notchDownloads", "notchAgents",
             "monitorCPU", "monitorGPU", "monitorMemory", "monitorNetwork", "monitorDisk", "monitorPower",
-            "fanControl",
+            "connectedDevices", "fanControl",
         ], "feature ids are stable (they persist inside availability keys)")
         suite.expect(MouseAccelerationSupport.validatedRegistryID(nil) == nil
                 && MouseAccelerationSupport.validatedRegistryID(0) == nil
@@ -526,9 +526,11 @@ enum FeatureCatalogTests {
                 && (AppFeature.availabilityDefaults[AppFeature.killProcess.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.portManager.availabilityKey] as? Bool) == false
                 && (AppFeature.availabilityDefaults[AppFeature.wallpaper.availabilityKey] as? Bool) == false
+                && (AppFeature.availabilityDefaults[AppFeature.audioPriority.availabilityKey] as? Bool) == false
                 && AppFeature.allCases.filter {
                     $0 != .focusFollowsMouse && $0 != .fanControl && $0 != .diskImageInstaller
                         && $0 != .killProcess && $0 != .scrollHorizontal && $0 != .portManager && $0 != .wallpaper
+                        && $0 != .audioPriority
                 }.allSatisfy {
                     (AppFeature.availabilityDefaults[$0.availabilityKey] as? Bool) == true
                 },
@@ -1534,11 +1536,13 @@ enum FeatureCatalogTests {
                 case .tr: return .tr
                 case .ru: return .ru
                 case .es: return .es
+                case .sk: return .sk
                 case .de: return .de
                 case .fr: return .fr
                 case .it: return .it
                 case .ja: return .ja
                 case .ko: return .ko
+                case .uk: return .uk
                 case .zhHans: return .zhHans
                 case .zhTW: return .zhTW
                 case .zhHK: return .zhHK
@@ -1669,6 +1673,26 @@ enum FeatureCatalogTests {
         } else {
             UserDefaults.standard.removeObject(forKey: DefaultsKey.windowGestureEnabled)
         }
+        let radialMenuEnergyKeys = [DefaultsKey.radialMenuProfiles, DefaultsKey.radialMenuMouseButton]
+        let previousRadialMenuEnergy = radialMenuEnergyKeys.map { UserDefaults.standard.object(forKey: $0) }
+        func radialMenuEnergy(_ profiles: [RadialMenuProfile]?,
+                              legacyButton: RadialMenuMouseTrigger) -> FeatureEnergyProfile {
+            UserDefaults.standard.set(profiles.flatMap(RadialMenuSupport.encodeProfiles),
+                                      forKey: DefaultsKey.radialMenuProfiles)
+            UserDefaults.standard.set(legacyButton.rawValue, forKey: DefaultsKey.radialMenuMouseButton)
+            return AppFeature.radialMenu.energyProfile
+        }
+        suite.expect(radialMenuEnergy([RadialMenuProfile(mouseButton: RadialMenuMouseTrigger.back.rawValue)],
+                                      legacyButton: .off) == .mouse
+                && radialMenuEnergy([RadialMenuProfile(trackpadTap: true)], legacyButton: .off) == .mouse
+                && radialMenuEnergy([RadialMenuProfile()], legacyButton: .back) == .idle,
+               "radial menu energy follows the saved profiles and their trackpad tap, not the pre-profile button")
+        suite.expect(radialMenuEnergy(nil, legacyButton: .back) == .mouse
+                && radialMenuEnergy(nil, legacyButton: .off) == .idle,
+               "without saved profiles the pre-profile button still decides radial menu energy")
+        for (key, value) in zip(radialMenuEnergyKeys, previousRadialMenuEnergy) {
+            UserDefaults.standard.set(value, forKey: key)
+        }
 
         // MARK: Settings page visibility
 
@@ -1719,8 +1743,12 @@ enum FeatureCatalogTests {
         suite.expect(AppFeature.allCases.allSatisfy { $0.settingsDestination.hasValidSectionAnchor },
                "every feature anchor belongs to its destination page")
         suite.expect(Set(AppFeature.allCases.compactMap(\.settingsDestination.sectionAnchor))
-                == Set(SettingsSectionAnchor.allCases),
-               "every declared Settings section anchor is used by a feature destination")
+                == Set(SettingsSectionAnchor.allCases).subtracting([
+                    .panelConfiguration, .keyboardBrightnessShortcuts,
+                ])
+                && SettingsSectionAnchor.panelConfiguration.page == .general
+                && SettingsSectionAnchor.keyboardBrightnessShortcuts.page == .shortcuts,
+               "feature anchors and standalone Settings anchors reach their pages")
         suite.expect(AppFeature.dockPreview.settingsDestination
                 == FeatureSettingsDestination(.dock, sectionAnchor: .dock)
                 && AppFeature.dockClick.settingsDestination
@@ -1740,8 +1768,12 @@ enum FeatureCatalogTests {
                 && !dockNeedsAccessibility(available: allFeatures, on: [DefaultsKey.switcherEnabled]),
                "the Dock page asks for Accessibility while Dock Preview or any Dock click action is on")
         suite.expect(AppFeature.mixer.settingsDestination
-                == FeatureSettingsDestination(.general, sectionAnchor: .panelConfiguration),
-               "panel-oriented features land on General panel configuration")
+                == FeatureSettingsDestination(.general, sectionAnchor: .mixer)
+                && AppFeature.soundOutputSwitcher.settingsDestination
+                    == FeatureSettingsDestination(.general, sectionAnchor: .soundOutputSwitcher)
+                && AppFeature.audioPriority.settingsDestination
+                    == FeatureSettingsDestination(.general, sectionAnchor: .audioPriority),
+               "Mixer, output switcher and audio priority have separate General controls")
         suite.expect(AppFeature.windowMaximizer.settingsDestination
                 == FeatureSettingsDestination(.windowLayout, sectionAnchor: .windowMaximizer)
                 && pageVisible(.windowLayout, available: [.windowMaximizer])
@@ -1753,8 +1785,6 @@ enum FeatureCatalogTests {
                "cleaning mode lands on Quick Tools cleaning mode section")
         suite.expect(AppFeature.musicBlock.settingsDestination
                 == FeatureSettingsDestination(.general, sectionAnchor: .musicBlocking)
-                && AppFeature.soundOutputSwitcher.settingsDestination
-                == FeatureSettingsDestination(.shortcuts, sectionAnchor: .soundOutputSwitcher)
                 && AppFeature.diskImageInstaller.settingsDestination
                 == FeatureSettingsDestination(.features),
                "features without dedicated pages use explicit nearest Settings destinations")
@@ -1908,6 +1938,25 @@ enum FeatureCatalogTests {
         suite.expect(hiddenHistoryRouter.page == .mouse
                 && hiddenHistoryRouter.cleanerTool == nil,
                "history can revisit re-enabled pages without replaying a stale Cleaner tool hint")
+
+        let toolHistoryRouter = SettingsRouter()
+        let sharedMouseDestination = AppFeature.scrollHorizontal.settingsDestination
+        toolHistoryRouter.request(sharedMouseDestination, sidebarFeature: .scrollHorizontal)
+        suite.expect(toolHistoryRouter.sidebarFeature == .scrollHorizontal,
+               "Settings navigation keeps the requested tool when tools share a section")
+        toolHistoryRouter.request(sharedMouseDestination, sidebarFeature: .scrollInverter)
+        suite.expect(toolHistoryRouter.sidebarFeature == .scrollInverter,
+               "switching between tools on one section updates the selected tool")
+        let audioPriorityDestination = AppFeature.audioPriority.settingsDestination
+        toolHistoryRouter.request(audioPriorityDestination, sidebarFeature: .audioPriority)
+        toolHistoryRouter.page = .about
+        toolHistoryRouter.goBack()
+        suite.expect(toolHistoryRouter.destination == audioPriorityDestination
+                && toolHistoryRouter.sidebarFeature == .audioPriority,
+               "Settings Back restores the selected tool alongside its destination")
+        toolHistoryRouter.goForward()
+        suite.expect(toolHistoryRouter.page == .about && toolHistoryRouter.sidebarFeature == nil,
+               "visiting a generic page clears the previous tool selection")
 
         // MARK: Display brightness (DDC/CI helpers)
 
@@ -2406,6 +2455,7 @@ enum FeatureCatalogTests {
 enum MusicLaunchBlockerContract {
     enum Environment {
         static var enabled = true
+        static var playReplacement = true
         static var available = true
         static var trusted = true
         static var createsTap = true
@@ -2421,7 +2471,10 @@ enum MusicLaunchBlockerContract {
     enum UserDefaults {
         static let standard = Store()
         final class Store {
-            func bool(forKey key: String) -> Bool { Environment.enabled }
+            func bool(forKey key: String) -> Bool {
+                key == DefaultsKey.musicBlockPlayReplacement
+                    ? Environment.playReplacement : Environment.enabled
+            }
         }
     }
     static func AXIsProcessTrusted() -> Bool { Environment.trusted }
@@ -2508,6 +2561,7 @@ enum MusicLaunchBlockerContract {
             service.replacementCalls = 0
             service.replacementPlays = []
             Environment.enabled = true
+            Environment.playReplacement = true
             Environment.available = true
             Environment.trusted = true
             Environment.createsTap = true
@@ -2555,6 +2609,12 @@ enum MusicLaunchBlockerContract {
         launch(NSRunningApplication(50))
         suite.expect(service.replacementPlays == [true, false],
                      "only Play/Pause asks the replacement to play; the other media keys only open it")
+        Environment.playReplacement = false
+        key()
+        launch(NSRunningApplication(51))
+        suite.expect(service.replacementPlays == [true, false, false],
+                     "turning off replacement playback still opens it without sending play")
+        Environment.playReplacement = true
         let second = NSRunningApplication(3)
         launch(second)
         suite.expect(second.forceCalls == 0 && service.lastMediaKeyAt == nil,
