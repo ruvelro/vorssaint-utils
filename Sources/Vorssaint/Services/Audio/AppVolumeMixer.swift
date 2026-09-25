@@ -381,6 +381,8 @@ final class AppVolumeMixer: ObservableObject {
         pendingOutputAdjustment = nil
         // Superseded keys are handled: replaying them would adjust the new output.
         pending?.completion(true)
+        outputStepReadInFlight = false
+        settleQueuedOutputSteps(handled: true)
     }
 
     private func scheduleOutputControlRefresh(for device: AudioObjectID) {
@@ -526,10 +528,13 @@ final class AppVolumeMixer: ObservableObject {
             let muted = isDefault ? Self.outputMuted(for: device) : nil
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.outputStepReadInFlight = false
                 let current = self.outputControlListenerDevice == device
                     && self.outputControlLock.withLock { self.outputControlLifetime == lifetime }
-                guard current, isDefault else {
+                // Removing the old listeners already settled that lifetime's
+                // keys. Its callback must not drain the new output's queue.
+                guard current else { return }
+                self.outputStepReadInFlight = false
+                guard isDefault else {
                     // The keys were meant for an output that has since been
                     // replaced, as headphones taking over. Replaying each one
                     // natively would step the new output a full step per

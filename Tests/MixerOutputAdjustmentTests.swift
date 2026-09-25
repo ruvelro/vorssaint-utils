@@ -157,6 +157,22 @@ enum MixerOutputAdjustmentContract {
         suite.expect(Hardware.writes.isEmpty && completions == [true, true, true],
                      "keys whose output was replaced during the read never step the output that took over")
 
+        for oldReadFinished in [false, true] {
+            mixer = make()
+            completions = []
+            mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+            if oldReadFinished { mixer.halQueue.runOne() }
+            Hardware.device = 2
+            Hardware.volume = 0.4
+            mixer.selectOutput(2, volume: 0.4, muted: false)
+            mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+            finish(mixer)
+            suite.expect(Hardware.writes.compactMap { write in
+                write.volume.map { (write.device, Int(($0 * 10).rounded())) }
+            }.contains { $0 == (2, 5) } && completions == [true, true],
+                         "a key on the new output survives an old read, including one awaiting its main callback")
+        }
+
         mixer = make()
         completions = []
         Hardware.volume = nil
