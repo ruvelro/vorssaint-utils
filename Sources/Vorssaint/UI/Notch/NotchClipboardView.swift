@@ -7,7 +7,7 @@ import SwiftUI
 /// and the quick panel offer on each: paste or copy, pin, move, delete, and
 /// the recent ones cleared in one go from the search row.
 struct NotchClipboardView: View {
-    @ObservedObject var service: NotchService
+    let service: NotchService
     let size: CGSize
     @ObservedObject private var history = ClipboardHistoryService.shared
     @ObservedObject private var l10n = L10n.shared
@@ -16,10 +16,12 @@ struct NotchClipboardView: View {
     @State private var query = ""
     @State private var copiedID: UUID?
     @State private var pinnedOnly = false
-    /// The entry the arrow keys chose; nil until the first arrow.
-    @State private var keyboardSelection: UUID?
+    /// The card the arrow keys chose from the search field, or the top result
+    /// of a typed search; Return uses it the way a click would.
+    @State private var highlightedID: UUID?
     @FocusState private var searching: Bool
     @Environment(\.notchSettingsPreview) private var preview
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private var text: ClipboardFeatureStrings { FeatureStrings.clipboard(l10n.language) }
 
     private var entries: [ClipboardHistoryEntry] {
@@ -58,6 +60,12 @@ struct NotchClipboardView: View {
                     .allowsHitTesting(false)
             }
             .animation(.easeOut(duration: 0.15), value: searching)
+            .background {
+                if !preview {
+                    ClipboardSearchKeyMonitor(active: searching) { handleSearchKey($0) }
+                        .frame(width: 0, height: 0)
+                }
+            }
             // Typing filters the history as soon as the page opens, as in Explore.
             .onAppear { if !preview { searching = true } }
             if !enabled, history.entries.isEmpty {
@@ -81,26 +89,25 @@ struct NotchClipboardView: View {
                     ScrollView {
                         LazyVStack(spacing: 8) {
                             ForEach(entries) { entry in
-                                card(entry).frame(height: NotchLayout.clipboardCardHeight).id(entry.id)
+                                card(entry).frame(height: NotchLayout.clipboardCardHeight)
+                                    .id(entry.id)
                             }
                         }
                     }
                     .scrollIndicators(.automatic)
-                    .onChange(of: keyboardSelection) { _, id in
+                    .onChange(of: highlightedID) { _, id in
                         guard let id else { return }
-                        proxy.scrollTo(id)
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.15)) { proxy.scrollTo(id) }
                     }
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: service.clipboardKeyPress) { _, press in
-            guard let press, !preview else { return }
-            handle(press.key)
-        }
-        // A new filter starts the arrows over from its first result.
-        .onChange(of: query) { _, _ in keyboardSelection = nil }
-        .onChange(of: pinnedOnly) { _, _ in keyboardSelection = nil }
+        // A new search starts from its top result instead of a row it hid,
+        // and a row that leaves the list hands the highlight on the same way.
+        .onChange(of: query) { _, _ in highlightedID = searchHighlight(keeping: nil) }
+        .onChange(of: pinnedOnly) { _, _ in highlightedID = searchHighlight(keeping: nil) }
+        .onChange(of: entries.map(\.id)) { _, _ in highlightedID = searchHighlight(keeping: highlightedID) }
         .task(id: copiedID) {
             // The tick confirms one copy; leaving it on the row forever would
             // read as a permanent state instead of an answer.
@@ -145,7 +152,7 @@ struct NotchClipboardView: View {
         .modifier(NotchControlSurface(cornerRadius: 14, selected: entry.isPinned))
         .overlay {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(.white.opacity(keyboardSelection == entry.id ? 0.5 : 0), lineWidth: 1.5)
+                .strokeBorder(.white.opacity(highlightedID == entry.id ? 0.34 : 0), lineWidth: 1)
                 .allowsHitTesting(false)
         }
         .clipped()
@@ -171,20 +178,27 @@ struct NotchClipboardView: View {
         Button(text.delete, role: .destructive) { remove(entry) }
     }
 
-    /// Return without an arrow first pastes the newest entry, as the quick
-    /// panel does.
-    private func handle(_ key: NotchClipboardKey) {
+    private func searchHighlight(keeping current: UUID?) -> UUID? {
+        NotchSupport.searchHighlight(keeping: current, in: entries.map(\.id), query: query)
+    }
+
+    /// Up and Down move the highlight while the search field keeps typing;
+    /// Return pastes or copies it like a click.
+    private func handleSearchKey(_ keyCode: UInt16) -> Bool {
         let ids = entries.map(\.id)
-        let target = key.selection(from: keyboardSelection, in: ids)
-        guard key == .paste else {
-            keyboardSelection = target
-            return
+        switch keyCode {
+        case 125, 126:
+            guard !ids.isEmpty else { return false }
+            highlightedID = NotchSupport.steppedItem(from: highlightedID, in: ids, backwards: keyCode == 126)
+            return true
+        case 36, 76:
+            guard let id = NotchSupport.clipboardPasteTarget(highlighted: highlightedID, in: ids),
+                  let entry = entries.first(where: { $0.id == id }) else { return false }
+            activate(entry)
+            return true
+        default:
+            return false
         }
-        guard let target, let entry = entries.first(where: { $0.id == target }) else {
-            NSSound.beep()
-            return
-        }
-        activate(entry)
     }
 
     private func activate(_ entry: ClipboardHistoryEntry) {
@@ -264,6 +278,60 @@ struct NotchClipboardView: View {
                     .multilineTextAlignment(.leading)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+}
+
+/// Reads the arrow keys and Return before the search field's editor does,
+/// which would otherwise spend them moving the caret.
+private struct ClipboardSearchKeyMonitor: NSViewRepresentable {
+    var active: Bool
+    var handleKey: (UInt16) -> Bool
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.install(for: view)
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.active = active
+        context.coordinator.handleKey = handleKey
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(active: active, handleKey: handleKey)
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.removeMonitor()
+    }
+
+    final class Coordinator {
+        var active: Bool
+        var handleKey: (UInt16) -> Bool
+        private var monitor: Any?
+
+        init(active: Bool, handleKey: @escaping (UInt16) -> Bool) {
+            self.active = active
+            self.handleKey = handleKey
+        }
+
+        func install(for view: NSView) {
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self, weak view] event in
+                guard let self, self.active, let window = view?.window, event.window === window,
+                      event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
+                      [UInt16(125), 126, 36, 76].contains(event.keyCode),
+                      let editor = window.firstResponder as? NSTextView, editor.isFieldEditor,
+                      !editor.hasMarkedText() else { return event }
+                return self.handleKey(event.keyCode) ? nil : event
+            }
+        }
+
+        func removeMonitor() {
+            guard let monitor else { return }
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
         }
     }
 }
