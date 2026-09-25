@@ -160,8 +160,10 @@ enum SettingsBackupSupport {
                 settings[key] = value
             }
         }
+        settings = portableNotchDisplay(settings)
         settings = portableMediaSettings(settings)
         settings = portableMouseExceptions(settings)
+        settings = portableWindowLayoutIgnoredApps(settings)
         return [
             formatVersionKey: formatVersion,
             appVersionKey: appVersion,
@@ -179,7 +181,18 @@ enum SettingsBackupSupport {
         else { return nil }
         let allowed = exportKeys()
         let filtered = settings.filter { allowed.contains($0.key) && valueLooksRight($0.key, $0.value) }
-        return portableMouseExceptions(portableMediaSettings(filtered))
+        return portableNotchDisplay(portableWindowLayoutIgnoredApps(
+            portableMouseExceptions(portableMediaSettings(filtered))))
+    }
+
+    /// A display mode this version does not offer, such as one kept by an
+    /// earlier development build, restores as the automatic choice.
+    private static func portableNotchDisplay(_ settings: [String: Any]) -> [String: Any] {
+        var result = settings
+        if let mode = result[DefaultsKey.notchDisplay] as? String, NotchDisplay(rawValue: mode) == nil {
+            result[DefaultsKey.notchDisplay] = NotchDisplay.automatic.rawValue
+        }
+        return result
     }
 
     static func formatVersion(from payload: [String: Any]) -> Int? {
@@ -243,6 +256,17 @@ enum SettingsBackupSupport {
             // An emptied list still means "no exceptions", so the key stays
             // rather than falling back to whatever a missing key would do.
             settings[key] = portable
+        }
+        return settings
+    }
+
+    private static func portableWindowLayoutIgnoredApps(_ source: [String: Any]) -> [String: Any] {
+        var settings = source
+        if let apps = settings[DefaultsKey.windowLayoutIgnoredApps] as? [String] {
+            // Executable paths belong to this Mac; only bundle IDs travel in backups.
+            settings[DefaultsKey.windowLayoutIgnoredApps] = apps.filter {
+                !MouseAppExceptionSupport.isExecutablePathIdentity($0)
+            }
         }
         return settings
     }
