@@ -17,6 +17,8 @@ extension FeatureStrings {
         case .de: return .de
         case .fr: return .fr
         case .it: return .it
+        case .sk: return .sk
+        case .uk: return .uk
         case .ru: return .ru
         case .tr: return .tr
         case .ja: return .ja
@@ -68,4 +70,11 @@ extension MediaKeyStrings {
     static let zhHK = MediaKeyStrings(
         playerOnlyTitle: "將播放鍵傳送到音樂播放器",
         playerOnlyCaption: "播放／暫停、下一首和上一首會控制已開啟的音樂 App，而不是瀏覽器分頁。未開啟音樂 App 時，或音樂 App 已暫停而其他 App 正在播放聲音時，按鍵會照常運作。需要輔助使用權限；macOS 會詢問一次是否允許 Vorssaint 控制播放器。")
+    static let sk = MediaKeyStrings(
+        playerOnlyTitle: "Posielať klávesy prehrávania hudobnému prehrávaču",
+        playerOnlyCaption: "Prehrať/Pozastaviť, Ďalšia a Predchádzajúca ovládajú otvorenú hudobnú aplikáciu namiesto karty prehliadača. Klávesy fungujú ako zvyčajne, keď nie je otvorená hudobná aplikácia alebo keď iná aplikácia prehráva zvuk a hudba je pozastavená. Vyžaduje Prístupnosť; macOS sa raz opýta, či môže Vorssaint ovládať prehrávač.")
+    static let uk = MediaKeyStrings(
+        playerOnlyTitle: "Надсилати клавіші відтворення музичному програвачу",
+        playerOnlyCaption: "Відтворення/Пауза, Наступний і Попередній керують відкритою музичною програмою замість вкладки браузера. Клавіші працюють як зазвичай, коли музичну програму не відкрито або коли інша програма відтворює звук, а музику призупинено. Потрібен доступ до Спеціальних можливостей; macOS один раз запитає, чи може Vorssaint керувати програвачем.")
+
 }
