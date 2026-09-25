@@ -439,6 +439,27 @@ enum NotchTests {
     }
 
     static func run(_ suite: TestSuite) {
+        let previewStrip: CGFloat = 37
+        suite.expect(NotchTranslucentTint.opacity(atDepth: previewStrip, stripHeight: previewStrip,
+                                                  openness: 1, increasedContrast: false) == 1
+                && NotchTranslucentTint.opacity(atDepth: 0, stripHeight: previewStrip,
+                                                openness: 1, increasedContrast: false) == 1,
+               "the translucent background stays black down to the camera strip in the hover preview")
+        suite.expect(abs(NotchTranslucentTint.opacity(atDepth: previewStrip + 62, stripHeight: previewStrip,
+                                                      openness: 1, increasedContrast: false) - 0.38) < 0.001
+                && NotchTranslucentTint.opacity(atDepth: previewStrip + 62, stripHeight: previewStrip,
+                                                openness: 1, increasedContrast: true) > 0.69,
+               "below the strip the translucent body opens, less with Increase Contrast")
+        func stripIsBlack(islandHeight: CGFloat) -> Bool {
+            let stops = NotchTranslucentTint.stops(height: islandHeight, stripHeight: previewStrip,
+                                                   openness: 1, increasedContrast: false)
+            let stripEnd = Double(previewStrip / islandHeight)
+            return stops.filter { $0.location <= stripEnd + 1e-9 }.allSatisfy { $0.opacity == 1 }
+                && stops.contains { abs($0.location - stripEnd) < 1e-9 }
+        }
+        suite.expect(stripIsBlack(islandHeight: previewStrip + 62) && stripIsBlack(islandHeight: 400),
+               "the strip stays black at every island height, tall or at the preview's")
+
         railContracts(suite)
         presentationSpacingContracts(suite)
         noticeLayoutContracts(suite)
@@ -1442,26 +1463,6 @@ enum NotchTests {
                "hardware volume steps clamp to audible limits")
         suite.expect(NotchSupport.volumeLevel(current: 0.5, direction: 1, fine: true) == 0.515625,
                "fine volume preserves the system quarter-step")
-        let previewStrip: CGFloat = 37
-        suite.expect(NotchTranslucentTint.opacity(atDepth: previewStrip, stripHeight: previewStrip,
-                                                  openness: 1, increasedContrast: false) == 1
-                && NotchTranslucentTint.opacity(atDepth: 0, stripHeight: previewStrip,
-                                                openness: 1, increasedContrast: false) == 1,
-               "the translucent background stays black down to the camera strip in the hover preview")
-        suite.expect(abs(NotchTranslucentTint.opacity(atDepth: previewStrip + 62, stripHeight: previewStrip,
-                                                      openness: 1, increasedContrast: false) - 0.38) < 0.001
-                && NotchTranslucentTint.opacity(atDepth: previewStrip + 62, stripHeight: previewStrip,
-                                                openness: 1, increasedContrast: true) > 0.69,
-               "below the strip the translucent body opens, less with Increase Contrast")
-        func stripIsBlack(islandHeight: CGFloat) -> Bool {
-            let stops = NotchTranslucentTint.stops(height: islandHeight, stripHeight: previewStrip,
-                                                   openness: 1, increasedContrast: false)
-            let stripEnd = Double(previewStrip / islandHeight)
-            return stops.filter { $0.location <= stripEnd + 1e-9 }.allSatisfy { $0.opacity == 1 }
-                && stops.contains { abs($0.location - stripEnd) < 1e-9 }
-        }
-        suite.expect(stripIsBlack(islandHeight: previewStrip + 62) && stripIsBlack(islandHeight: 400),
-               "the strip stays black at every island height, tall or at the preview's")
 
         var session = NotchSessionState()
         session.locked = true
