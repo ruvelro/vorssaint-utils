@@ -679,8 +679,6 @@ enum NotchSupport {
         return ids[min(max(index + (backwards ? -1 : 1), 0), ids.count - 1)]
     }
 
-    /// The row a search leaves highlighted: the current one while it is still
-    /// listed, otherwise the top result of a typed search, so Return pastes it
     /// Return can paste before an arrow is pressed. A stale highlight falls
     /// back to the first visible entry, never to a filtered-out row.
     static func clipboardPasteTarget<ID: Equatable>(highlighted: ID?, in ids: [ID]) -> ID? {
@@ -688,6 +686,8 @@ enum NotchSupport {
         return ids.first
     }
 
+    /// The row a search leaves highlighted: the current one while it is still
+    /// listed, otherwise the top result of a typed search, so Return pastes it
     /// like the history window does. An empty search waits for the first arrow.
     static func searchHighlight<ID: Equatable>(keeping current: ID?, in ids: [ID], query: String) -> ID? {
         if let current, ids.contains(current) { return current }
