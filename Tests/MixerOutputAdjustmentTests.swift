@@ -230,6 +230,22 @@ enum MixerOutputAdjustmentContract {
 
         mixer = make()
         completions = []
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        mixer.halQueue.runOne()
+        Hardware.device = 2
+        Hardware.volume = 0.4
+        Hardware.muted = true
+        mixer.selectOutput(2, volume: 0.4, muted: true)
+        mixer.requestOutputMuteToggle { completions.append($0) }
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.contains { $0.device == 2 && $0.muted == false }
+                     && Hardware.writes.contains { $0.device == 2 && $0.volume == 0.5 }
+                     && completions == [true, true, true],
+                     "an old mute read cannot swallow the new output's mute and volume keys")
+
+        mixer = make()
+        completions = []
         for value in [Double.nan, .infinity, -.infinity] {
             mixer.requestOutputAdjustment(volume: value) { completions.append($0) }
         }
