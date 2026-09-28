@@ -374,6 +374,9 @@ enum ScreenshotCaptureEngine {
             configuration.captureResolution = .best
             configuration.showsCursor = false
             configuration.colorSpaceName = CGColorSpace.sRGB
+            // A desktop-independent window may extend beyond its source display.
+            // Requested dimensions alone do not restore pixels clipped there.
+            configuration.ignoreGlobalClipSingleWindow = true
             return try? await SCScreenshotManager.captureImage(
                 contentFilter: SCContentFilter(desktopIndependentWindow: window), configuration: configuration)
         }
