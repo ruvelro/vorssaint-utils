@@ -121,6 +121,34 @@ enum MixerOutputAdjustmentContract {
                      && completions == [true, true],
                      "keys step from the device's level, not a stale reading from before sleep")
 
+        for directMute in [true, false] {
+            mixer = make()
+            completions = []
+            Hardware.volume = 0.7
+            mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+            if directMute {
+                mixer.requestOutputAdjustment(muted: true) { completions.append($0) }
+            } else {
+                mixer.requestOutputAdjustment(volume: 0.35) { completions.append($0) }
+            }
+            finish(mixer)
+            suite.expect(Hardware.writes.compactMap(\.volume) == (directMute ? [] : [Float(0.35)])
+                         && mixer.systemOutputMuted == directMute
+                         && completions == [true, true],
+                         "a newer direct \(directMute ? "mute" : "level") supersedes a key awaiting its HAL read")
+        }
+
+        mixer = make()
+        completions = []
+        Hardware.volume = 0.7
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        mixer.requestOutputAdjustment(volume: 0.35) { completions.append($0) }
+        mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
+        finish(mixer)
+        suite.expect(Hardware.writes.compactMap(\.volume).map { ($0 * 100).rounded() } == [35, 45]
+                     && completions == [true, true, true],
+                     "a key after a direct level change follows that level rather than the stale HAL read")
+
         mixer = make()
         completions = []
         Hardware.volume = 0.5
