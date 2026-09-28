@@ -413,7 +413,7 @@ enum ScreenshotCaptureEngine {
 
         // The clicked window sets the scale every other layer must match.
         var scale: CGFloat?
-        var targetImage = WindowPreviewProvider.captureViaWindowServer(targetID)
+        var targetImage = await WindowPreviewProvider.captureViaWindowServer(targetID)
         if let image = targetImage {
             scale = ScreenshotCapturePolicy.layerScale(imageWidth: image.width, imageHeight: image.height,
                                                         frame: targetFrame, candidates: candidates)
@@ -431,7 +431,7 @@ enum ScreenshotCaptureEngine {
         var layers: [(image: CGImage, frame: CGRect)] = [(targetImage, targetFrame)]
         for id in plan.windowIDs.dropFirst() {
             guard let frame = frames[id] else { return nil }
-            var image = WindowPreviewProvider.captureViaWindowServer(id)
+            var image = await WindowPreviewProvider.captureViaWindowServer(id)
             if image.map({ !ScreenshotCapturePolicy.layerCoversFrame(imageWidth: $0.width, imageHeight: $0.height,
                                                                      frame: frame, scale: scale) }) ?? true {
                 image = await independentCapture(id, frame: frame, scale: scale)
