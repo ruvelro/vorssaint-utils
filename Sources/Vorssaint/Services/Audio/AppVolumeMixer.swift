@@ -173,6 +173,7 @@ final class AppVolumeMixer: ObservableObject {
     }
     private var queuedOutputSteps: [OutputStep] = []
     private var outputStepReadInFlight = false
+    private var outputStepReadGeneration = 0
     private let outputControlLock = NSLock()
     private var outputControlLifetime = UUID()
     private let halQueue = DispatchQueue(label: "com.vorssaint.utils.mixer.hal", qos: .userInitiated)
@@ -479,6 +480,10 @@ final class AppVolumeMixer: ObservableObject {
               volume?.isFinite != false,
               volume == nil || systemOutputVolume != nil,
               muted == nil || systemOutputMuted != nil else { completion(false); return }
+        // A direct control change supersedes keys pressed before it. The HAL
+        // read for those keys may still finish later, so invalidate its value.
+        outputStepReadGeneration &+= 1
+        settleQueuedOutputSteps(handled: true)
         outputControlRefreshGeneration &+= 1
         let previous = pendingOutputAdjustment
         var adjustment = previous ?? OutputAdjustment(device: device,
@@ -519,6 +524,7 @@ final class AppVolumeMixer: ObservableObject {
             return
         }
         outputStepReadInFlight = true
+        let readGeneration = outputStepReadGeneration
         let lifetime = outputControlLock.withLock { outputControlLifetime }
         halQueue.async { [weak self] in
             let isDefault = Self.defaultOutputDeviceID() == device
@@ -551,7 +557,8 @@ final class AppVolumeMixer: ObservableObject {
                     self.settleQueuedOutputSteps(handled: false)
                     return
                 }
-                if !self.hasCurrentOutputAdjustment {
+                if self.outputStepReadGeneration == readGeneration,
+                   !self.hasCurrentOutputAdjustment {
                     if self.systemOutputVolume != volume { self.systemOutputVolume = volume }
                     if self.systemOutputMuted != muted { self.systemOutputMuted = muted }
                 }

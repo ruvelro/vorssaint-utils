@@ -270,7 +270,7 @@ def main():
           + "extension MixerOutputAdjustmentContract {\nfinal class Mixer {\n"
           + declaration(mixer, "    private struct OutputAdjustment {")
           + declaration(mixer, "    private struct OutputStep {")
-          + "private var queuedOutputSteps: [OutputStep] = []\nvar outputStepReadInFlight = false\n"
+          + "private var queuedOutputSteps: [OutputStep] = []\nvar outputStepReadInFlight = false\nvar outputStepReadGeneration = 0\n"
           + "static func hasSettableOutputVolume(for device: AudioObjectID) -> Bool { true }\n"
           + "static func outputVolume(for device: AudioObjectID) -> Float32? { Hardware.volume }\n"
           + "static func outputMuted(for device: AudioObjectID) -> Bool? { Hardware.muted }\n"
