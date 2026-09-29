@@ -155,6 +155,35 @@ enum ScreenshotCapturePolicy {
         }
     }
 
+    /// How the clicked window's layer of a composite is taken, which fixes
+    /// the scale every layer, the canvas and the reported capture share.
+    enum CompositeTargetCapture: Equatable {
+        /// Its window-server buffer already covers its frame at this scale.
+        case buffer(scale: CGFloat)
+        /// Recapture it through its own filter at this scale.
+        case recapture(scale: CGFloat)
+
+        var scale: CGFloat {
+            switch self {
+            case .buffer(let scale), .recapture(let scale): return scale
+            }
+        }
+    }
+
+    /// The window-server buffer sets the scale when it covers the frame at
+    /// some display's scale. Otherwise the recapture takes the finest one,
+    /// which need not be the scale of the display that was clicked: with a
+    /// 1x and a 2x display connected it is 2x, and the caller has to record
+    /// this scale rather than its own for export and sizing to match pixels.
+    static func compositeTargetCapture(buffer: (width: Int, height: Int)?, frame: CGRect,
+                                       candidates: [CGFloat]) -> CompositeTargetCapture? {
+        if let buffer, let scale = layerScale(imageWidth: buffer.width, imageHeight: buffer.height,
+                                              frame: frame, candidates: candidates) {
+            return .buffer(scale: scale)
+        }
+        return candidates.max().map { .recapture(scale: $0) }
+    }
+
     /// Narrows a geometric plan to the attached windows Accessibility named.
     /// A missing answer leaves geometry alone; an answer with no matches leaves
     /// the ordinary single-window capture to answer.

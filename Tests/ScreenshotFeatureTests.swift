@@ -202,6 +202,37 @@ enum ScreenshotFeatureTests {
                 && ScreenshotCapturePolicy.layerScale(imageWidth: 1552, imageHeight: 1200, frame: layerFrame,
                                                       candidates: [1, 2]) == nil,
                "the clicked window's buffer sets one display scale for every layer, and a clipped one sets none")
+        // A 1x display with a 2x display connected: the composite's scale is
+        // the one its target layer was captured at, which the caller records
+        // in place of the clicked display's so sizes and exports match pixels.
+        let mixedScales: [CGFloat] = [1, 2]
+        suite.expect(ScreenshotCapturePolicy.compositeTargetCapture(
+            buffer: (800, 600), frame: layerFrame, candidates: mixedScales) == .buffer(scale: 1)
+                && ScreenshotCapturePolicy.compositeTargetCapture(
+                    buffer: (1600, 1200), frame: layerFrame, candidates: mixedScales) == .buffer(scale: 2),
+               "a whole window-server buffer on mixed displays reports the scale its pixels were drawn at")
+        let mixedRecapture = ScreenshotCapturePolicy.compositeTargetCapture(
+            buffer: (776, 600), frame: layerFrame, candidates: mixedScales)
+        suite.expect(mixedRecapture == .recapture(scale: 2)
+                && ScreenshotCapturePolicy.compositeTargetCapture(
+                    buffer: nil, frame: layerFrame, candidates: mixedScales) == .recapture(scale: 2),
+               "a clipped or missing buffer on mixed displays is recaptured at the finest scale")
+        if let mixedRecapture {
+            let canvas = ScreenshotCapturePolicy.compositeRect(for: layerFrame, in: layerFrame,
+                                                               scale: mixedRecapture.scale)
+            suite.expect(mixedRecapture.scale == 2
+                    && ScreenshotCapturePolicy.layerCoversFrame(imageWidth: 1600, imageHeight: 1200,
+                                                                frame: layerFrame, scale: mixedRecapture.scale)
+                    && !ScreenshotCapturePolicy.layerCoversFrame(imageWidth: 1600, imageHeight: 1200,
+                                                                 frame: layerFrame, scale: 1)
+                    && canvas.size == CGSize(width: 1600, height: 1200),
+                   "the recaptured composite reports 2x, matching its pixels, not the clicked 1x display")
+        } else {
+            suite.expect(false, "the recaptured composite reports 2x, matching its pixels, not the clicked 1x display")
+        }
+        suite.expect(ScreenshotCapturePolicy.compositeTargetCapture(
+            buffer: (1600, 1200), frame: layerFrame, candidates: []) == nil,
+               "with no display scale known there is no composite to report")
         suite.expect(ScreenshotCapturePolicy.attachedCapturePlan(
             target: capturedWindow, frontToBack: [sheet, capturedWindow])
             == ScreenshotCapturePolicy.AttachedCapturePlan(
