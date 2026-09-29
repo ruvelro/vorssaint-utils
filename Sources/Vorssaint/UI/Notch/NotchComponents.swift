@@ -395,13 +395,21 @@ extension NotchSurfaceBackground {
                                                    openness: presentation.openness,
                                                    increasedContrast: contrast == .increased)
                 .map { Gradient.Stop(color: .black.opacity($0.opacity), location: $0.location) }
-            NotchTranslucentMaterial(contour: presentation.contour.cgPath)
-                .overlay {
-                    LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
-                        .frame(height: height)
-                        .frame(maxHeight: .infinity, alignment: .top)
-                        .mask(shape)
+            // The blur covers only the island's box. Its mask image is drawn
+            // again on every frame of a resize, and at the stage's size it
+            // would be as large as the largest display.
+            let box = presentation.contour.boundingRect.integral
+            ZStack(alignment: .topLeading) {
+                if !box.isNull, box.width > 0, box.height > 0 {
+                    NotchTranslucentMaterial(contour: presentation.contour.offsetBy(dx: -box.minX, dy: -box.minY).cgPath)
+                        .frame(width: box.width, height: box.height)
+                        .padding(EdgeInsets(top: box.minY, leading: box.minX, bottom: 0, trailing: 0))
                 }
+                LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
+                    .frame(height: height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .mask(shape)
+            }
         } else {
             Color.black
         }
@@ -434,9 +442,12 @@ private final class NotchTranslucentView: NSVisualEffectView {
 
     override var isFlipped: Bool { true }
 
-    override func layout() {
-        super.layout()
-        updateMask()
+    /// The view follows the island's box, so each new size gets its mask at
+    /// once. Without one the whole view would blur.
+    override func setFrameSize(_ newSize: NSSize) {
+        let resized = newSize != frame.size
+        super.setFrameSize(newSize)
+        if resized { updateMask() }
     }
 
     private func updateMask() {
