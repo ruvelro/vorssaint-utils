@@ -559,14 +559,20 @@ final class AppVolumeMixer: ObservableObject {
                     if current { self.scheduleListenerRefresh() }
                     return
                 }
+                // A direct control change since the read began already set
+                // the level these keys continue from, read or not.
+                let superseded = self.outputStepReadGeneration != readGeneration
                 guard let volume else {
                     // The default output has no software volume: the system
                     // keys are the only way to change it.
-                    self.settleQueuedOutputSteps(handled: false)
+                    if superseded {
+                        self.applyQueuedOutputSteps()
+                    } else {
+                        self.settleQueuedOutputSteps(handled: false)
+                    }
                     return
                 }
-                if self.outputStepReadGeneration == readGeneration,
-                   !self.hasCurrentOutputAdjustment {
+                if !superseded, !self.hasCurrentOutputAdjustment {
                     if self.systemOutputVolume != volume { self.systemOutputVolume = volume }
                     if self.systemOutputMuted != muted { self.systemOutputMuted = muted }
                 }
