@@ -391,8 +391,14 @@ enum FeatureCatalogTests {
                "a sounding player without playpause keeps the key with the system instead of starting another player")
         for language in AppLanguage.allCases {
             let strings = FeatureStrings.mediaKeys(language)
-            suite.expect(!strings.playerOnlyTitle.isEmpty && !strings.playerOnlyCaption.isEmpty,
+            suite.expect(!strings.playerOnlyTitle.isEmpty && !strings.playerOnlyCaption.isEmpty
+                         && !strings.playerOnlyCaptionLegacy.isEmpty,
                          "every language has playback key settings")
+            suite.expect(strings.caption(soundReported: true) == strings.playerOnlyCaption
+                         && strings.caption(soundReported: false) == strings.playerOnlyCaptionLegacy
+                         && strings.playerOnlyCaptionLegacy.count < strings.playerOnlyCaption.count,
+                         "before macOS 14.4 the caption leaves out deferring to another app's sound "
+                         + "(\(language.rawValue))")
         }
         suite.expect(route([player(40, "com.example.player", launched: 100, access: .consent)]) == .askConsent(40)
                 && route([player(40, "com.example.player", launched: 100, access: .denied)]) == .system,

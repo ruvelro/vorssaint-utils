@@ -289,7 +289,7 @@ private struct MusicBlockingSettings: View {
             }
             let mediaKeys = FeatureStrings.mediaKeys(l10n.language)
             SettingsRow(symbol: "music.note", title: mediaKeys.playerOnlyTitle,
-                        caption: mediaKeys.playerOnlyCaption) {
+                        caption: mediaKeys.caption(soundReported: MediaKeyAudioActivity.isSupported)) {
                 Toggle(mediaKeys.playerOnlyTitle, isOn: $mediaKeysPlayerOnly)
                     .labelsHidden()
                     .toggleStyle(.switch)
