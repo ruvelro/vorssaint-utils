@@ -566,12 +566,16 @@ final class AppVolumeMixer: ObservableObject {
                 self.outputStepReadInFlight = false
                 guard isDefault else {
                     // The keys were meant for an output that has since been
-                    // replaced, as headphones taking over. Replaying each one
-                    // natively would step the new output a full step per
-                    // press, so they settle as handled, the way a pending
-                    // adjustment does when its output changes, and the
-                    // mixer resubscribes to what now plays.
-                    self.settleQueuedOutputSteps(handled: true)
+                    // replaced, as headphones taking over. Replaying a volume
+                    // key natively would step the new output a full step per
+                    // press, so those settle as handled, the way a pending
+                    // adjustment does when its output changes. A native mute
+                    // is the same toggle, so mute keys go back to the system
+                    // and still mute what now plays. The mixer resubscribes
+                    // to that output.
+                    let steps = self.queuedOutputSteps
+                    self.queuedOutputSteps.removeAll()
+                    for step in steps { step.completion(step.level != nil) }
                     if current { self.scheduleListenerRefresh() }
                     return
                 }

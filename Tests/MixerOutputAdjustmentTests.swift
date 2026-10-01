@@ -272,8 +272,8 @@ enum MixerOutputAdjustmentContract {
         mixer.requestOutputStep(level: step(0.1)) { completions.append($0) }
         Hardware.device = 2
         finish(mixer)
-        suite.expect(Hardware.writes.isEmpty && completions == [true, true] && mixer.listenerRefreshes == 1,
-                     "mute and volume keys for an output that is no longer the default settle together")
+        suite.expect(Hardware.writes.isEmpty && completions == [false, true] && mixer.listenerRefreshes == 1,
+                     "a mute key for an output that is no longer the default goes back to the system while its volume keys settle")
 
         mixer = make()
         completions = []

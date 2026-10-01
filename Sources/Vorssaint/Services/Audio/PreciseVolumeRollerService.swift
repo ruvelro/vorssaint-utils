@@ -166,8 +166,9 @@ final class PreciseVolumeRollerService: ObservableObject {
            !gate.accepts(direction, at: ProcessInfo.processInfo.systemUptime) { return true }
         feedbackStep &+= 1
         let step = feedbackStep
-        // Like macOS, the mute key clicks only when it unmutes.
-        feedback = (key != .mute || mixer.systemOutputMuted == true) && NotchVolumeKeyGate.playsFeedback(
+        // Like macOS, the mute key clicks only when it unmutes. The toggle
+        // follows the output's own reading, so its result decides that below.
+        feedback = NotchVolumeKeyGate.playsFeedback(
             setting: UserDefaults.standard.bool(forKey: "com.apple.sound.beep.feedback"),
             option: event.flags.contains(.maskAlternate), shift: event.flags.contains(.maskShift))
             ? (code, step, false, false) : nil
@@ -193,6 +194,9 @@ final class PreciseVolumeRollerService: ObservableObject {
             // publishes its state through the listeners.
             if key == .mute, mixer.systemOutputMuted != nil {
                 mixer.requestOutputMuteToggle { applied in
+                    if applied, mixer.systemOutputMuted == true, self?.feedback?.step == step {
+                        self?.feedback = nil
+                    }
                     completion(applied)
                     if applied { NotchService.shared.showCurrentVolume() }
                 }
