@@ -1404,6 +1404,42 @@ enum ScreenshotFeatureTests {
             .components(separatedBy: "\n}").first ?? ""
         suite.expect(overlayViewBody.contains("acceptsFirstMouse") && overlayViewBody.contains("acceptsFirstMouse(for event: NSEvent?) -> Bool { true }"),
                "the capture surface claims the first click so a drag works while Dynamic Island holds key focus")
+        // The other half of that drag: live, the panel is clear and draws no
+        // dim over the desktop until the drag starts, and a window left at the
+        // default passes a press on a transparent pixel through to the desktop.
+        // A session can start live, so the assignment must be a statement of
+        // the initializer itself, not a branch or a later update, and nothing
+        // in the class may set the property to true.
+        let overlayPanelBody = selectionSource.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+            .components(separatedBy: "class ScreenshotOverlayPanel").dropFirst().first?
+            .components(separatedBy: "\n}").first ?? ""
+        let overlayPanelInit = overlayPanelBody.components(separatedBy: "super.init(contentRect:").dropFirst().first?
+            .components(separatedBy: "\n    }").first ?? ""
+        suite.expect(overlayPanelInit.components(separatedBy: "\n").contains("        ignoresMouseEvents = false")
+                && !overlayPanelBody.contains("ignoresMouseEvents = true"),
+               "the clear capture surface takes a press over the bare desktop instead of passing it through")
+        // Taking every press lasts until the window is really gone, and AppKit
+        // fades the panel out after `orderOut`, so a quick click or the first
+        // scroll after a capture landed on the leaving panel. Every path that
+        // orders the panels out goes through the retire step, which lets go of
+        // the mouse and flushes that to the window server before they leave.
+        let selectionCode = selectionSource.components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        func selectionMethod(_ signature: String) -> String {
+            selectionCode.components(separatedBy: signature).dropFirst().first?
+                .components(separatedBy: "\n    }").first ?? ""
+        }
+        let retireBody = selectionMethod("private func retirePanels()")
+        let retireSteps = ["$0.ignoresMouseEvents = true", "CATransaction.flush()", "$0.orderOut(nil)"]
+            .compactMap { retireBody.range(of: $0)?.lowerBound }
+        suite.expect(retireSteps.count == 3 && retireSteps == retireSteps.sorted()
+                && selectionCode.components(separatedBy: "orderOut(").count == 2
+                && selectionMethod("private func captureLive(").contains("retirePanels()")
+                && selectionMethod("private func finish(").contains("retirePanels()"),
+               "a capture surface leaving the screen stops taking the mouse before its fade")
         // Both editors state a size the same way. The recorder wrote
         // "1960x1274" beside a screenshot editor that already read
         // "2940 \u{00D7} 1912 px", and the letter x is the tell.
@@ -1528,6 +1564,37 @@ enum ScreenshotFeatureTests {
         suite.expect(largeCaptureWindow.width <= 1470 * 0.90
                 && largeCaptureWindow.height <= 956 * 0.88,
                "a large screenshot editor stays inside the visible display")
+        typealias RailLayout = ScreenshotSupport.ToolRailLayout
+        let railTools = ScreenshotSupport.Tool.editorTools.count
+        func railFits(_ layout: RailLayout, toolCount: Int, height: CGFloat) -> Bool {
+            let rows = layout.visibleTools + (layout.visibleTools < toolCount ? 2 : 1)
+            return RailLayout.chromeHeight + CGFloat(rows) * (layout.rowHeight + layout.spacing) <= height
+        }
+        // The rail's column is the editor's height less 70 pt of chrome and
+        // the footer: 40 pt in one row, 76 when a tool's controls wrap it.
+        let smallestEditor = ScreenshotSupport.editorMinimumContentSize(
+            visibleSize: CGSize(width: 1280, height: 775)).height
+        let smallestRails = [40, ScreenshotSupport.editorWrappedFooterHeight].map {
+            ScreenshotSupport.toolRailHeight(column: smallestEditor - 70 - $0, footer: $0)
+        }
+        suite.expect(smallestRails[0] == smallestRails[1],
+               "a tool that wraps the footer never reflows the tool rail")
+        let smallestRail = RailLayout(toolCount: railTools, height: smallestRails[0])
+        suite.expect(smallestRail.visibleTools == railTools && smallestRail.rowHeight < 29
+                && railFits(smallestRail, toolCount: railTools, height: smallestRails[0]),
+               "the smallest editor shows every tool and the gear in compact rows")
+        let defaultRail = RailLayout(toolCount: railTools, height: ScreenshotSupport.toolRailHeight(
+            column: editorMinimum.height - 70 - 40, footer: 40))
+        suite.expect(defaultRail.visibleTools == railTools && defaultRail.rowHeight == 29,
+               "a comfortable editor keeps regular tool rows")
+        let crampedRail = RailLayout(toolCount: railTools, height: 300)
+        suite.expect(crampedRail.visibleTools < railTools && crampedRail.visibleTools > 0,
+               "a shorter rail moves its last tools behind the overflow button")
+        suite.expect((63...800).allSatisfy {
+                railFits(RailLayout(toolCount: railTools, height: CGFloat($0)), toolCount: railTools,
+                         height: CGFloat($0))
+            },
+               "the tool rail, its overflow button and the gear fit every height")
         suite.expect(ScreenshotSupport.editorOwnsKeyEvent(eventWindowNumber: 42,
                                                     editorWindowNumber: 42,
                                                     editorIsKey: true),
