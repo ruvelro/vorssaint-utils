@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (C) 2026 Vorssaint
 
+import CoreGraphics
 import Foundation
 
 enum QuitProtectionShortcut: String, CaseIterable, Identifiable {
@@ -134,18 +135,41 @@ enum QuitProtectionSupport {
         "codes.rambo.VirtualBuddy",
     ]
 
-    /// Whether macOS's own app switcher is up after this key event. It opens
-    /// on ⌘Tab, stays while Command is held and closes on Escape. A keyCode
-    /// is passed only for a key down; other events carry the flags alone.
-    static func nativeSwitcherHeld(afterKeyCode keyCode: Int64?,
+    /// The WindowServer rows for macOS's own app switcher, forward and back.
+    static let nativeAppSwitcherIDs: Set<Int32> = [
+        SwitcherNativeSymbolicHotKey.commandTab.rawValue,
+        SwitcherNativeSymbolicHotKey.commandShiftTab.rawValue,
+    ]
+
+    /// Whether a key down opens or steps macOS's own app switcher. The rows
+    /// are the WindowServer's, so a remapped switcher key is followed and one
+    /// switched off, as the App Switcher's take-over does while it owns ⌘Tab,
+    /// is not. `nil` rows mean the private calls are gone, and only the
+    /// factory ⌘Tab and ⌘⇧Tab are assumed.
+    static func opensNativeSwitcher(keyCode: Int64,
+                                    flags: CGEventFlags,
+                                    entries: [LiveSystemShortcut]?) -> Bool {
+        let pressed = GlobalShortcut(keyCode: keyCode, modifiers: GlobalShortcutModifiers(cgFlags: flags))
+        guard let entries else {
+            return keyCode == 48
+                && (pressed.modifiers == [.command] || pressed.modifiers == [.command, .shift])
+        }
+        return entries.contains {
+            nativeAppSwitcherIDs.contains($0.id) && $0.enabled && $0.shortcut == pressed
+        }
+    }
+
+    /// Whether macOS's own app switcher is still up after a key event. It
+    /// opens on its shortcut, stays while Command is held and closes on
+    /// Escape. A keyCode is passed only for a key down.
+    static func nativeSwitcherHeld(opensSwitcher: Bool,
+                                   keyCode: Int64?,
                                    commandHeld: Bool,
                                    wasHeld: Bool) -> Bool {
         guard commandHeld else { return false }
-        switch keyCode {
-        case 48: return true
-        case 53: return false
-        default: return wasHeld
-        }
+        if opensSwitcher { return true }
+        if keyCode == 53 { return false }
+        return wasHeld
     }
 
     /// ⌘Q pressed in macOS's own switcher quits the app it has selected, which

@@ -32,6 +32,7 @@ final class QuitProtectionService: ObservableObject {
     private var frontmostBundleIdentifier: String?
     private var frontmostProcessIdentifier: pid_t?
     private var nativeSwitcherHeld = false
+    private var nativeSwitcherEntries: [LiveSystemShortcut]?
     private let hud = QuitProtectionHUD()
 
     private init() {
@@ -86,6 +87,7 @@ final class QuitProtectionService: ObservableObject {
         guard !isRunning else { return }
         guard installTap() else { return }
         isRunning = true
+        nativeSwitcherEntries = SymbolicHotKeys.entries(for: QuitProtectionSupport.nativeAppSwitcherIDs)
         let frontmost = NSWorkspace.shared.frontmostApplication
         frontmostBundleIdentifier = frontmost?.bundleIdentifier
         frontmostProcessIdentifier = frontmost?.processIdentifier
@@ -108,6 +110,7 @@ final class QuitProtectionService: ObservableObject {
     private func stop() {
         cancelPending()
         swallowShortcut = nil
+        nativeSwitcherHeld = false
 
         if let activationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
@@ -162,8 +165,10 @@ final class QuitProtectionService: ObservableObject {
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            // The key up that ends the swallow may be among the events missed.
+            // The key up that ends the swallow, or the release of Command that
+            // closes the native switcher, may be among the events missed.
             swallowShortcut = nil
+            nativeSwitcherHeld = false
             cancelPending()
             let enabled = AppFeature.quitWindowProtection.isAvailable
                 && isEnabledForAnyShortcut
@@ -189,9 +194,11 @@ final class QuitProtectionService: ObservableObject {
         // Read before the switcher check below, which can return before the
         // release of Command is seen and would leave this set.
         if nativeSwitcherHeld || event.flags.contains(.maskCommand) {
+            let keyCode = type == .keyDown
+                ? event.getIntegerValueField(.keyboardEventKeycode) : nil
             nativeSwitcherHeld = QuitProtectionSupport.nativeSwitcherHeld(
-                afterKeyCode: type == .keyDown
-                    ? event.getIntegerValueField(.keyboardEventKeycode) : nil,
+                opensSwitcher: keyCode.map { opensNativeSwitcher(keyCode: $0, flags: event.flags) } ?? false,
+                keyCode: keyCode,
                 commandHeld: event.flags.contains(.maskCommand),
                 wasHeld: nativeSwitcherHeld
             )
@@ -213,6 +220,22 @@ final class QuitProtectionService: ObservableObject {
         default:
             return Unmanaged.passUnretained(event)
         }
+    }
+
+    /// The switcher rows' keys are read when the tap starts; System Settings
+    /// rarely changes them. Whether a row is on is read live, and only for a
+    /// press on its key, because the App Switcher's take-over switches these
+    /// rows off and on while it runs.
+    private func opensNativeSwitcher(keyCode: Int64, flags: CGEventFlags) -> Bool {
+        let entries = nativeSwitcherEntries?.map { entry in
+            guard entry.shortcut.keyCode == keyCode, let isEnabled = SymbolicHotKeys.isEnabled else {
+                return entry
+            }
+            return LiveSystemShortcut(id: entry.id, shortcut: entry.shortcut,
+                                      enabled: isEnabled(entry.id),
+                                      requiresFunctionKey: entry.requiresFunctionKey)
+        }
+        return QuitProtectionSupport.opensNativeSwitcher(keyCode: keyCode, flags: flags, entries: entries)
     }
 
     private func handleKeyDown(_ event: CGEvent) -> Unmanaged<CGEvent>? {
@@ -421,6 +444,10 @@ final class QuitProtectionService: ObservableObject {
         let stalePending = pending.map {
             $0.switcherSessionGeneration != ownership.generation
         } ?? false
+        if ownership.isOwned {
+            // Vorssaint's switcher has the keyboard, so macOS's is not up.
+            nativeSwitcherHeld = false
+        }
         if ownership.isOwned || stalePending {
             if hasPressInFlight {
                 cancelPending()
