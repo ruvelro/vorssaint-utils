@@ -145,38 +145,18 @@ enum QuitProtectionSupport {
     /// are the WindowServer's, so a remapped switcher key is followed and one
     /// switched off, as the App Switcher's take-over does while it owns ⌘Tab,
     /// is not. `nil` rows mean the private calls are gone, and only the
-    /// factory ⌘Tab and ⌘⇧Tab are assumed.
+    /// factory ⌘Tab, forward or back, is assumed.
     static func opensNativeSwitcher(keyCode: Int64,
                                     flags: CGEventFlags,
                                     entries: [LiveSystemShortcut]?) -> Bool {
         let pressed = GlobalShortcut(keyCode: keyCode, modifiers: GlobalShortcutModifiers(cgFlags: flags))
         guard let entries else {
             return keyCode == 48
-                && (pressed.modifiers == [.command] || pressed.modifiers == [.command, .shift])
+                && !pressed.modifiers.contains(.control) && !pressed.modifiers.contains(.option)
         }
         return entries.contains {
             nativeAppSwitcherIDs.contains($0.id) && $0.enabled && $0.shortcut == pressed
         }
-    }
-
-    /// Whether macOS's own app switcher is still up after a key event. It
-    /// opens on its shortcut, stays while Command is held and closes on
-    /// Escape. A keyCode is passed only for a key down.
-    static func nativeSwitcherHeld(opensSwitcher: Bool,
-                                   keyCode: Int64?,
-                                   commandHeld: Bool,
-                                   wasHeld: Bool) -> Bool {
-        guard commandHeld else { return false }
-        if opensSwitcher { return true }
-        if keyCode == 53 { return false }
-        return wasHeld
-    }
-
-    /// ⌘Q pressed in macOS's own switcher quits the app it has selected, which
-    /// is not the frontmost one this service would protect and then quit.
-    static func leavesToNativeSwitcher(_ shortcut: QuitProtectionShortcut,
-                                       nativeSwitcherHeld: Bool) -> Bool {
-        nativeSwitcherHeld && shortcut == .quit
     }
 
     static func scopeAllows(_ scope: QuitProtectionScope,

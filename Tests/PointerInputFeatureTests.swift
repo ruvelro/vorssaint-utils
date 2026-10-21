@@ -4047,28 +4047,6 @@ enum PointerInputFeatureTests {
                                                               entries: nil),
                "without the system table only the factory ⌘Tab is assumed")
 
-        var switcherHeld = false
-        switcherHeld = QuitProtectionSupport.nativeSwitcherHeld(opensSwitcher: true, keyCode: 48,
-                                                                commandHeld: true, wasHeld: switcherHeld)
-        suite.expect(switcherHeld, "the switcher shortcut opens macOS's own switcher")
-        switcherHeld = QuitProtectionSupport.nativeSwitcherHeld(opensSwitcher: false, keyCode: nil,
-                                                                commandHeld: true, wasHeld: switcherHeld)
-        suite.expect(switcherHeld, "releasing Tab with Command still held keeps the switcher up")
-        suite.expect(QuitProtectionSupport.leavesToNativeSwitcher(.quit, nativeSwitcherHeld: switcherHeld),
-               "⌘Q in the native switcher is left to it, which quits the app it selected (#2620)")
-        suite.expect(!QuitProtectionSupport.leavesToNativeSwitcher(.close, nativeSwitcherHeld: switcherHeld),
-               "⌘W in the native switcher keeps its protection")
-        suite.expect(!QuitProtectionSupport.nativeSwitcherHeld(opensSwitcher: false, keyCode: 53,
-                                                               commandHeld: true, wasHeld: true),
-               "Escape closes the native switcher, so a later ⌘Q is protected again")
-        suite.expect(!QuitProtectionSupport.nativeSwitcherHeld(opensSwitcher: false, keyCode: nil,
-                                                               commandHeld: false, wasHeld: true),
-               "releasing Command closes the native switcher")
-        suite.expect(!QuitProtectionSupport.nativeSwitcherHeld(opensSwitcher: false, keyCode: 12,
-                                                               commandHeld: true, wasHeld: false)
-                && !QuitProtectionSupport.leavesToNativeSwitcher(.quit, nativeSwitcherHeld: false),
-               "a plain ⌘Q with no switcher up stays protected")
-
         suite.expect(QuitProtectionSupport.matchesKey(keyCharacter: "\u{439}", keyCode: 12,
                                                 commandLabel: "Q", shortcut: .quit),
                "a Cyrillic layout is protected on the key Command-Q quits from, "

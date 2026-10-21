@@ -29,9 +29,9 @@ final class QuitProtectionService: ObservableObject {
     private var pendingExpiry: DispatchWorkItem?
     private var pending: Pending?
     private var swallowShortcut: QuitProtectionShortcut?
+    private var nativeSwitcherSessionActive = false
     private var frontmostBundleIdentifier: String?
     private var frontmostProcessIdentifier: pid_t?
-    private var nativeSwitcherHeld = false
     private var nativeSwitcherEntries: [LiveSystemShortcut]?
     private let hud = QuitProtectionHUD()
 
@@ -110,7 +110,7 @@ final class QuitProtectionService: ObservableObject {
     private func stop() {
         cancelPending()
         swallowShortcut = nil
-        nativeSwitcherHeld = false
+        nativeSwitcherSessionActive = false
 
         if let activationObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(activationObserver)
@@ -168,7 +168,7 @@ final class QuitProtectionService: ObservableObject {
             // The key up that ends the swallow, or the release of Command that
             // closes the native switcher, may be among the events missed.
             swallowShortcut = nil
-            nativeSwitcherHeld = false
+            nativeSwitcherSessionActive = false
             cancelPending()
             let enabled = AppFeature.quitWindowProtection.isAvailable
                 && isEnabledForAnyShortcut
@@ -191,17 +191,20 @@ final class QuitProtectionService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
-        // Read before the switcher check below, which can return before the
-        // release of Command is seen and would leave this set.
-        if nativeSwitcherHeld || event.flags.contains(.maskCommand) {
-            let keyCode = type == .keyDown
-                ? event.getIntegerValueField(.keyboardEventKeycode) : nil
-            nativeSwitcherHeld = QuitProtectionSupport.nativeSwitcherHeld(
-                opensSwitcher: keyCode.map { opensNativeSwitcher(keyCode: $0, flags: event.flags) } ?? false,
-                keyCode: keyCode,
-                commandHeld: event.flags.contains(.maskCommand),
-                wasHeld: nativeSwitcherHeld
-            )
+        // The native switcher keeps the original app frontmost while another
+        // app is selected. Its Q must reach the Dock, never a confirmation
+        // targeting that original app. Track the Command chord without an AX
+        // query on the tap, including reverse navigation and dismissal.
+        if !event.flags.contains(.maskCommand) {
+            nativeSwitcherSessionActive = false
+        } else if type == .keyDown {
+            let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+            if opensNativeSwitcher(keyCode: keyCode, flags: event.flags) {
+                nativeSwitcherSessionActive = true
+            } else if keyCode == 53 || (nativeSwitcherSessionActive
+                && GlobalShortcut.layoutKeyLabel(for: keyCode, usesCommand: true) == ".") {
+                nativeSwitcherSessionActive = false
+            }
         }
 
         // Ordinary typing still avoids consulting another service. A
@@ -261,12 +264,6 @@ final class QuitProtectionService: ObservableObject {
             if shortcut == swallowShortcut || isRepeat {
                 return nil
             }
-        }
-
-        if let shortcut,
-           QuitProtectionSupport.leavesToNativeSwitcher(shortcut, nativeSwitcherHeld: nativeSwitcherHeld) {
-            cancelPending()
-            return Unmanaged.passUnretained(event)
         }
 
         if let currentPending = pending {
@@ -441,20 +438,18 @@ final class QuitProtectionService: ObservableObject {
     /// existing session generation, not by panel visibility or notifications.
     private func deferToSwitcherIfNeeded() -> Bool {
         let ownership = AppSwitcher.shared.keyboardInputOwnership
+        if ownership.isOwned { nativeSwitcherSessionActive = false }
+        let switcherOwnsInput = ownership.isOwned || nativeSwitcherSessionActive
         let stalePending = pending.map {
             $0.switcherSessionGeneration != ownership.generation
         } ?? false
-        if ownership.isOwned {
-            // Vorssaint's switcher has the keyboard, so macOS's is not up.
-            nativeSwitcherHeld = false
-        }
-        if ownership.isOwned || stalePending {
+        if switcherOwnsInput || stalePending {
             if hasPressInFlight {
                 cancelPending()
                 swallowShortcut = nil
             }
         }
-        return ownership.isOwned
+        return switcherOwnsInput
     }
 
     private func beginPending(shortcut: QuitProtectionShortcut,
@@ -646,7 +641,7 @@ final class QuitProtectionService: ObservableObject {
                          removing modifier: QuitProtectionExtraModifier? = nil,
                          switcherSessionGeneration: UInt64? = nil) {
         let ownership = AppSwitcher.shared.keyboardInputOwnership
-        guard !ownership.isOwned,
+        guard !ownership.isOwned, !nativeSwitcherSessionActive,
               switcherSessionGeneration.map({ $0 == ownership.generation }) ?? true else {
             cancelPending()
             swallowShortcut = nil
