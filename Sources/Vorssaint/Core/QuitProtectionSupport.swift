@@ -134,6 +134,27 @@ enum QuitProtectionSupport {
         "codes.rambo.VirtualBuddy",
     ]
 
+    /// Whether macOS's own app switcher is up after this key event. It opens
+    /// on ⌘Tab, stays while Command is held and closes on Escape. A keyCode
+    /// is passed only for a key down; other events carry the flags alone.
+    static func nativeSwitcherHeld(afterKeyCode keyCode: Int64?,
+                                   commandHeld: Bool,
+                                   wasHeld: Bool) -> Bool {
+        guard commandHeld else { return false }
+        switch keyCode {
+        case 48: return true
+        case 53: return false
+        default: return wasHeld
+        }
+    }
+
+    /// ⌘Q pressed in macOS's own switcher quits the app it has selected, which
+    /// is not the frontmost one this service would protect and then quit.
+    static func leavesToNativeSwitcher(_ shortcut: QuitProtectionShortcut,
+                                       nativeSwitcherHeld: Bool) -> Bool {
+        nativeSwitcherHeld && shortcut == .quit
+    }
+
     static func scopeAllows(_ scope: QuitProtectionScope,
                             bundleIdentifier: String?,
                             exceptions: [String]) -> Bool {

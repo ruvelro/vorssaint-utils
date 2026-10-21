@@ -31,6 +31,7 @@ final class QuitProtectionService: ObservableObject {
     private var swallowShortcut: QuitProtectionShortcut?
     private var frontmostBundleIdentifier: String?
     private var frontmostProcessIdentifier: pid_t?
+    private var nativeSwitcherHeld = false
     private let hud = QuitProtectionHUD()
 
     private init() {
@@ -185,6 +186,17 @@ final class QuitProtectionService: ObservableObject {
             return Unmanaged.passUnretained(event)
         }
 
+        // Read before the switcher check below, which can return before the
+        // release of Command is seen and would leave this set.
+        if nativeSwitcherHeld || event.flags.contains(.maskCommand) {
+            nativeSwitcherHeld = QuitProtectionSupport.nativeSwitcherHeld(
+                afterKeyCode: type == .keyDown
+                    ? event.getIntegerValueField(.keyboardEventKeycode) : nil,
+                commandHeld: event.flags.contains(.maskCommand),
+                wasHeld: nativeSwitcherHeld
+            )
+        }
+
         // Ordinary typing still avoids consulting another service. A
         // switcher-owned press must reach its tap, regardless of tap order.
         if (hasPressInFlight || event.flags.contains(.maskCommand)),
@@ -226,6 +238,12 @@ final class QuitProtectionService: ObservableObject {
             if shortcut == swallowShortcut || isRepeat {
                 return nil
             }
+        }
+
+        if let shortcut,
+           QuitProtectionSupport.leavesToNativeSwitcher(shortcut, nativeSwitcherHeld: nativeSwitcherHeld) {
+            cancelPending()
+            return Unmanaged.passUnretained(event)
         }
 
         if let currentPending = pending {
