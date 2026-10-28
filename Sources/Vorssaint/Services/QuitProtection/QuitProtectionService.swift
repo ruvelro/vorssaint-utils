@@ -32,7 +32,6 @@ final class QuitProtectionService: ObservableObject {
     private var nativeSwitcherSessionActive = false
     private var frontmostBundleIdentifier: String?
     private var frontmostProcessIdentifier: pid_t?
-    private var nativeSwitcherEntries: [LiveSystemShortcut]?
     private let hud = QuitProtectionHUD()
 
     private init() {
@@ -87,7 +86,6 @@ final class QuitProtectionService: ObservableObject {
         guard !isRunning else { return }
         guard installTap() else { return }
         isRunning = true
-        nativeSwitcherEntries = SymbolicHotKeys.entries(for: QuitProtectionSupport.nativeAppSwitcherIDs)
         let frontmost = NSWorkspace.shared.frontmostApplication
         frontmostBundleIdentifier = frontmost?.bundleIdentifier
         frontmostProcessIdentifier = frontmost?.processIdentifier
@@ -225,20 +223,13 @@ final class QuitProtectionService: ObservableObject {
         }
     }
 
-    /// The switcher rows' keys are read when the tap starts; System Settings
-    /// rarely changes them. Whether a row is on is read live, and only for a
-    /// press on its key, because the App Switcher's take-over switches these
-    /// rows off and on while it runs.
+    /// Read only the two app-switcher rows on Command key downs. Both the
+    /// combination and its enabled state can change while this tap is running;
+    /// ordinary typing, key releases and modifier changes never query the table.
     private func opensNativeSwitcher(keyCode: Int64, flags: CGEventFlags) -> Bool {
-        let entries = nativeSwitcherEntries?.map { entry in
-            guard entry.shortcut.keyCode == keyCode, let isEnabled = SymbolicHotKeys.isEnabled else {
-                return entry
-            }
-            return LiveSystemShortcut(id: entry.id, shortcut: entry.shortcut,
-                                      enabled: isEnabled(entry.id),
-                                      requiresFunctionKey: entry.requiresFunctionKey)
-        }
-        return QuitProtectionSupport.opensNativeSwitcher(keyCode: keyCode, flags: flags, entries: entries)
+        QuitProtectionSupport.opensNativeSwitcher(
+            keyCode: keyCode, flags: flags,
+            entries: SymbolicHotKeys.entries(for: QuitProtectionSupport.nativeAppSwitcherIDs))
     }
 
     private func handleKeyDown(_ event: CGEvent) -> Unmanaged<CGEvent>? {

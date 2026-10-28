@@ -156,6 +156,7 @@ enum QuitProtectionSupport {
         }
         return entries.contains {
             nativeAppSwitcherIDs.contains($0.id) && $0.enabled && $0.shortcut == pressed
+                && (!$0.requiresFunctionKey || flags.contains(.maskSecondaryFn))
         }
     }
 
